@@ -13,6 +13,10 @@ libp2p = { workspace = true, features = [
     "tcp",
     "tokio",
     "yamux",
+    "mdns",
+    "quic",
+    "gossipsub",
+    "macros",
 ] }
 tokio = { workspace = true, features = ["full", "macros"] }
 tracing = { workspace = true }
