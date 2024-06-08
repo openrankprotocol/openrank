@@ -1,22 +1,4 @@
-// Copyright 2018 Parity Technologies (UK) Ltd.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
+mod txs;
 
 use futures::StreamExt;
 use libp2p::{
@@ -29,11 +11,72 @@ use std::{
 	hash::{DefaultHasher, Hash, Hasher},
 	time::Duration,
 };
-use tokio::{
-	io::{self, AsyncBufReadExt},
-	select,
-};
+use tokio::{io, select};
 use tracing_subscriber::EnvFilter;
+use txs::Address;
+
+struct DomainHash(u64);
+struct Domain {
+	trust_owner: Address,
+	trust_suffix: String,
+	seed_owner: Address,
+	seed_suffix: String,
+	algo_id: u64,
+}
+
+impl Domain {
+	fn to_hash(&self) -> DomainHash {
+		let mut s = DefaultHasher::new();
+		s.write(&self.trust_owner.0);
+		s.write(self.trust_suffix.as_bytes());
+		s.write(&self.seed_owner.0);
+		s.write(self.seed_suffix.as_bytes());
+		s.write(&self.algo_id.to_be_bytes());
+		let res = s.finish();
+		DomainHash(res)
+	}
+}
+
+struct TopicHash(u64);
+
+impl TopicHash {
+	fn to_hex(&self) -> String {
+		hex::encode(self.0.to_be_bytes())
+	}
+}
+
+enum Topic {
+	DomainAssignent(DomainHash),
+	DomainCommitment(DomainHash),
+	DomainScores(DomainHash),
+	DomainVerification(DomainHash),
+}
+
+impl Topic {
+	fn to_hash(&self) -> TopicHash {
+		let mut s = DefaultHasher::new();
+		match self {
+			Self::DomainAssignent(domain_id) => {
+				s.write(&domain_id.0.to_be_bytes());
+				s.write("assignment".as_bytes());
+			},
+			Self::DomainCommitment(domain_id) => {
+				s.write(&domain_id.0.to_be_bytes());
+				s.write("commitment".as_bytes());
+			},
+			Self::DomainScores(domain_id) => {
+				s.write(&domain_id.0.to_be_bytes());
+				s.write("scores".as_bytes());
+			},
+			Self::DomainVerification(domain_id) => {
+				s.write(&domain_id.0.to_be_bytes());
+				s.write("verification".as_bytes());
+			},
+		}
+		let res = s.finish();
+		TopicHash(res)
+	}
+}
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
@@ -94,9 +137,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	// subscribes to our topic
 	swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 
-	// Read full lines from stdin
-	let mut stdin = io::BufReader::new(io::stdin()).lines();
-
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
@@ -106,13 +146,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	// Kick it off
 	loop {
 		select! {
-			Ok(Some(line)) = stdin.next_line() => {
-				if let Err(e) = swarm
-					.behaviour_mut().gossipsub
-					.publish(topic.clone(), line.as_bytes()) {
-					println!("Publish error: {e:?}");
-				}
-			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
 					for (peer_id, _multiaddr) in list {
