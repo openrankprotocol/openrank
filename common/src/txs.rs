@@ -1,3 +1,4 @@
+#[derive(Debug, Clone)]
 pub struct Address(pub [u8; 32]);
 
 impl Default for Address {

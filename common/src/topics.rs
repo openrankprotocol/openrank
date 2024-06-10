@@ -5,6 +5,7 @@ use crate::txs::Address;
 #[derive(Clone, Debug)]
 pub struct DomainHash(u64);
 
+#[derive(Clone, Debug)]
 pub struct Domain {
 	trust_owner: Address,
 	trust_suffix: String,
@@ -41,6 +42,7 @@ impl TopicHash {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub enum Topic {
 	DomainAssignent(DomainHash),
 	DomainCommitment(DomainHash),

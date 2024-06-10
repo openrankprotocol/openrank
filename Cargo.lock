@@ -359,6 +359,7 @@ dependencies = [
 name = "computer"
 version = "0.0.1"
 dependencies = [
+ "common",
  "futures",
  "hex",
  "libp2p",

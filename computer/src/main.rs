@@ -1,3 +1,7 @@
+use common::{
+	topics::{Domain, Topic},
+	txs::Address,
+};
 use libp2p::{gossipsub, mdns, noise, swarm::NetworkBehaviour, tcp, yamux, Swarm};
 use std::{
 	error::Error,
@@ -64,10 +68,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let mut swarm = build_node().await?;
 
-	// Create a Gossipsub topic
-	let topic = gossipsub::IdentTopic::new("test-net");
-	// subscribes to our topic
-	swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+	let domains = vec![Domain::new(
+		Address::default(),
+		"1".to_string(),
+		Address::default(),
+		"1".to_string(),
+		0,
+	)];
+	let sub_topics_assignment: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+		.collect();
+	let sub_topics_scores: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+		.collect();
+	let sub_topics_commitment: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
+		.collect();
 
 	// Read full lines from stdin
 	let mut stdin = io::BufReader::new(io::stdin()).lines();
@@ -82,10 +107,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	loop {
 		select! {
 			Ok(Some(line)) = stdin.next_line() => {
-				if let Err(e) = swarm
-					.behaviour_mut().gossipsub
-					.publish(topic.clone(), line.as_bytes()) {
-					println!("Publish error: {e:?}");
+				match line.as_str() {
+					"assignment" => {
+						for topic in &sub_topics_assignment {
+							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+							if let Err(e) = swarm
+								.behaviour_mut().gossipsub
+								.publish(topic_wrapper, line.as_bytes()) {
+								println!("Publish error: {e:?}");
+							}
+						}
+					},
+					"scores" => {
+						for topic in &sub_topics_scores {
+							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+							if let Err(e) = swarm
+								.behaviour_mut().gossipsub
+								.publish(topic_wrapper, line.as_bytes()) {
+								println!("Publish error: {e:?}");
+							}
+						}
+					},
+					"commitment" => {
+						for topic in &sub_topics_commitment {
+							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+							if let Err(e) = swarm
+								.behaviour_mut().gossipsub
+								.publish(topic_wrapper, line.as_bytes()) {
+								println!("Publish error: {e:?}");
+							}
+						}
+					},
+					&_ => {}
 				}
 			}
 		}
