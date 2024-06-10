@@ -1,5 +1,5 @@
-mod txs;
-
+use common::topics::{Domain, Topic};
+use common::txs::Address;
 use futures::StreamExt;
 use libp2p::{
 	gossipsub, mdns, noise,
@@ -13,78 +13,6 @@ use std::{
 };
 use tokio::{io, select};
 use tracing_subscriber::EnvFilter;
-use txs::Address;
-
-#[derive(Clone, Debug)]
-struct DomainHash(u64);
-struct Domain {
-	trust_owner: Address,
-	trust_suffix: String,
-	seed_owner: Address,
-	seed_suffix: String,
-	algo_id: u64,
-}
-
-impl Domain {
-	fn new(
-		trust_owner: Address, trust_suffix: String, seed_owner: Address, seed_suffix: String,
-		algo_id: u64,
-	) -> Self {
-		Self { trust_owner, trust_suffix, seed_owner, seed_suffix, algo_id }
-	}
-
-	fn to_hash(&self) -> DomainHash {
-		let mut s = DefaultHasher::new();
-		s.write(&self.trust_owner.0);
-		s.write(self.trust_suffix.as_bytes());
-		s.write(&self.seed_owner.0);
-		s.write(self.seed_suffix.as_bytes());
-		s.write(&self.algo_id.to_be_bytes());
-		let res = s.finish();
-		DomainHash(res)
-	}
-}
-
-struct TopicHash(u64);
-
-impl TopicHash {
-	fn to_hex(&self) -> String {
-		hex::encode(self.0.to_be_bytes())
-	}
-}
-
-enum Topic {
-	DomainAssignent(DomainHash),
-	DomainCommitment(DomainHash),
-	DomainScores(DomainHash),
-	DomainVerification(DomainHash),
-}
-
-impl Topic {
-	fn to_hash(&self) -> TopicHash {
-		let mut s = DefaultHasher::new();
-		match self {
-			Self::DomainAssignent(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("assignment".as_bytes());
-			},
-			Self::DomainCommitment(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("commitment".as_bytes());
-			},
-			Self::DomainScores(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("scores".as_bytes());
-			},
-			Self::DomainVerification(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("verification".as_bytes());
-			},
-		}
-		let res = s.finish();
-		TopicHash(res)
-	}
-}
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
