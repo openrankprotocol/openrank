@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["block-builder", "computer", "da", "sequencer", "verifier"]
+members = ["block-builder", "common", "computer", "da", "sequencer", "verifier"]
 
 [workspace.package]
 version = "0.0.1"

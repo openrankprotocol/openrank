@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "block-builder"
-version = "0.1.0"
+version = "0.0.1"
 
 [[package]]
 name = "bs58"
@@ -349,8 +349,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.0.1"
+
+[[package]]
 name = "computer"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "futures",
  "hex",
@@ -465,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "da"
-version = "0.1.0"
+version = "0.0.1"
 
 [[package]]
 name = "data-encoding"
@@ -2367,7 +2371,7 @@ checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
 
 [[package]]
 name = "sequencer"
-version = "0.1.0"
+version = "0.0.1"
 
 [[package]]
 name = "serde"
@@ -2829,7 +2833,7 @@ checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
 
 [[package]]
 name = "verifier"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "futures",
  "hex",
