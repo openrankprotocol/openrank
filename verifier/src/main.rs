@@ -15,6 +15,7 @@ use tokio::{io, select};
 use tracing_subscriber::EnvFilter;
 use txs::Address;
 
+#[derive(Clone, Debug)]
 struct DomainHash(u64);
 struct Domain {
 	trust_owner: Address,
@@ -25,6 +26,13 @@ struct Domain {
 }
 
 impl Domain {
+	fn new(
+		trust_owner: Address, trust_suffix: String, seed_owner: Address, seed_suffix: String,
+		algo_id: u64,
+	) -> Self {
+		Self { trust_owner, trust_suffix, seed_owner, seed_suffix, algo_id }
+	}
+
 	fn to_hash(&self) -> DomainHash {
 		let mut s = DefaultHasher::new();
 		s.write(&self.trust_owner.0);
@@ -132,10 +140,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let mut swarm = build_node().await?;
 
-	// Create a Gossipsub topic
-	let topic = gossipsub::IdentTopic::new("test-net");
-	// subscribes to our topic
-	swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+	let domains = vec![Domain::new(
+		Address::default(),
+		"1".to_string(),
+		Address::default(),
+		"1".to_string(),
+		0,
+	)];
+	let sub_topics: Vec<Topic> = domains
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| {
+			let assignment = Topic::DomainAssignent(domain_hash.clone());
+			let scores = Topic::DomainScores(domain_hash.clone());
+			let commitment = Topic::DomainCommitment(domain_hash.clone());
+			vec![assignment, scores, commitment]
+		})
+		.flatten()
+		.collect();
+
+	for topic in sub_topics {
+		// Create a Gossipsub topic
+		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+		// subscribes to our topic
+		swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+	}
 
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;

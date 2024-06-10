@@ -1,5 +1,11 @@
 pub struct Address(pub [u8; 32]);
 
+impl Default for Address {
+	fn default() -> Self {
+		Self([0; 32])
+	}
+}
+
 impl Address {
 	fn from_bytes(mut data: Vec<u8>) -> Self {
 		let mut bytes = [0; 32];

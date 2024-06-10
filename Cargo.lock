@@ -351,6 +351,14 @@ dependencies = [
 [[package]]
 name = "computer"
 version = "0.1.0"
+dependencies = [
+ "futures",
+ "hex",
+ "libp2p",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "concurrent-queue"
