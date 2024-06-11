@@ -1,5 +1,7 @@
 [package]
 name = "openrank-common"
+description = "Common library for OpenRank codebase"
+license = "MIT"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

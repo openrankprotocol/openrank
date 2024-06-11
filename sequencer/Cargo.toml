@@ -1,5 +1,7 @@
 [package]
 name = "openrank-sequencer"
+description = "OpenRank - Sequencer Node"
+license = "MIT"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

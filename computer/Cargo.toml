@@ -1,5 +1,7 @@
 [package]
 name = "openrank-computer"
+description = "OpenRank - Computer Node"
+license = "MIT"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

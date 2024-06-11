@@ -1,5 +1,7 @@
 [package]
 name = "openrank-block-builder"
+description = "OpenRank - Block Builder Node"
+license = "MIT"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
