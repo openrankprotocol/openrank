@@ -1,14 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "block-builder",
-    "common",
-    "computer",
-    "da",
-    "sequencer",
-    "verifier",
-    "openrank",
-]
+members = ["block-builder", "common", "computer", "da", "sequencer", "verifier"]
 
 [workspace.package]
 version = "0.0.1"
