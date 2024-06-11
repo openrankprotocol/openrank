@@ -74,4 +74,13 @@ impl Topic {
 		let res = s.finish();
 		TopicHash(res)
 	}
+
+	pub fn get_domain_id(&self) -> DomainHash {
+		match self {
+			Self::DomainAssignent(domain_id) => domain_id.to_owned(),
+			Self::DomainCommitment(domain_id) => domain_id.to_owned(),
+			Self::DomainScores(domain_id) => domain_id.to_owned(),
+			Self::DomainVerification(domain_id) => domain_id.to_owned(),
+		}
+	}
 }

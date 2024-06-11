@@ -6,12 +6,16 @@ use libp2p::{
 };
 use openrank_common::topics::{Domain, Topic};
 use openrank_common::txs::Address;
+use rand::{thread_rng, Rng};
 use std::{
 	error::Error,
 	hash::{DefaultHasher, Hash, Hasher},
 	time::Duration,
 };
-use tokio::{io, select};
+use tokio::{
+	io::{self, AsyncBufReadExt},
+	select,
+};
 use tracing_subscriber::EnvFilter;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
@@ -75,6 +79,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		0,
 	)];
 	let sub_topics: Vec<Topic> = domains
+		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| {
@@ -84,6 +89,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			vec![assignment, scores, commitment]
 		})
 		.flatten()
+		.collect();
+
+	let sub_topics_verification: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
 		.collect();
 
 	for topic in sub_topics {
@@ -99,9 +111,30 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
 
+	// Read full lines from stdin
+	let mut stdin = io::BufReader::new(io::stdin()).lines();
+	let mut rng = thread_rng();
+
 	// Kick it off
 	loop {
 		select! {
+			Ok(Some(line)) = stdin.next_line() => {
+				let message: [u8; 4] = rng.gen();
+
+				match line.as_str() {
+					"verify" => {
+						for topic in &sub_topics_verification {
+							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+							if let Err(e) = swarm
+								.behaviour_mut().gossipsub
+								.publish(topic_wrapper, message) {
+								println!("Publish error: {e:?}");
+							}
+						}
+					},
+					&_ => {}
+				}
+			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
 					for (peer_id, _multiaddr) in list {

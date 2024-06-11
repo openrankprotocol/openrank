@@ -80,6 +80,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		"1".to_string(),
 		0,
 	)];
+	let sub_topics: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+		.collect();
 	let sub_topics_scores: Vec<Topic> = domains
 		.clone()
 		.into_iter()
@@ -93,8 +99,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
 
-	// Read full lines from stdin
-	let mut stdin = io::BufReader::new(io::stdin()).lines();
+	for topic in sub_topics {
+		// Create a Gossipsub topic
+		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+		// subscribes to our topic
+		swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+	}
 
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
@@ -102,6 +112,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
 
+	// Read full lines from stdin
+	let mut stdin = io::BufReader::new(io::stdin()).lines();
 	let mut rng = thread_rng();
 
 	// Kick it off
@@ -147,6 +159,15 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 					}
 				},
+				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
+					propagation_source: peer_id,
+					message_id: id,
+					message,
+				})) => println!(
+						"TOPIC: {}, MESSAGE: '{}' ID: {id} FROM: {peer_id}",
+						message.topic.as_str(),
+						String::from_utf8_lossy(&message.data),
+					),
 				SwarmEvent::NewListenAddr { address, .. } => {
 					println!("Local node is listening on {address}");
 				}

@@ -1857,6 +1857,7 @@ dependencies = [
  "hex",
  "libp2p",
  "openrank-common",
+ "rand",
  "tokio",
  "tracing",
  "tracing-subscriber",
