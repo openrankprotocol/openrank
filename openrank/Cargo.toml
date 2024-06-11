@@ -1,0 +1,10 @@
+[package]
+name = "openrank"
+description = "OpenRank"
+license = "MIT"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+hex = { workspace = true }
