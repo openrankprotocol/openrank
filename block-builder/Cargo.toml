@@ -1,5 +1,5 @@
 [package]
-name = "block-builder"
+name = "openrank-block-builder"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

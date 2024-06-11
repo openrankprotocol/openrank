@@ -1,5 +1,5 @@
 [package]
-name = "da"
+name = "openrank-da"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

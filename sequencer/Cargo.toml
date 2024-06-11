@@ -1,5 +1,5 @@
 [package]
-name = "sequencer"
+name = "openrank-sequencer"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

@@ -1,6 +1,5 @@
 [workspace]
 resolver = "2"
-
 members = ["block-builder", "common", "computer", "da", "sequencer", "verifier"]
 
 [workspace.package]
