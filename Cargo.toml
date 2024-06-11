@@ -17,3 +17,4 @@ tokio = { version = "1.38", default-features = false }
 tracing = "0.1.37"
 tracing-subscriber = "0.3"
 hex = "0.4.3"
+rand = "0.8.5"

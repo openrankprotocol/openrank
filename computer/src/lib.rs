@@ -1,8 +1,14 @@
-use libp2p::{gossipsub, mdns, noise, swarm::NetworkBehaviour, tcp, yamux, Swarm};
+use futures::StreamExt;
+use libp2p::{
+	gossipsub, mdns, noise,
+	swarm::{NetworkBehaviour, SwarmEvent},
+	tcp, yamux, Swarm,
+};
 use openrank_common::{
 	topics::{Domain, Topic},
 	txs::Address,
 };
+use rand::{thread_rng, Rng};
 use std::{
 	error::Error,
 	hash::{DefaultHasher, Hash, Hasher},
@@ -74,12 +80,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		"1".to_string(),
 		0,
 	)];
-	let sub_topics_assignment: Vec<Topic> = domains
-		.clone()
-		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
-		.collect();
 	let sub_topics_scores: Vec<Topic> = domains
 		.clone()
 		.into_iter()
@@ -102,27 +102,21 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
 
+	let mut rng = thread_rng();
+
 	// Kick it off
 	loop {
 		select! {
 			Ok(Some(line)) = stdin.next_line() => {
+				let message: [u8; 4] = rng.gen();
+
 				match line.as_str() {
-					"assignment" => {
-						for topic in &sub_topics_assignment {
-							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-							if let Err(e) = swarm
-								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, line.as_bytes()) {
-								println!("Publish error: {e:?}");
-							}
-						}
-					},
 					"scores" => {
 						for topic in &sub_topics_scores {
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, line.as_bytes()) {
+								.publish(topic_wrapper, message) {
 								println!("Publish error: {e:?}");
 							}
 						}
@@ -132,13 +126,31 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, line.as_bytes()) {
+								.publish(topic_wrapper, message) {
 								println!("Publish error: {e:?}");
 							}
 						}
 					},
 					&_ => {}
 				}
+			}
+			event = swarm.select_next_some() => match event {
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+					for (peer_id, _multiaddr) in list {
+						println!("mDNS discovered a new peer: {peer_id}");
+						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+					}
+				},
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+					for (peer_id, _multiaddr) in list {
+						println!("mDNS discover peer has expired: {peer_id}");
+						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+					}
+				},
+				SwarmEvent::NewListenAddr { address, .. } => {
+					println!("Local node is listening on {address}");
+				}
+				_ => {}
 			}
 		}
 	}

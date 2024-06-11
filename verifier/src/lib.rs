@@ -120,7 +120,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					message_id: id,
 					message,
 				})) => println!(
-						"Got message: '{}' with id: {id} from peer: {peer_id}",
+						"TOPIC: {}, MESSAGE: '{}' ID: {id} FROM: {peer_id}",
+						message.topic.as_str(),
 						String::from_utf8_lossy(&message.data),
 					),
 				SwarmEvent::NewListenAddr { address, .. } => {
