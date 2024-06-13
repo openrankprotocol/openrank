@@ -8,18 +8,18 @@ impl Default for Address {
 }
 
 impl Address {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let mut bytes = [0; 32];
 		bytes.copy_from_slice(data.drain(..32).as_slice());
 		Self(bytes)
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		self.0.to_vec()
 	}
 }
 
-struct TxHash([u8; 32]);
+pub struct TxHash([u8; 32]);
 
 impl Default for TxHash {
 	fn default() -> Self {
@@ -28,18 +28,18 @@ impl Default for TxHash {
 }
 
 impl TxHash {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let mut bytes = [0; 32];
 		bytes.copy_from_slice(data.drain(..32).as_slice());
 		Self(bytes)
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		self.0.to_vec()
 	}
 }
 
-struct RootHash([u8; 32]);
+pub struct RootHash([u8; 32]);
 
 impl Default for RootHash {
 	fn default() -> Self {
@@ -48,7 +48,7 @@ impl Default for RootHash {
 }
 
 impl RootHash {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let mut bytes = [0; 32];
 		bytes.copy_from_slice(data.drain(..32).as_slice());
 		Self(bytes)
@@ -59,7 +59,7 @@ impl RootHash {
 	}
 }
 
-struct Signature {
+pub struct Signature {
 	s: [u8; 32],
 	r: [u8; 32],
 }
@@ -71,7 +71,7 @@ impl Default for Signature {
 }
 
 impl Signature {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let mut s_bytes = [0; 32];
 		let mut r_bytes = [0; 32];
 		s_bytes.copy_from_slice(data.drain(..32).as_slice());
@@ -79,7 +79,7 @@ impl Signature {
 		Self { s: s_bytes, r: r_bytes }
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		let mut bytes = Vec::new();
 		bytes.extend_from_slice(&self.s);
 		bytes.extend_from_slice(&self.r);
@@ -87,7 +87,7 @@ impl Signature {
 	}
 }
 
-struct Entry {
+pub struct Entry {
 	id: Address,
 	value: f32,
 }
@@ -99,7 +99,7 @@ impl Default for Entry {
 }
 
 impl Entry {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let address = Address::from_bytes(data.drain(..32).into_iter().collect());
 		let mut value_bytes = [0; 4];
 		value_bytes.copy_from_slice(data.drain(..4).as_slice());
@@ -107,7 +107,7 @@ impl Entry {
 		Self { id: address, value }
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		let mut bytes = Vec::new();
 		bytes.extend(self.id.to_bytes());
 		bytes.extend_from_slice(&self.value.to_be_bytes());
@@ -115,7 +115,7 @@ impl Entry {
 	}
 }
 
-struct CreateCommitment {
+pub struct CreateCommitment {
 	tx_hash: TxHash,
 	job_run_assignment_tx_hash: TxHash,
 	lt_root_hash: RootHash,
@@ -142,7 +142,7 @@ impl Default for CreateCommitment {
 }
 
 impl CreateCommitment {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
 		let jra_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
 		let lt_root_hash = RootHash::from_bytes(data.drain(..32).into_iter().collect());
@@ -191,7 +191,7 @@ impl CreateCommitment {
 		}
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		let mut bytes = Vec::new();
 		bytes.extend(self.tx_hash.to_bytes());
 		bytes.extend(self.job_run_assignment_tx_hash.to_bytes());
@@ -222,7 +222,7 @@ impl CreateCommitment {
 	}
 }
 
-struct CreateScores {
+pub struct CreateScores {
 	tx_hash: TxHash,
 	entries: Vec<Entry>,
 	signature: Signature,
@@ -235,7 +235,7 @@ impl Default for CreateScores {
 }
 
 impl CreateScores {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
 
 		let entries_len = data.drain(..1).as_slice()[0];
@@ -257,7 +257,7 @@ impl CreateScores {
 		Self { tx_hash, entries: entries_txs, signature }
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		let mut bytes = Vec::new();
 		bytes.extend(self.tx_hash.to_bytes());
 
@@ -273,7 +273,7 @@ impl CreateScores {
 	}
 }
 
-struct JobRunAssignment {
+pub struct JobRunAssignment {
 	tx_hash: TxHash,
 	job_run_request_tx_hash: TxHash,
 	assigned_compute_node: Address,
@@ -294,7 +294,7 @@ impl Default for JobRunAssignment {
 }
 
 impl JobRunAssignment {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
 		let job_run_request_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
 
@@ -312,7 +312,7 @@ impl JobRunAssignment {
 		}
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		let mut bytes = Vec::new();
 		bytes.extend(self.tx_hash.to_bytes());
 		bytes.extend(self.job_run_request_tx_hash.to_bytes());
@@ -323,7 +323,7 @@ impl JobRunAssignment {
 	}
 }
 
-struct JobVerification {
+pub struct JobVerification {
 	tx_hash: TxHash,
 	job_run_assignment_tx_hash: TxHash,
 	verification_result: bool,
@@ -342,7 +342,7 @@ impl Default for JobVerification {
 }
 
 impl JobVerification {
-	fn from_bytes(mut data: Vec<u8>) -> Self {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
 		let job_run_assignment_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
 
@@ -354,7 +354,7 @@ impl JobVerification {
 		Self { tx_hash, job_run_assignment_tx_hash, verification_result, signature }
 	}
 
-	fn to_bytes(&self) -> Vec<u8> {
+	pub fn to_bytes(&self) -> Vec<u8> {
 		let mut bytes = Vec::new();
 		bytes.extend(self.tx_hash.to_bytes());
 		bytes.extend(self.job_run_assignment_tx_hash.to_bytes());

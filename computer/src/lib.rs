@@ -6,9 +6,9 @@ use libp2p::{
 };
 use openrank_common::{
 	topics::{Domain, Topic},
-	txs::Address,
+	txs::{Address, CreateCommitment, CreateScores},
+	TxEvent,
 };
-use rand::{thread_rng, Rng};
 use std::{
 	error::Error,
 	hash::{DefaultHasher, Hash, Hasher},
@@ -114,31 +114,30 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	// Read full lines from stdin
 	let mut stdin = io::BufReader::new(io::stdin()).lines();
-	let mut rng = thread_rng();
 
 	// Kick it off
 	loop {
 		select! {
 			Ok(Some(line)) = stdin.next_line() => {
-				let message: [u8; 4] = rng.gen();
-
 				match line.as_str() {
 					"scores" => {
+						let default_tx = TxEvent::default_with_data(CreateScores::default().to_bytes());
 						for topic in &sub_topics_scores {
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, message) {
+								.publish(topic_wrapper, default_tx.to_bytes()) {
 								println!("Publish error: {e:?}");
 							}
 						}
 					},
 					"commitment" => {
+						let default_tx = TxEvent::default_with_data(CreateCommitment::default().to_bytes());
 						for topic in &sub_topics_commitment {
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, message) {
+								.publish(topic_wrapper, default_tx.to_bytes()) {
 								println!("Publish error: {e:?}");
 							}
 						}
