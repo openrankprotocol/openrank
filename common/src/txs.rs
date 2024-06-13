@@ -19,6 +19,7 @@ impl Address {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct TxHash([u8; 32]);
 
 impl Default for TxHash {
@@ -39,6 +40,7 @@ impl TxHash {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct RootHash([u8; 32]);
 
 impl Default for RootHash {
@@ -59,6 +61,7 @@ impl RootHash {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct Signature {
 	s: [u8; 32],
 	r: [u8; 32],
@@ -87,6 +90,7 @@ impl Signature {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct Entry {
 	id: Address,
 	value: f32,
@@ -115,6 +119,7 @@ impl Entry {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct CreateCommitment {
 	tx_hash: TxHash,
 	job_run_assignment_tx_hash: TxHash,
@@ -222,6 +227,7 @@ impl CreateCommitment {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct CreateScores {
 	tx_hash: TxHash,
 	entries: Vec<Entry>,
@@ -273,6 +279,7 @@ impl CreateScores {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct JobRunAssignment {
 	tx_hash: TxHash,
 	job_run_request_tx_hash: TxHash,

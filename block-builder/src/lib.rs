@@ -80,20 +80,20 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		"1".to_string(),
 		0,
 	)];
-	let sub_topics: Vec<Topic> = domains
+	let topics_verification: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
 		.collect();
-	let sub_topics_assignment: Vec<Topic> = domains
+	let topics_assignment: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
 		.collect();
 
-	for topic in sub_topics {
+	for topic in topics_verification {
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 		// subscribes to our topic
@@ -115,7 +115,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			Ok(Some(line)) = stdin.next_line() => {
 				match line.as_str() {
 					"assignment" => {
-						for topic in &sub_topics_assignment {
+						for topic in &topics_assignment {
 							let default_tx = TxEvent::default_with_data(JobRunAssignment::default().to_bytes());
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm

@@ -36,6 +36,10 @@ impl TxEvent {
 		Self { blob_id: 0, proof: InclusionProof::default(), data }
 	}
 
+	pub fn data(&self) -> Vec<u8> {
+		self.data.clone()
+	}
+
 	pub fn from_bytes(mut data: Vec<u8>) -> Self {
 		let mut blob_id_bytes = [0; 8];
 		blob_id_bytes.copy_from_slice(&data.drain(..8).as_slice());

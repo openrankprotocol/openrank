@@ -6,7 +6,7 @@ use libp2p::{
 };
 use openrank_common::{
 	topics::{Domain, Topic},
-	txs::JobVerification,
+	txs::{CreateCommitment, CreateScores, JobRunAssignment, JobVerification},
 };
 use openrank_common::{txs::Address, TxEvent};
 use std::{
@@ -80,32 +80,40 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		"1".to_string(),
 		0,
 	)];
-	let sub_topics: Vec<Topic> = domains
+	let topics_assignment: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
-		.map(|domain_hash| {
-			let assignment = Topic::DomainAssignent(domain_hash.clone());
-			let scores = Topic::DomainScores(domain_hash.clone());
-			let commitment = Topic::DomainCommitment(domain_hash.clone());
-			vec![assignment, scores, commitment]
-		})
-		.flatten()
+		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
 		.collect();
-
-	let sub_topics_verification: Vec<Topic> = domains
+	let topics_scores: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
+		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+		.collect();
+	let topics_commitment: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
 
-	for topic in sub_topics {
+	for topic in
+		topics_assignment.iter().chain(topics_scores.iter()).chain(topics_commitment.iter())
+	{
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 		// subscribes to our topic
 		swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 	}
+
+	let topics_verification: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
+		.collect();
 
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
@@ -123,7 +131,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				match line.as_str() {
 					"verify" => {
 						let default_tx = TxEvent::default_with_data(JobVerification::default().to_bytes());
-						for topic in &sub_topics_verification {
+						for topic in &topics_verification {
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
@@ -152,11 +160,46 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					propagation_source: peer_id,
 					message_id: id,
 					message,
-				})) => println!(
-						"TOPIC: {}, MESSAGE: '{}' ID: {id} FROM: {peer_id}",
-						message.topic.as_str(),
-						String::from_utf8_lossy(&message.data),
-					),
+				})) => {
+					for topic in &topics_assignment {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::from_bytes(message.data.clone());
+							let tx = JobRunAssignment::from_bytes(tx_event.data());
+							println!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								tx,
+							)
+						}
+					}
+
+					for topic in &topics_scores {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::from_bytes(message.data.clone());
+							let tx = CreateScores::from_bytes(tx_event.data());
+							println!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								tx,
+							)
+						}
+					}
+
+					for topic in &topics_commitment {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::from_bytes(message.data.clone());
+							let tx = CreateCommitment::from_bytes(tx_event.data());
+							println!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								tx,
+							)
+						}
+					}
+				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					println!("Local node is listening on {address}");
 				}

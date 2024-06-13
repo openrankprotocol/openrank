@@ -80,26 +80,26 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		"1".to_string(),
 		0,
 	)];
-	let sub_topics: Vec<Topic> = domains
+	let topics_assignment: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
 		.collect();
-	let sub_topics_scores: Vec<Topic> = domains
+	let topics_scores: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
 		.collect();
-	let sub_topics_commitment: Vec<Topic> = domains
+	let topics_commitment: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
 
-	for topic in sub_topics {
+	for topic in topics_assignment {
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 		// subscribes to our topic
@@ -122,7 +122,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				match line.as_str() {
 					"scores" => {
 						let default_tx = TxEvent::default_with_data(CreateScores::default().to_bytes());
-						for topic in &sub_topics_scores {
+						for topic in &topics_scores {
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
@@ -133,7 +133,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					},
 					"commitment" => {
 						let default_tx = TxEvent::default_with_data(CreateCommitment::default().to_bytes());
-						for topic in &sub_topics_commitment {
+						for topic in &topics_commitment {
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
