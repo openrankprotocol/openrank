@@ -165,7 +165,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				})) => println!(
 						"TOPIC: {}, MESSAGE: '{}' ID: {id} FROM: {peer_id}",
 						message.topic.as_str(),
-						String::from_utf8_lossy(&message.data),
+						hex::encode(&message.data),
 					),
 				SwarmEvent::NewListenAddr { address, .. } => {
 					println!("Local node is listening on {address}");
