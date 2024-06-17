@@ -1,6 +1,7 @@
 use futures::StreamExt;
 use libp2p::{
-	gossipsub, mdns, noise,
+	gossipsub::{self, MessageId, PublishError},
+	mdns, noise,
 	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, yamux, Swarm,
 };
@@ -22,7 +23,7 @@ use tracing_subscriber::EnvFilter;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
-struct MyBehaviour {
+pub struct MyBehaviour {
 	gossipsub: gossipsub::Behaviour,
 	mdns: mdns::tokio::Behaviour,
 }
@@ -66,6 +67,14 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 		.build();
 
 	Ok(swarm)
+}
+
+pub fn broadcast_event(
+	swarm: &mut Swarm<MyBehaviour>, data: Vec<u8>, topic: &Topic,
+) -> Result<MessageId, PublishError> {
+	let default_tx = TxEvent::default_with_data(data);
+	let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, default_tx.to_bytes())
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
@@ -130,12 +139,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			Ok(Some(line)) = stdin.next_line() => {
 				match line.as_str() {
 					"verify" => {
-						let default_tx = TxEvent::default_with_data(JobVerification::default().to_bytes());
 						for topic in &topics_verification {
-							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-							if let Err(e) = swarm
-								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, default_tx.to_bytes()) {
+							if let Err(e) = broadcast_event(&mut swarm, JobVerification::default().to_bytes(), &topic) {
 								println!("Publish error: {e:?}");
 							}
 						}
@@ -170,7 +175,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
 								tx,
-							)
+							);
 						}
 					}
 
@@ -183,7 +188,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
 								tx,
-							)
+							);
 						}
 					}
 
@@ -196,7 +201,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
 								tx,
-							)
+							);
 						}
 					}
 				},

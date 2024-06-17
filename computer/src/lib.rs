@@ -1,12 +1,13 @@
 use futures::StreamExt;
 use libp2p::{
-	gossipsub, mdns, noise,
+	gossipsub::{self, MessageId, PublishError},
+	mdns, noise,
 	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, yamux, Swarm,
 };
 use openrank_common::{
 	topics::{Domain, Topic},
-	txs::{Address, CreateCommitment, CreateScores},
+	txs::{Address, CreateCommitment, CreateScores, JobRunAssignment},
 	TxEvent,
 };
 use std::{
@@ -22,7 +23,7 @@ use tracing_subscriber::EnvFilter;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
-struct MyBehaviour {
+pub struct MyBehaviour {
 	gossipsub: gossipsub::Behaviour,
 	mdns: mdns::tokio::Behaviour,
 }
@@ -68,6 +69,14 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 	Ok(swarm)
 }
 
+pub fn broadcast_event(
+	swarm: &mut Swarm<MyBehaviour>, data: Vec<u8>, topic: &Topic,
+) -> Result<MessageId, PublishError> {
+	let default_tx = TxEvent::default_with_data(data);
+	let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, default_tx.to_bytes())
+}
+
 pub async fn run() -> Result<(), Box<dyn Error>> {
 	let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
 
@@ -99,7 +108,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
 
-	for topic in topics_assignment {
+	for topic in topics_assignment.clone() {
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 		// subscribes to our topic
@@ -121,25 +130,17 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			Ok(Some(line)) = stdin.next_line() => {
 				match line.as_str() {
 					"scores" => {
-						let default_tx = TxEvent::default_with_data(CreateScores::default().to_bytes());
 						for topic in &topics_scores {
-							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-							if let Err(e) = swarm
-								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, default_tx.to_bytes()) {
+							if let Err(e) = broadcast_event(&mut swarm, CreateScores::default().to_bytes(), &topic) {
 								println!("Publish error: {e:?}");
 							}
 						}
 					},
 					"commitment" => {
-						let default_tx = TxEvent::default_with_data(CreateCommitment::default().to_bytes());
 						for topic in &topics_commitment {
-							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-							if let Err(e) = swarm
-								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, default_tx.to_bytes()) {
-								println!("Publish error: {e:?}");
-							}
+						if let Err(e) = broadcast_event(&mut swarm, CreateCommitment::default().to_bytes(), &topic) {
+							println!("Publish error: {e:?}");
+						}
 						}
 					},
 					&_ => {}
@@ -162,11 +163,20 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					propagation_source: peer_id,
 					message_id: id,
 					message,
-				})) => println!(
-						"TOPIC: {}, MESSAGE: '{}' ID: {id} FROM: {peer_id}",
-						message.topic.as_str(),
-						hex::encode(&message.data),
-					),
+				})) => {
+					for topic in &topics_assignment {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::from_bytes(message.data.clone());
+							let tx = JobRunAssignment::from_bytes(tx_event.data());
+							println!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								tx,
+							);
+						}
+					}
+				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					println!("Local node is listening on {address}");
 				}
