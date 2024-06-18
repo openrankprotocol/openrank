@@ -2,8 +2,21 @@ use std::hash::{DefaultHasher, Hasher};
 
 use crate::txs::Address;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DomainHash(u64);
+
+impl DomainHash {
+	pub fn from_bytes(data: Vec<u8>) -> Self {
+		let mut bytes = [0; 8];
+		bytes.clone_from_slice(&data);
+		let value = u64::from_be_bytes(bytes);
+		Self(value)
+	}
+
+	pub fn to_bytes(&self) -> Vec<u8> {
+		self.0.to_be_bytes().to_vec()
+	}
+}
 
 #[derive(Clone, Debug)]
 pub struct Domain {
@@ -48,6 +61,8 @@ pub enum Topic {
 	DomainCommitment(DomainHash),
 	DomainScores(DomainHash),
 	DomainVerification(DomainHash),
+	ProposedBlock,
+	FinalisedBlock,
 }
 
 impl Topic {
@@ -70,17 +85,14 @@ impl Topic {
 				s.write(&domain_id.0.to_be_bytes());
 				s.write("verification".as_bytes());
 			},
+			Self::ProposedBlock => {
+				s.write("proposed_block".as_bytes());
+			},
+			Self::FinalisedBlock => {
+				s.write("finalised_block".as_bytes());
+			},
 		}
 		let res = s.finish();
 		TopicHash(res)
-	}
-
-	pub fn get_domain_id(&self) -> DomainHash {
-		match self {
-			Self::DomainAssignent(domain_id) => domain_id.to_owned(),
-			Self::DomainCommitment(domain_id) => domain_id.to_owned(),
-			Self::DomainScores(domain_id) => domain_id.to_owned(),
-			Self::DomainVerification(domain_id) => domain_id.to_owned(),
-		}
 	}
 }

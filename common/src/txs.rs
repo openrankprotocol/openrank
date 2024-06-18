@@ -1,11 +1,7 @@
-#[derive(Debug, Clone)]
-pub struct Address(pub [u8; 32]);
+use crate::topics::DomainHash;
 
-impl Default for Address {
-	fn default() -> Self {
-		Self([0; 32])
-	}
-}
+#[derive(Debug, Clone, Default)]
+pub struct Address(pub [u8; 32]);
 
 impl Address {
 	pub fn from_bytes(mut data: Vec<u8>) -> Self {
@@ -19,14 +15,8 @@ impl Address {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TxHash([u8; 32]);
-
-impl Default for TxHash {
-	fn default() -> Self {
-		Self([0; 32])
-	}
-}
 
 impl TxHash {
 	pub fn from_bytes(mut data: Vec<u8>) -> Self {
@@ -40,14 +30,8 @@ impl TxHash {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RootHash([u8; 32]);
-
-impl Default for RootHash {
-	fn default() -> Self {
-		Self([0; 32])
-	}
-}
 
 impl RootHash {
 	pub fn from_bytes(mut data: Vec<u8>) -> Self {
@@ -61,16 +45,10 @@ impl RootHash {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Signature {
 	s: [u8; 32],
 	r: [u8; 32],
-}
-
-impl Default for Signature {
-	fn default() -> Self {
-		Self { s: [0; 32], r: [0; 32] }
-	}
 }
 
 impl Signature {
@@ -90,16 +68,10 @@ impl Signature {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Entry {
 	id: Address,
 	value: f32,
-}
-
-impl Default for Entry {
-	fn default() -> Self {
-		Self { id: Address::default(), value: 0. }
-	}
 }
 
 impl Entry {
@@ -119,7 +91,7 @@ impl Entry {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateCommitment {
 	tx_hash: TxHash,
 	job_run_assignment_tx_hash: TxHash,
@@ -129,21 +101,6 @@ pub struct CreateCommitment {
 	new_trust_tx_hashes: Vec<TxHash>,
 	new_seed_tx_hashes: Vec<TxHash>,
 	signature: Signature,
-}
-
-impl Default for CreateCommitment {
-	fn default() -> Self {
-		Self {
-			tx_hash: TxHash::default(),
-			job_run_assignment_tx_hash: TxHash::default(),
-			lt_root_hash: RootHash::default(),
-			compute_root_hash: RootHash::default(),
-			scores_tx_hashes: Vec::new(),
-			new_trust_tx_hashes: Vec::new(),
-			new_seed_tx_hashes: Vec::new(),
-			signature: Signature::default(),
-		}
-	}
 }
 
 impl CreateCommitment {
@@ -184,6 +141,7 @@ impl CreateCommitment {
 		}
 
 		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
+
 		Self {
 			tx_hash,
 			job_run_assignment_tx_hash: jra_tx_hash,
@@ -227,17 +185,11 @@ impl CreateCommitment {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateScores {
 	tx_hash: TxHash,
 	entries: Vec<Entry>,
 	signature: Signature,
-}
-
-impl Default for CreateScores {
-	fn default() -> Self {
-		Self { tx_hash: TxHash::default(), entries: Vec::new(), signature: Signature::default() }
-	}
 }
 
 impl CreateScores {
@@ -279,25 +231,13 @@ impl CreateScores {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct JobRunAssignment {
 	tx_hash: TxHash,
 	job_run_request_tx_hash: TxHash,
 	assigned_compute_node: Address,
 	assigned_verifier_node: Address,
 	signature: Signature,
-}
-
-impl Default for JobRunAssignment {
-	fn default() -> Self {
-		Self {
-			tx_hash: TxHash::default(),
-			job_run_request_tx_hash: TxHash::default(),
-			assigned_compute_node: Address::default(),
-			assigned_verifier_node: Address::default(),
-			signature: Signature::default(),
-		}
-	}
 }
 
 impl JobRunAssignment {
@@ -367,6 +307,209 @@ impl JobVerification {
 		bytes.extend(self.job_run_assignment_tx_hash.to_bytes());
 		bytes.push(if self.verification_result { 1 } else { 0 });
 		bytes.extend(self.signature.to_bytes());
+		bytes
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+struct PendingDomainUpdate {
+	domain_id: DomainHash,
+	commitment_tx_hash: TxHash,
+}
+
+impl PendingDomainUpdate {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
+		let domain_hash = DomainHash::from_bytes(data.drain(..8).into_iter().collect());
+		let commitment_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+
+		Self { domain_id: domain_hash, commitment_tx_hash }
+	}
+	pub fn to_bytes(&self) -> Vec<u8> {
+		let mut bytes = Vec::new();
+		bytes.extend(self.domain_id.to_bytes());
+		bytes.extend(self.commitment_tx_hash.to_bytes());
+		bytes
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+struct DomainUpdate {
+	domain_id: DomainHash,
+	commitment_tx_hash: TxHash,
+	verification_results_tx_hashes: Vec<TxHash>,
+}
+
+impl DomainUpdate {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
+		let domain_hash = DomainHash::from_bytes(data.drain(..8).into_iter().collect());
+		let commitment_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+
+		let mut verification_txs = Vec::new();
+		for chunk in data.chunks(32) {
+			let verification_tx = TxHash::from_bytes(chunk.to_vec());
+			verification_txs.push(verification_tx);
+		}
+
+		Self {
+			domain_id: domain_hash,
+			commitment_tx_hash,
+			verification_results_tx_hashes: verification_txs,
+		}
+	}
+	pub fn to_bytes(&self) -> Vec<u8> {
+		let mut bytes = Vec::new();
+		bytes.extend(self.domain_id.to_bytes());
+		bytes.extend(self.commitment_tx_hash.to_bytes());
+		for tx in &self.verification_results_tx_hashes {
+			bytes.extend(tx.to_bytes());
+		}
+		bytes
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+struct ProposedBlock {
+	tx_hash: TxHash,
+	previous_block_hash: TxHash,
+	state_root: RootHash,
+	pending_domain_updates: Vec<PendingDomainUpdate>,
+	timestamp: u32,
+	block_height: u32,
+	signature: Signature,
+}
+
+impl ProposedBlock {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
+		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+		let previous_block_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+		let state_root = RootHash::from_bytes(data.drain(..32).into_iter().collect());
+		let pending_domain_updates_len = data.drain(..1).as_slice()[0];
+		let mut pending_domain_updates = Vec::new();
+		for _ in 0..pending_domain_updates_len {
+			let pending_domain_update_len = 8 + 32;
+			let pending_domain_update = PendingDomainUpdate::from_bytes(
+				data.drain(..pending_domain_update_len as usize).into_iter().collect(),
+			);
+			pending_domain_updates.push(pending_domain_update);
+		}
+
+		let mut timestamp_bytes = [0; 4];
+		timestamp_bytes.copy_from_slice(data.drain(..4).as_slice());
+		let timestamp = u32::from_be_bytes(timestamp_bytes);
+
+		let mut block_height_bytes = [0; 4];
+		block_height_bytes.copy_from_slice(data.drain(..4).as_slice());
+		let block_height = u32::from_be_bytes(block_height_bytes);
+
+		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
+
+		Self {
+			tx_hash,
+			previous_block_hash,
+			state_root,
+			pending_domain_updates,
+			timestamp,
+			block_height,
+			signature,
+		}
+	}
+
+	pub fn to_bytes(&self) -> Vec<u8> {
+		let mut bytes = Vec::new();
+		bytes.extend(self.tx_hash.to_bytes());
+		bytes.extend(self.previous_block_hash.to_bytes());
+		bytes.extend(self.state_root.to_bytes());
+
+		let pending_domain_updates_len = (8 + 32) * self.pending_domain_updates.len() as u8;
+		bytes.push(pending_domain_updates_len);
+
+		for pdu in &self.pending_domain_updates {
+			bytes.extend(pdu.to_bytes());
+		}
+
+		bytes.extend(&self.timestamp.to_be_bytes());
+		bytes.extend(&self.block_height.to_be_bytes());
+
+		bytes.extend(self.signature.to_bytes());
+
+		bytes
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+struct FinalisedBlock {
+	tx_hash: TxHash,
+	previous_block_hash: TxHash,
+	state_root: RootHash,
+	domain_updates: Vec<DomainUpdate>,
+	timestamp: u32,
+	block_height: u32,
+	signature: Signature,
+}
+
+impl FinalisedBlock {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
+		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+		let previous_block_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+		let state_root = RootHash::from_bytes(data.drain(..32).into_iter().collect());
+		let domain_updates_len = data.drain(..1).as_slice()[0];
+		let mut domain_updates = Vec::new();
+		for _ in 0..domain_updates_len {
+			let domain_update_len = data.drain(..1).as_slice()[0];
+			let domain_update = DomainUpdate::from_bytes(
+				data.drain(..domain_update_len as usize).into_iter().collect(),
+			);
+			domain_updates.push(domain_update);
+		}
+
+		let mut timestamp_bytes = [0; 4];
+		timestamp_bytes.copy_from_slice(data.drain(..4).as_slice());
+		let timestamp = u32::from_be_bytes(timestamp_bytes);
+
+		let mut block_height_bytes = [0; 4];
+		block_height_bytes.copy_from_slice(data.drain(..4).as_slice());
+		let block_height = u32::from_be_bytes(block_height_bytes);
+
+		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
+
+		Self {
+			tx_hash,
+			previous_block_hash,
+			state_root,
+			domain_updates,
+			timestamp,
+			block_height,
+			signature,
+		}
+	}
+	pub fn to_bytes(&self) -> Vec<u8> {
+		let mut bytes = Vec::new();
+		bytes.extend(self.tx_hash.to_bytes());
+		bytes.extend(self.previous_block_hash.to_bytes());
+		bytes.extend(self.state_root.to_bytes());
+
+		let mut pending_domain_updates_len = 0;
+		for pdu in &self.domain_updates {
+			let domain_id_len = 8;
+			let commitment_tx_hash_len = 32;
+			let ver_results_len = pdu.verification_results_tx_hashes.len() as u8 * 32;
+			pending_domain_updates_len += domain_id_len + commitment_tx_hash_len + ver_results_len;
+		}
+		bytes.push(pending_domain_updates_len);
+
+		for pdu in &self.domain_updates {
+			let domain_id_len = 8;
+			let commitment_tx_hash_len = 32;
+			let ver_results_len = pdu.verification_results_tx_hashes.len() as u8 * 32;
+			bytes.push(domain_id_len + commitment_tx_hash_len + ver_results_len);
+			bytes.extend(pdu.to_bytes());
+		}
+
+		bytes.extend(&self.timestamp.to_be_bytes());
+		bytes.extend(&self.block_height.to_be_bytes());
+
+		bytes.extend(self.signature.to_bytes());
+
 		bytes
 	}
 }
