@@ -7,7 +7,9 @@ use libp2p::{
 };
 use openrank_common::{
 	topics::{Domain, Topic},
-	txs::{Address, CreateCommitment, CreateScores, JobRunAssignment},
+	txs::{
+		Address, CreateCommitment, CreateScores, FinalisedBlock, JobRunAssignment, ProposedBlock,
+	},
 	TxEvent,
 };
 use std::{
@@ -16,7 +18,7 @@ use std::{
 	time::Duration,
 };
 use tokio::{
-	io::{self, AsyncBufReadExt},
+	io::{self},
 	select,
 };
 use tracing_subscriber::EnvFilter;
@@ -95,18 +97,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
 		.collect();
-	let topics_scores: Vec<Topic> = domains
-		.clone()
-		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
-		.collect();
-	let topics_commitment: Vec<Topic> = domains
-		.clone()
-		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
-		.collect();
 
 	for topic in topics_assignment.clone() {
 		// Create a Gossipsub topic
@@ -119,33 +109,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-	println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
-
-	// Read full lines from stdin
-	let mut stdin = io::BufReader::new(io::stdin()).lines();
-
 	// Kick it off
 	loop {
 		select! {
-			Ok(Some(line)) = stdin.next_line() => {
-				match line.as_str() {
-					"scores" => {
-						for topic in &topics_scores {
-							if let Err(e) = broadcast_event(&mut swarm, CreateScores::default().to_bytes(), &topic) {
-								println!("Publish error: {e:?}");
-							}
-						}
-					},
-					"commitment" => {
-						for topic in &topics_commitment {
-						if let Err(e) = broadcast_event(&mut swarm, CreateCommitment::default().to_bytes(), &topic) {
-							println!("Publish error: {e:?}");
-						}
-						}
-					},
-					&_ => {}
-				}
-			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
 					for (peer_id, _multiaddr) in list {
@@ -174,7 +140,37 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 								message.topic.as_str(),
 								tx,
 							);
+							for _ in 0..3 {
+								if let Err(e) = broadcast_event(&mut swarm, CreateScores::default().to_bytes(), &topic) {
+									println!("Publish error: {e:?}");
+								}
+							}
+							if let Err(e) = broadcast_event(&mut swarm, CreateCommitment::default().to_bytes(), &topic) {
+								println!("Publish error: {e:?}");
+							}
 						}
+					}
+
+					let topic_wrapper = gossipsub::IdentTopic::new(Topic::ProposedBlock.to_hash().to_hex());
+					if message.topic == topic_wrapper.hash() {
+						let tx_event = TxEvent::from_bytes(message.data.clone());
+						let tx = ProposedBlock::from_bytes(tx_event.data());
+						println!(
+							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+							message.topic.as_str(),
+							tx,
+						);
+					}
+
+					let topic_wrapper = gossipsub::IdentTopic::new(Topic::FinalisedBlock.to_hash().to_hex());
+					if message.topic == topic_wrapper.hash() {
+						let tx_event = TxEvent::from_bytes(message.data.clone());
+						let tx = FinalisedBlock::from_bytes(tx_event.data());
+						println!(
+							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+							message.topic.as_str(),
+							tx,
+						);
 					}
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {

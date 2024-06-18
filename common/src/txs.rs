@@ -232,6 +232,38 @@ impl CreateScores {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct JobRunRequest {
+	tx_hash: TxHash,
+	domain_id: DomainHash,
+	da_block_height: u32,
+	signature: Signature,
+}
+
+impl JobRunRequest {
+	pub fn from_bytes(mut data: Vec<u8>) -> Self {
+		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+		let domain_id = DomainHash::from_bytes(data.drain(..8).into_iter().collect());
+
+		let mut da_block_height_bytes = [0; 4];
+		da_block_height_bytes.copy_from_slice(data.drain(..4).as_slice());
+		let da_block_height = u32::from_be_bytes(da_block_height_bytes);
+
+		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
+
+		Self { tx_hash, domain_id, da_block_height, signature }
+	}
+
+	pub fn to_bytes(&self) -> Vec<u8> {
+		let mut bytes = Vec::new();
+		bytes.extend(self.tx_hash.to_bytes());
+		bytes.extend(self.domain_id.to_bytes());
+		bytes.extend(self.da_block_height.to_be_bytes());
+		bytes.extend(self.signature.to_bytes());
+		bytes
+	}
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct JobRunAssignment {
 	tx_hash: TxHash,
 	job_run_request_tx_hash: TxHash,
@@ -270,6 +302,7 @@ impl JobRunAssignment {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct JobVerification {
 	tx_hash: TxHash,
 	job_run_assignment_tx_hash: TxHash,
@@ -368,7 +401,7 @@ impl DomainUpdate {
 }
 
 #[derive(Debug, Clone, Default)]
-struct ProposedBlock {
+pub struct ProposedBlock {
 	tx_hash: TxHash,
 	previous_block_hash: TxHash,
 	state_root: RootHash,
@@ -437,7 +470,7 @@ impl ProposedBlock {
 }
 
 #[derive(Debug, Clone, Default)]
-struct FinalisedBlock {
+pub struct FinalisedBlock {
 	tx_hash: TxHash,
 	previous_block_hash: TxHash,
 	state_root: RootHash,

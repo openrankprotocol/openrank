@@ -7,7 +7,10 @@ use libp2p::{
 };
 use openrank_common::{
 	topics::{Domain, Topic},
-	txs::{Address, JobRunAssignment},
+	txs::{
+		Address, CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest,
+		JobVerification, ProposedBlock,
+	},
 	TxEvent,
 };
 use std::{
@@ -16,7 +19,7 @@ use std::{
 	time::Duration,
 };
 use tokio::{
-	io::{self, AsyncBufReadExt},
+	io::{self},
 	select,
 };
 use tracing_subscriber::EnvFilter;
@@ -89,20 +92,28 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		"1".to_string(),
 		0,
 	)];
+	let topics_requests: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainRequest(domain_hash.clone()))
+		.collect();
 	let topics_verification: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
 		.collect();
-	let topics_assignment: Vec<Topic> = domains
+	let topics_commitment: Vec<Topic> = domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
 
-	for topic in topics_verification.clone() {
+	for topic in
+		topics_verification.iter().chain(&topics_commitment).chain(&topics_requests).clone()
+	{
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 		// subscribes to our topic
@@ -113,26 +124,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-	println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
-
-	// Read full lines from stdin
-	let mut stdin = io::BufReader::new(io::stdin()).lines();
-
 	// Kick it off
 	loop {
 		select! {
-			Ok(Some(line)) = stdin.next_line() => {
-				match line.as_str() {
-					"assignment" => {
-						for topic in &topics_assignment {
-							if let Err(e) = broadcast_event(&mut swarm, JobRunAssignment::default().to_bytes(), &topic) {
-								println!("Publish error: {e:?}");
-							}
-						}
-					},
-					&_ => {}
-				}
-			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
 					for (peer_id, _multiaddr) in list {
@@ -151,16 +145,54 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					message_id: id,
 					message,
 				})) => {
-					for topic in &topics_verification {
+					for topic in &topics_requests {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = JobRunAssignment::from_bytes(tx_event.data());
+							let tx = JobRunRequest::from_bytes(tx_event.data());
 							println!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
 								tx,
 							);
+
+							if let Err(e) = broadcast_event(&mut swarm, JobRunAssignment::default().to_bytes(), &topic) {
+								println!("Publish error: {e:?}");
+							}
+						}
+					}
+
+					for topic in &topics_commitment {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::from_bytes(message.data.clone());
+							let tx = CreateCommitment::from_bytes(tx_event.data());
+							println!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								tx,
+							);
+
+							if let Err(e) = broadcast_event(&mut swarm, ProposedBlock::default().to_bytes(), &topic) {
+								println!("Publish error: {e:?}");
+							}
+						}
+					}
+
+					for topic in &topics_verification {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::from_bytes(message.data.clone());
+							let tx = JobVerification::from_bytes(tx_event.data());
+							println!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								tx,
+							);
+
+							if let Err(e) = broadcast_event(&mut swarm, FinalisedBlock::default().to_bytes(), &topic) {
+								println!("Publish error: {e:?}");
+							}
 						}
 					}
 				},

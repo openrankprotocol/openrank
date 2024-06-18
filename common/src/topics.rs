@@ -57,6 +57,7 @@ impl TopicHash {
 
 #[derive(Clone, Debug)]
 pub enum Topic {
+	DomainRequest(DomainHash),
 	DomainAssignent(DomainHash),
 	DomainCommitment(DomainHash),
 	DomainScores(DomainHash),
@@ -69,6 +70,10 @@ impl Topic {
 	pub fn to_hash(&self) -> TopicHash {
 		let mut s = DefaultHasher::new();
 		match self {
+			Self::DomainRequest(domain_id) => {
+				s.write(&domain_id.0.to_be_bytes());
+				s.write("request".as_bytes());
+			},
 			Self::DomainAssignent(domain_id) => {
 				s.write(&domain_id.0.to_be_bytes());
 				s.write("assignment".as_bytes());
