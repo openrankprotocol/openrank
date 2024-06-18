@@ -145,7 +145,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					message_id: id,
 					message,
 				})) => {
-					for topic in topics_assignment.iter().chain(&topics_scores).chain(&topics_commitment) {
+					let iter_chain = topics_assignment
+						.iter()
+						.chain(&topics_scores)
+						.chain(&topics_commitment)
+						.chain(&[Topic::ProposedBlock])
+						.chain(&[Topic::FinalisedBlock]);
+					for topic in iter_chain {
 						match topic {
 							Topic::DomainAssignent(_) => {
 								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
