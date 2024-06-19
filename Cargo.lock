@@ -1857,6 +1857,16 @@ version = "0.0.1"
 [[package]]
 name = "openrank-sequencer"
 version = "0.0.1"
+dependencies = [
+ "futures",
+ "hex",
+ "libp2p",
+ "openrank-common",
+ "rand",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "openrank-verifier"

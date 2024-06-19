@@ -1,5 +1,7 @@
 use openrank_sequencer;
+use std::error::Error;
 
-fn main() {
-	println!("Hello, world!");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+	openrank_sequencer::run().await
 }
