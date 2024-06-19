@@ -151,7 +151,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 						.chain(&topics_verification);
 					for topic in iter_chain {
 						match topic {
-									Topic::DomainRequest(domain_id) => {
+							Topic::DomainRequest(domain_id) => {
 								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 								if message.topic == topic_wrapper.hash() {
 									let tx_event = TxEvent::from_bytes(message.data.clone());
