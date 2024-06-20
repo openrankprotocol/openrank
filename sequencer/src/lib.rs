@@ -6,14 +6,10 @@ use libp2p::{
 };
 use openrank_common::{
 	topics::{Domain, Topic},
-	txs::{Address, JobRunRequest},
-	TxEvent,
+	tx_event::TxEvent,
+	txs::{Address, JobRunRequest, Tx, TxKind},
 };
-use std::{
-	error::Error,
-	hash::{DefaultHasher, Hash, Hasher},
-	time::Duration,
-};
+use std::{error::Error, time::Duration};
 use tokio::{
 	io::{self, AsyncBufReadExt},
 	select,
@@ -37,20 +33,15 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 		)?
 		.with_quic()
 		.with_behaviour(|key| {
-			// To content-address message, we can take the hash of message and use it as an ID.
-			let message_id_fn = |message: &gossipsub::Message| {
-				let mut s = DefaultHasher::new();
-				message.data.hash(&mut s);
-				gossipsub::MessageId::from(s.finish().to_string())
-			};
-
 			// Set a custom gossipsub configuration
 			let gossipsub_config = gossipsub::ConfigBuilder::default()
-				.heartbeat_interval(Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
-				.validation_mode(gossipsub::ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
-				.message_id_fn(message_id_fn) // content-address messages. No two messages of the same content will be propagated.
+				// This is set to aid debugging by not cluttering the log space
+				.heartbeat_interval(Duration::from_secs(10))
+				// This sets the kind of message validation. The default is Strict (enforce message signing)
+				.validation_mode(gossipsub::ValidationMode::Strict)
 				.build()
-				.map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))?; // Temporary hack because `build` does not return a proper `std::error::Error`.
+				// Temporary hack because `build` does not return a proper `std::error::Error`.
+				.map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))?;
 
 			// build a gossipsub network behaviour
 			let gossipsub = gossipsub::Behaviour::new(
@@ -103,7 +94,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				match line.as_str() {
 					"request" => {
 						for topic in &topics_request {
-							let default_tx = TxEvent::default_with_data(JobRunRequest::default().to_bytes());
+							let tx = Tx::default_with(TxKind::JobRunRequest, JobRunRequest::default().to_bytes());
+							let default_tx = TxEvent::default_with_data(tx.to_bytes());
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub

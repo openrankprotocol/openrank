@@ -7,17 +7,13 @@ use libp2p::{
 };
 use openrank_common::{
 	topics::{Domain, Topic},
+	tx_event::TxEvent,
 	txs::{
 		Address, CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest,
-		JobVerification, ProposedBlock,
+		JobVerification, ProposedBlock, Tx, TxKind,
 	},
-	TxEvent,
 };
-use std::{
-	error::Error,
-	hash::{DefaultHasher, Hash, Hasher},
-	time::Duration,
-};
+use std::{error::Error, time::Duration};
 use tokio::{
 	io::{self},
 	select,
@@ -41,20 +37,15 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 		)?
 		.with_quic()
 		.with_behaviour(|key| {
-			// To content-address message, we can take the hash of message and use it as an ID.
-			let message_id_fn = |message: &gossipsub::Message| {
-				let mut s = DefaultHasher::new();
-				message.data.hash(&mut s);
-				gossipsub::MessageId::from(s.finish().to_string())
-			};
-
 			// Set a custom gossipsub configuration
 			let gossipsub_config = gossipsub::ConfigBuilder::default()
-				.heartbeat_interval(Duration::from_secs(10)) // This is set to aid debugging by not cluttering the log space
-				.validation_mode(gossipsub::ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
-				.message_id_fn(message_id_fn) // content-address messages. No two messages of the same content will be propagated.
+				// This is set to aid debugging by not cluttering the log space
+				.heartbeat_interval(Duration::from_secs(10))
+				// This sets the kind of message validation. The default is Strict (enforce message signing)
+				.validation_mode(gossipsub::ValidationMode::Strict)
 				.build()
-				.map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))?; // Temporary hack because `build` does not return a proper `std::error::Error`.
+				// Temporary hack because `build` does not return a proper `std::error::Error`.
+				.map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))?;
 
 			// build a gossipsub network behaviour
 			let gossipsub = gossipsub::Behaviour::new(
@@ -73,17 +64,19 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 }
 
 pub fn broadcast_event(
-	swarm: &mut Swarm<MyBehaviour>, data: Vec<u8>, topic: &Topic,
+	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: &Topic,
 ) -> Result<MessageId, PublishError> {
-	let default_tx = TxEvent::default_with_data(data);
+	let tx = Tx::default_with(kind, data);
+	let tx_event = TxEvent::default_with_data(tx.to_bytes());
 	let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, default_tx.to_bytes())
+	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, tx_event.to_bytes())
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
 	let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
 
 	let mut swarm = build_node().await?;
+	println!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	let domains = vec![Domain::new(
 		Address::default(),
@@ -111,9 +104,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
 		.collect();
 
-	for topic in
-		topics_verification.iter().chain(&topics_commitment).chain(&topics_requests).clone()
-	{
+	for topic in topics_verification.iter().chain(&topics_commitment).chain(&topics_requests) {
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 		// subscribes to our topic
@@ -130,13 +121,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
 					for (peer_id, _multiaddr) in list {
-						println!("mDNS discovered a new peer: {peer_id}");
+						// println!("mDNS discovered a new peer: {peer_id}");
 						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
 					for (peer_id, _multiaddr) in list {
-						println!("mDNS discover peer has expired: {peer_id}");
+						// println!("mDNS discover peer has expired: {peer_id}");
 						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 					}
 				},
@@ -155,15 +146,23 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 								if message.topic == topic_wrapper.hash() {
 									let tx_event = TxEvent::from_bytes(message.data.clone());
-									let tx = JobRunRequest::from_bytes(tx_event.data());
+									let tx = Tx::from_bytes(tx_event.data());
+									assert!(tx.kind() == TxKind::JobRunRequest);
+									let job_run_request = JobRunRequest::from_bytes(tx.body());
 									println!(
 										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 										message.topic.as_str(),
-										tx,
+										job_run_request,
 									);
 
 									let assignment_topic = Topic::DomainAssignent(domain_id.clone());
-									if let Err(e) = broadcast_event(&mut swarm, JobRunAssignment::default().to_bytes(), &assignment_topic) {
+									let job_assignment = JobRunAssignment::default().to_bytes();
+									if let Err(e) = broadcast_event(
+										&mut swarm,
+										TxKind::JobRunAssignment,
+										job_assignment,
+										&assignment_topic,
+									) {
 										println!("Publish error: {e:?}");
 									}
 								}
@@ -172,15 +171,22 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 								if message.topic == topic_wrapper.hash() {
 									let tx_event = TxEvent::from_bytes(message.data.clone());
-									let tx = CreateCommitment::from_bytes(tx_event.data());
+									let tx = Tx::from_bytes(tx_event.data());
+									let commitment = CreateCommitment::from_bytes(tx.body());
 									println!(
 										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 										message.topic.as_str(),
-										tx,
+										commitment,
 									);
 
 									let proposed_block_topic = Topic::ProposedBlock;
-									if let Err(e) = broadcast_event(&mut swarm, ProposedBlock::default().to_bytes(), &proposed_block_topic) {
+									let proposed_block = ProposedBlock::default().to_bytes();
+									if let Err(e) = broadcast_event(
+										&mut swarm,
+										TxKind::ProposedBlock,
+										proposed_block,
+										&proposed_block_topic,
+									) {
 										println!("Publish error: {e:?}");
 									}
 								}
@@ -189,15 +195,22 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 								if message.topic == topic_wrapper.hash() {
 									let tx_event = TxEvent::from_bytes(message.data.clone());
-									let tx = JobVerification::from_bytes(tx_event.data());
+									let tx = Tx::from_bytes(tx_event.data());
+									let job_verification = JobVerification::from_bytes(tx.body());
 									println!(
 										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 										message.topic.as_str(),
-										tx,
+										job_verification,
 									);
 
 									let finalised_block_topic = Topic::FinalisedBlock;
-									if let Err(e) = broadcast_event(&mut swarm, FinalisedBlock::default().to_bytes(), &finalised_block_topic) {
+									let finalised_block = FinalisedBlock::default().to_bytes();
+									if let Err(e) = broadcast_event(
+										&mut swarm,
+										TxKind::FinalisedBlock,
+										finalised_block,
+										&finalised_block_topic,
+									) {
 										println!("Publish error: {e:?}");
 									}
 								}
