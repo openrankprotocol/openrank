@@ -1,6 +1,9 @@
 use futures::StreamExt;
 use libp2p::{
-	gossipsub, mdns, noise,
+	core::ConnectedPoint,
+	gossipsub, identify,
+	kad::{self, store::MemoryStore, Mode},
+	noise,
 	swarm::{NetworkBehaviour, SwarmEvent},
 	tcp, yamux, Swarm,
 };
@@ -16,11 +19,12 @@ use tokio::{
 };
 use tracing_subscriber::EnvFilter;
 
-// We create a custom network behaviour that combines Gossipsub and Mdns.
+// We create a custom network behaviour.
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
 	gossipsub: gossipsub::Behaviour,
-	mdns: mdns::tokio::Behaviour,
+	kademlia: kad::Behaviour<MemoryStore>,
+	identify: identify::Behaviour,
 }
 
 async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
@@ -49,9 +53,17 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 				gossipsub_config,
 			)?;
 
-			let mdns =
-				mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?;
-			Ok(MyBehaviour { gossipsub, mdns })
+			Ok(MyBehaviour {
+				gossipsub,
+				kademlia: kad::Behaviour::new(
+					key.public().to_peer_id(),
+					MemoryStore::new(key.public().to_peer_id()),
+				),
+				identify: identify::Behaviour::new(identify::Config::new(
+					"openrank/1.0.0".to_string(),
+					key.public(),
+				)),
+			})
 		})?
 		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
 		.build();
@@ -63,6 +75,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
 
 	let mut swarm = build_node().await?;
+	println!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	let domains = vec![Domain::new(
 		Address::default(),
@@ -87,6 +100,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	// Read full lines from stdin
 	let mut stdin = io::BufReader::new(io::stdin()).lines();
 
+	swarm.behaviour_mut().kademlia.set_mode(Some(Mode::Server));
+
 	// Kick it off
 	loop {
 		select! {
@@ -108,17 +123,17 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				}
 			}
 			event = swarm.select_next_some() => match event {
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-					for (peer_id, _multiaddr) in list {
-						println!("mDNS discovered a new peer: {peer_id}");
-						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
+					println!("New peer: {:?} {:?}", peer_id, address);
+					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
+					if let Err(err) = swarm.behaviour_mut().kademlia.bootstrap() {
+						println!("Failed to bootstrap DHT: {:?}", err);
 					}
+					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-					for (peer_id, _multiaddr) in list {
-						println!("mDNS discover peer has expired: {peer_id}");
-						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-					}
+				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
+					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
+					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					println!("Local node is listening on {address}");

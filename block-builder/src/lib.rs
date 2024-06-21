@@ -1,9 +1,12 @@
 use futures::StreamExt;
 use libp2p::{
+	core::ConnectedPoint,
 	gossipsub::{self, MessageId, PublishError},
-	mdns, noise,
+	identify,
+	kad::{self, store::MemoryStore},
+	noise,
 	swarm::{NetworkBehaviour, SwarmEvent},
-	tcp, yamux, Swarm,
+	tcp, yamux, Multiaddr, Swarm,
 };
 use openrank_common::{
 	topics::{Domain, Topic},
@@ -20,11 +23,12 @@ use tokio::{
 };
 use tracing_subscriber::EnvFilter;
 
-// We create a custom network behaviour that combines Gossipsub and Mdns.
+// We create a custom network behaviour.
 #[derive(NetworkBehaviour)]
 pub struct MyBehaviour {
 	gossipsub: gossipsub::Behaviour,
-	mdns: mdns::tokio::Behaviour,
+	kademlia: kad::Behaviour<MemoryStore>,
+	identify: identify::Behaviour,
 }
 
 async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
@@ -53,9 +57,17 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 				gossipsub_config,
 			)?;
 
-			let mdns =
-				mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?;
-			Ok(MyBehaviour { gossipsub, mdns })
+			Ok(MyBehaviour {
+				gossipsub,
+				kademlia: kad::Behaviour::new(
+					key.public().to_peer_id(),
+					MemoryStore::new(key.public().to_peer_id()),
+				),
+				identify: identify::Behaviour::new(identify::Config::new(
+					"openrank/1.0.0".to_string(),
+					key.public(),
+				)),
+			})
 		})?
 		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
 		.build();
@@ -115,21 +127,29 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
+	// Dial the peer identified by the multi-address given as the second
+	// command-line argument, if any.
+	if let Some(addr) = std::env::args().nth(1) {
+		let remote: Multiaddr = addr.parse()?;
+		swarm.dial(remote)?;
+		println!("Dialed {addr}")
+	}
+
 	// Kick it off
 	loop {
 		select! {
 			event = swarm.select_next_some() => match event {
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-					for (peer_id, _multiaddr) in list {
-						// println!("mDNS discovered a new peer: {peer_id}");
-						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
+					println!("New peer: {:?} {:?}", peer_id, address);
+					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
+					if let Err(err) = swarm.behaviour_mut().kademlia.bootstrap() {
+						println!("Failed to bootstrap DHT: {:?}", err);
 					}
+					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-					for (peer_id, _multiaddr) in list {
-						// println!("mDNS discover peer has expired: {peer_id}");
-						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-					}
+				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
+					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
+					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
 					propagation_source: peer_id,
