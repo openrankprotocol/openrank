@@ -65,7 +65,7 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 				)),
 			})
 		})?
-		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
+		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::MAX))
 		.build();
 
 	Ok(swarm)
@@ -132,6 +132,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
 				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
+					println!("Connection closed: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
 					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 				},
