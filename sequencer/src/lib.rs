@@ -126,9 +126,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
 					println!("New peer: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
-					if let Err(err) = swarm.behaviour_mut().kademlia.bootstrap() {
-						println!("Failed to bootstrap DHT: {:?}", err);
-					}
 					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
 				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
@@ -136,10 +133,16 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
 					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 				},
+				SwarmEvent::Behaviour(MyBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
+					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+					for addr in info.listen_addrs {
+						swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+					}
+				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					println!("Local node is listening on {address}");
 				},
-				_ => {}
+				_ => {},
 			}
 		}
 	}

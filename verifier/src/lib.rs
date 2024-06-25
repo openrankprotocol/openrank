@@ -135,11 +135,14 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	// Dial the peer identified by the multi-address given as the second
 	// command-line argument, if any.
-	if let Some(addr) = std::env::args().nth(1) {
+	let bootstrap_node_addr = if let Some(addr) = std::env::args().nth(1) {
 		let remote: Multiaddr = addr.parse()?;
-		swarm.dial(remote)?;
-		println!("Dialed {addr}")
-	}
+		swarm.dial(remote.clone())?;
+		println!("Dialed {addr}");
+		Some(remote)
+	} else {
+		None
+	};
 
 	// Kick it off
 	loop {
@@ -148,15 +151,29 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
 					println!("New peer: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
-					if let Err(err) = swarm.behaviour_mut().kademlia.bootstrap() {
-						println!("Failed to bootstrap DHT: {:?}", err);
-					}
 					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
 				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
 					println!("Connection closed: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
 					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+				},
+				SwarmEvent::ConnectionEstablished { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, .. } => {
+					swarm.behaviour_mut().kademlia.add_address(&peer_id, address.clone());
+					bootstrap_node_addr.clone().map(|addr| {
+						if address == addr {
+							let res = swarm.behaviour_mut().kademlia.bootstrap();
+							if let Err(err) = res {
+								println!("Failed to bootstrap DHT: {:?}", err);
+							}
+						}
+					});
+				},
+				SwarmEvent::Behaviour(MyBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
+					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+					for addr in &info.listen_addrs {
+						swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
 					propagation_source: peer_id,
@@ -248,7 +265,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				SwarmEvent::NewListenAddr { address, .. } => {
 					println!("Local node is listening on {address}");
 				}
-				_ => {}
+				_ => {},
 			}
 		}
 	}
