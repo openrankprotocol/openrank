@@ -1,89 +1,19 @@
 use futures::StreamExt;
-use libp2p::{
-	core::ConnectedPoint,
-	gossipsub::{self, MessageId, PublishError},
-	identify,
-	kad::{self, store::MemoryStore},
-	noise,
-	swarm::{NetworkBehaviour, SwarmEvent},
-	tcp, yamux, Multiaddr, Swarm,
-};
+use libp2p::{core::ConnectedPoint, gossipsub, identify, swarm::SwarmEvent, Multiaddr};
 use openrank_common::{
+	broadcast_event, build_node,
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
 		Address, CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest,
 		JobVerification, ProposedBlock, Tx, TxKind,
 	},
+	MyBehaviourEvent,
 };
-use std::{error::Error, time::Duration};
-use tokio::{
-	io::{self},
-	select,
-};
+use std::error::Error;
+use tokio::select;
 use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
-
-// We create a custom network behaviour.
-#[derive(NetworkBehaviour)]
-pub struct MyBehaviour {
-	gossipsub: gossipsub::Behaviour,
-	kademlia: kad::Behaviour<MemoryStore>,
-	identify: identify::Behaviour,
-}
-
-async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
-	let swarm = libp2p::SwarmBuilder::with_new_identity()
-		.with_tokio()
-		.with_tcp(
-			tcp::Config::default(),
-			noise::Config::new,
-			yamux::Config::default,
-		)?
-		.with_quic()
-		.with_behaviour(|key| {
-			// Set a custom gossipsub configuration
-			let gossipsub_config = gossipsub::ConfigBuilder::default()
-				// This is set to aid debugging by not cluttering the log space
-				.heartbeat_interval(Duration::from_secs(10))
-				// This sets the kind of message validation. The default is Strict (enforce message signing)
-				.validation_mode(gossipsub::ValidationMode::Strict)
-				.build()
-				// Temporary hack because `build` does not return a proper `std::error::Error`.
-				.map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))?;
-
-			// build a gossipsub network behaviour
-			let gossipsub = gossipsub::Behaviour::new(
-				gossipsub::MessageAuthenticity::Signed(key.clone()),
-				gossipsub_config,
-			)?;
-
-			Ok(MyBehaviour {
-				gossipsub,
-				kademlia: kad::Behaviour::new(
-					key.public().to_peer_id(),
-					MemoryStore::new(key.public().to_peer_id()),
-				),
-				identify: identify::Behaviour::new(identify::Config::new(
-					"openrank/1.0.0".to_string(),
-					key.public(),
-				)),
-			})
-		})?
-		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::MAX))
-		.build();
-
-	Ok(swarm)
-}
-
-pub fn broadcast_event(
-	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: &Topic,
-) -> Result<MessageId, PublishError> {
-	let tx = Tx::default_with(kind, data);
-	let tx_event = TxEvent::default_with_data(tx.to_bytes());
-	let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, tx_event.to_bytes())
-}
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();

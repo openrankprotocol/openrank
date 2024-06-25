@@ -8,3 +8,15 @@ edition.workspace = true
 
 [dependencies]
 hex = { workspace = true }
+libp2p = { workspace = true, features = [
+    "noise",
+    "ping",
+    "tcp",
+    "tokio",
+    "yamux",
+    "quic",
+    "gossipsub",
+    "macros",
+    "kad",
+    "identify",
+] }
