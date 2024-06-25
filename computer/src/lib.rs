@@ -21,6 +21,7 @@ use tokio::{
 	io::{self},
 	select,
 };
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 // We create a custom network behaviour.
@@ -86,10 +87,10 @@ pub fn broadcast_event(
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
-	let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
 	let mut swarm = build_node().await?;
-	println!("PEER_ID: {:?}", swarm.local_peer_id());
+	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	let domains = vec![Domain::new(
 		Address::default(),
@@ -126,7 +127,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	let bootstrap_node_addr = if let Some(addr) = std::env::args().nth(1) {
 		let remote: Multiaddr = addr.parse()?;
 		swarm.dial(remote.clone())?;
-		println!("Dialed {addr}");
+		debug!("Dialed {addr}");
 		Some(remote)
 	} else {
 		None
@@ -137,12 +138,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		select! {
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-					println!("New peer: {:?} {:?}", peer_id, address);
+					info!("New peer: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
 					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
 				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
-					println!("Connection closed: {:?} {:?}", peer_id, address);
+					debug!("Connection closed: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
 					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 				},
@@ -152,7 +153,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 						if address == addr {
 							let res = swarm.behaviour_mut().kademlia.bootstrap();
 							if let Err(err) = res {
-								println!("Failed to bootstrap DHT: {:?}", err);
+								error!("Failed to bootstrap DHT: {:?}", err);
 							}
 						}
 					});
@@ -181,7 +182,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 									let tx = Tx::from_bytes(tx_event.data());
 									assert!(tx.kind() == TxKind::JobRunAssignment);
 									let job_run_assignment = JobRunAssignment::from_bytes(tx.body());
-									println!(
+									info!(
 										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}, SOURCE: {:?}",
 										message.topic.as_str(),
 										job_run_assignment,
@@ -196,7 +197,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 											create_scores.clone(),
 											&scores_topic
 										) {
-											println!("Publish error: {e:?}");
+											error!("Publish error: {e:?}");
 										}
 									}
 									let commitment_topic = Topic::DomainCommitment(domain_id.clone());
@@ -207,7 +208,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 										create_commitment,
 										&commitment_topic,
 									) {
-										println!("Publish error: {e:?}");
+										error!("Publish error: {e:?}");
 									}
 								}
 							}
@@ -218,7 +219,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 									let tx = Tx::from_bytes(tx_event.data());
 									assert!(tx.kind() == TxKind::ProposedBlock);
 									let proposed_block = ProposedBlock::from_bytes(tx.body());
-									println!(
+									info!(
 										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 										message.topic.as_str(),
 										proposed_block,
@@ -232,7 +233,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 									let tx = Tx::from_bytes(tx_event.data());
 									assert!(tx.kind() == TxKind::FinalisedBlock);
 									let finalised_block = FinalisedBlock::from_bytes(tx.body());
-									println!(
+									info!(
 										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 										message.topic.as_str(),
 										finalised_block,
@@ -244,9 +245,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
-					println!("Local node is listening on {address}");
+					info!("Local node is listening on {address}");
 				}
-				_ => {},
+				e => debug!("{:?}", e),
 			}
 		}
 	}

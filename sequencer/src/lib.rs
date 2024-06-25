@@ -17,6 +17,7 @@ use tokio::{
 	io::{self, AsyncBufReadExt},
 	select,
 };
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 // We create a custom network behaviour.
@@ -72,10 +73,10 @@ async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
-	let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
 	let mut swarm = build_node().await?;
-	println!("PEER_ID: {:?}", swarm.local_peer_id());
+	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	let domains = vec![Domain::new(
 		Address::default(),
@@ -95,7 +96,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-	println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
+	info!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
 
 	// Read full lines from stdin
 	let mut stdin = io::BufReader::new(io::stdin()).lines();
@@ -115,7 +116,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
 								.publish(topic_wrapper, default_tx.to_bytes()) {
-								println!("Publish error: {e:?}");
+								error!("Publish error: {e:?}");
 							}
 						}
 					},
@@ -124,12 +125,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-					println!("New peer: {:?} {:?}", peer_id, address);
+					info!("New peer: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
 					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
 				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
-					println!("Connection closed: {:?} {:?}", peer_id, address);
+					debug!("Connection closed: {:?} {:?}", peer_id, address);
 					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
 					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 				},
@@ -140,9 +141,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
-					println!("Local node is listening on {address}");
+					info!("Local node is listening on {address}");
 				},
-				_ => {},
+				e => debug!("{:?}", e),
 			}
 		}
 	}
