@@ -261,7 +261,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");
 				},
-				e => debug!("NEW_EVENT: {:?}", e),
+				e => info!("NEW_EVENT: {:?}", e),
 			}
 		}
 	}
