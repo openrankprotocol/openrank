@@ -1,7 +1,7 @@
 pub mod topics;
 pub mod tx_event;
 pub mod txs;
-
+use alloy_rlp::encode;
 use libp2p::{
 	gossipsub::{self, MessageId, PublishError},
 	identify,
@@ -71,7 +71,7 @@ pub fn broadcast_event(
 	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: &Topic,
 ) -> Result<MessageId, PublishError> {
 	let tx = Tx::default_with(kind, data);
-	let tx_event = TxEvent::default_with_data(tx.to_bytes());
+	let tx_event = TxEvent::default_with_data(encode(tx));
 	let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, tx_event.to_bytes())
+	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))
 }

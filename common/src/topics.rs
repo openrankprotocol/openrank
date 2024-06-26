@@ -1,8 +1,10 @@
 use std::hash::{DefaultHasher, Hasher};
 
+use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+
 use crate::txs::Address;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
 pub struct DomainHash(u64);
 
 impl DomainHash {

@@ -1,3 +1,4 @@
+use alloy_rlp::encode;
 use futures::StreamExt;
 use libp2p::{core::ConnectedPoint, gossipsub, identify, kad::Mode, swarm::SwarmEvent};
 use openrank_common::{
@@ -53,12 +54,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				match line.as_str() {
 					"request" => {
 						for topic in &topics_request {
-							let tx = Tx::default_with(TxKind::JobRunRequest, JobRunRequest::default().to_bytes());
-							let default_tx = TxEvent::default_with_data(tx.to_bytes());
+							let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
+							let default_tx = TxEvent::default_with_data(encode(tx));
 							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, default_tx.to_bytes()) {
+								.publish(topic_wrapper, encode(default_tx)) {
 								error!("Publish error: {e:?}");
 							}
 						}

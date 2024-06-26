@@ -1,3 +1,4 @@
+use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use libp2p::{core::ConnectedPoint, gossipsub, identify, swarm::SwarmEvent, Multiaddr, Swarm};
 use openrank_common::{
@@ -25,10 +26,11 @@ fn handle_gossipsub_events(
 					Topic::DomainAssignent(domain_id) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::JobRunAssignment);
-							let job_run_assignment = JobRunAssignment::from_bytes(tx.body());
+							let job_run_assignment =
+								JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}, SOURCE: {:?}",
 								message.topic.as_str(),
@@ -36,7 +38,7 @@ fn handle_gossipsub_events(
 								message.source,
 							);
 							let scores_topic = Topic::DomainScores(domain_id.clone());
-							let create_scores = CreateScores::default().to_bytes();
+							let create_scores = encode(CreateScores::default());
 							for _ in 0..3 {
 								if let Err(e) = broadcast_event(
 									&mut swarm,
@@ -48,7 +50,7 @@ fn handle_gossipsub_events(
 								}
 							}
 							let commitment_topic = Topic::DomainCommitment(domain_id.clone());
-							let create_commitment = CreateCommitment::default().to_bytes();
+							let create_commitment = encode(CreateCommitment::default());
 							if let Err(e) = broadcast_event(
 								&mut swarm,
 								TxKind::CreateCommitment,
@@ -63,10 +65,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper =
 							gossipsub::IdentTopic::new(Topic::ProposedBlock.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::ProposedBlock);
-							let proposed_block = ProposedBlock::from_bytes(tx.body());
+							let proposed_block =
+								ProposedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
@@ -78,10 +81,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper =
 							gossipsub::IdentTopic::new(Topic::FinalisedBlock.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::FinalisedBlock);
-							let finalised_block = FinalisedBlock::from_bytes(tx.body());
+							let finalised_block =
+								FinalisedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),

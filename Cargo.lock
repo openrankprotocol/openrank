@@ -80,6 +80,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
 
 [[package]]
+name = "alloy-rlp"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b155716bab55763c95ba212806cf43d05bcc70e5f35b02bad20cf5ec7fe11fed"
+dependencies = [
+ "arrayvec",
+ "bytes",
+]
+
+[[package]]
+name = "alloy-rlp-derive"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8037e03c7f462a063f28daec9fda285a9a89da003c552f8637a80b9c8fd96241"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.66",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1898,6 +1919,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 name = "openrank-block-builder"
 version = "0.0.1"
 dependencies = [
+ "alloy-rlp",
  "futures",
  "hex",
  "libp2p",
@@ -1912,6 +1934,8 @@ dependencies = [
 name = "openrank-common"
 version = "0.0.1"
 dependencies = [
+ "alloy-rlp",
+ "alloy-rlp-derive",
  "hex",
  "libp2p",
 ]
@@ -1920,6 +1944,7 @@ dependencies = [
 name = "openrank-computer"
 version = "0.0.1"
 dependencies = [
+ "alloy-rlp",
  "futures",
  "hex",
  "libp2p",
@@ -1937,6 +1962,7 @@ version = "0.0.1"
 name = "openrank-sequencer"
 version = "0.0.1"
 dependencies = [
+ "alloy-rlp",
  "futures",
  "hex",
  "libp2p",
@@ -1951,6 +1977,7 @@ dependencies = [
 name = "openrank-verifier"
 version = "0.0.1"
 dependencies = [
+ "alloy-rlp",
  "futures",
  "hex",
  "libp2p",

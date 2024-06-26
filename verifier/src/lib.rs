@@ -1,3 +1,4 @@
+use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use libp2p::{core::ConnectedPoint, gossipsub, identify, swarm::SwarmEvent, Multiaddr, Swarm};
 use openrank_common::{
@@ -25,9 +26,10 @@ fn handle_gossipsub_events(
 					Topic::DomainAssignent(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
-							let job_run_assignment = JobRunAssignment::from_bytes(tx.body());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							let job_run_assignment =
+								JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
@@ -38,9 +40,10 @@ fn handle_gossipsub_events(
 					Topic::DomainScores(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
-							let create_scores = CreateScores::from_bytes(tx.body());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							let create_scores =
+								CreateScores::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
@@ -51,16 +54,17 @@ fn handle_gossipsub_events(
 					Topic::DomainCommitment(domain_id) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
-							let create_commitment = CreateCommitment::from_bytes(tx.body());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							let create_commitment =
+								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
 								create_commitment,
 							);
 							let new_topic = Topic::DomainVerification(domain_id.clone());
-							let tx_bytes = JobVerification::default().to_bytes();
+							let tx_bytes = encode(JobVerification::default());
 							if let Err(e) = broadcast_event(
 								&mut swarm,
 								TxKind::JobVerification,
@@ -75,9 +79,10 @@ fn handle_gossipsub_events(
 						let topic_wrapper =
 							gossipsub::IdentTopic::new(Topic::ProposedBlock.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
-							let proposed_block = ProposedBlock::from_bytes(tx.body());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							let proposed_block =
+								ProposedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
@@ -89,9 +94,10 @@ fn handle_gossipsub_events(
 						let topic_wrapper =
 							gossipsub::IdentTopic::new(Topic::FinalisedBlock.to_hash().to_hex());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::from_bytes(message.data.clone());
-							let tx = Tx::from_bytes(tx_event.data());
-							let finalised_block = FinalisedBlock::from_bytes(tx.body());
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							let finalised_block =
+								FinalisedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),
