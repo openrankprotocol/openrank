@@ -1,6 +1,8 @@
 use alloy_rlp::encode;
 use futures::StreamExt;
-use libp2p::{core::ConnectedPoint, gossipsub, identify, kad::Mode, swarm::SwarmEvent};
+use libp2p::{
+	core::ConnectedPoint, gossipsub, identify, kad::Mode, kad::RecordKey, swarm::SwarmEvent,
+};
 use openrank_common::{
 	build_node,
 	topics::{Domain, Topic},
@@ -22,6 +24,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
+	// Listen on all interfaces and whatever port the OS assigns
+	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
+	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+
+	info!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
+
 	let domains = vec![Domain::new(
 		Address::default(),
 		"1".to_string(),
@@ -36,11 +44,11 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|domain_hash| Topic::DomainRequest(domain_hash.clone()))
 		.collect();
 
-	// Listen on all interfaces and whatever port the OS assigns
-	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-	info!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
+	for topic in &topics_request {
+		let topic = gossipsub::IdentTopic::new(topic.clone());
+		let key = RecordKey::new(&topic.hash().to_string());
+		swarm.behaviour_mut().kademlia.start_providing(key)?;
+	}
 
 	// Read full lines from stdin
 	let mut stdin = io::BufReader::new(io::stdin()).lines();
@@ -56,7 +64,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 						for topic in &topics_request {
 							let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
 							let default_tx = TxEvent::default_with_data(encode(tx));
-							let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+							let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 							if let Err(e) = swarm
 								.behaviour_mut().gossipsub
 								.publish(topic_wrapper, encode(default_tx)) {

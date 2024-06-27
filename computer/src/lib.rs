@@ -1,6 +1,9 @@
 use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
-use libp2p::{core::ConnectedPoint, gossipsub, identify, swarm::SwarmEvent, Multiaddr, Swarm};
+use libp2p::{
+	core::ConnectedPoint, gossipsub, identify, kad, kad::RecordKey, swarm::SwarmEvent, Multiaddr,
+	Swarm,
+};
 use openrank_common::{
 	broadcast_event, build_node,
 	topics::{Domain, Topic},
@@ -11,8 +14,8 @@ use openrank_common::{
 	},
 	MyBehaviour, MyBehaviourEvent,
 };
-use std::error::Error;
-use tokio::select;
+use std::{error::Error, time::Duration};
+use tokio::{select, time::interval};
 use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -24,7 +27,7 @@ fn handle_gossipsub_events(
 			for topic in topics {
 				match topic {
 					Topic::DomainAssignent(domain_id) => {
-						let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
@@ -37,14 +40,15 @@ fn handle_gossipsub_events(
 								job_run_assignment,
 								message.source,
 							);
-							let scores_topic = Topic::DomainScores(domain_id.clone());
+
 							let create_scores = encode(CreateScores::default());
 							for _ in 0..3 {
+								let scores_topic = Topic::DomainScores(domain_id.clone());
 								if let Err(e) = broadcast_event(
 									&mut swarm,
 									TxKind::CreateScores,
 									create_scores.clone(),
-									&scores_topic,
+									scores_topic,
 								) {
 									error!("Publish error: {e:?}");
 								}
@@ -55,15 +59,14 @@ fn handle_gossipsub_events(
 								&mut swarm,
 								TxKind::CreateCommitment,
 								create_commitment,
-								&commitment_topic,
+								commitment_topic,
 							) {
 								error!("Publish error: {e:?}");
 							}
 						}
 					},
 					Topic::ProposedBlock => {
-						let topic_wrapper =
-							gossipsub::IdentTopic::new(Topic::ProposedBlock.to_hash().to_hex());
+						let topic_wrapper = gossipsub::IdentTopic::new(Topic::ProposedBlock);
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
@@ -78,8 +81,7 @@ fn handle_gossipsub_events(
 						}
 					},
 					Topic::FinalisedBlock => {
-						let topic_wrapper =
-							gossipsub::IdentTopic::new(Topic::FinalisedBlock.to_hash().to_hex());
+						let topic_wrapper = gossipsub::IdentTopic::new(Topic::FinalisedBlock);
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
@@ -96,6 +98,30 @@ fn handle_gossipsub_events(
 					_ => {},
 				}
 			}
+		},
+		_ => {},
+	}
+}
+
+fn handle_dht_events(swarm: &mut Swarm<MyBehaviour>, event: kad::Event) {
+	match event {
+		kad::Event::OutboundQueryProgressed { result, .. } => match result {
+			kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders {
+				key,
+				providers,
+				..
+			})) => {
+				for peer in providers {
+					info!(
+						"Peer {peer:?} provides key {:?}",
+						std::str::from_utf8(key.as_ref()).unwrap()
+					);
+					if let Err(e) = swarm.dial(peer) {
+						error!("Error dialing peer: {:?}", e);
+					}
+				}
+			},
+			_ => {},
 		},
 		_ => {},
 	}
@@ -120,17 +146,32 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
 		.collect();
-
-	for topic in topics_assignment
-		.iter()
-		.chain(&[Topic::ProposedBlock])
-		.chain(&[Topic::FinalisedBlock])
+	let topics_scores: Vec<Topic> = domains
 		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+		.collect();
+	let topics_commitment: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
+		.collect();
+
+	for topic in
+		topics_assignment.iter().chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]).clone()
 	{
 		// Create a Gossipsub topic
-		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+		let topic = gossipsub::IdentTopic::new(topic.clone());
 		// subscribes to our topic
 		swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+	}
+
+	for topic in topics_scores.iter().chain(&topics_commitment) {
+		let topic = gossipsub::IdentTopic::new(topic.clone());
+		let key = RecordKey::new(&topic.hash().to_string());
+		swarm.behaviour_mut().kademlia.start_providing(key)?;
 	}
 
 	// Listen on all interfaces and whatever port the OS assigns
@@ -148,9 +189,22 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		None
 	};
 
+	// Interval at which to look for new publishers of the topics of interest
+	let mut topic_search_interval = interval(Duration::from_secs(15));
+
 	// Kick it off
 	loop {
 		select! {
+			instant = topic_search_interval.tick() => {
+				for topic in topics_assignment
+					.iter()
+					.chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]) {
+					let topic = gossipsub::IdentTopic::new(topic.clone());
+					let key = RecordKey::new(&topic.hash().to_string());
+					let query_id = swarm.behaviour_mut().kademlia.get_providers(key.clone());
+					debug!("Requesting providers of {:?} {:?} {:?}", key, query_id, instant);
+				}
+			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
 					info!("New peer: {:?} {:?}", peer_id, address);
@@ -173,6 +227,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 						}
 					});
 				},
+				SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+					debug!("Connection Error: {:?} {:?}", peer_id, error);
+				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
 					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 					for addr in &info.listen_addrs {
@@ -182,10 +239,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
 					let iter_chain = topics_assignment
 						.iter()
-						.chain(&[Topic::ProposedBlock])
-						.chain(&[Topic::FinalisedBlock]);
+						.chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]);
 					handle_gossipsub_events(&mut swarm, event, iter_chain.collect());
 				},
+				SwarmEvent::Behaviour(MyBehaviourEvent::Kademlia(event)) => {
+					handle_dht_events(&mut swarm, event);
+				}
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");
 				}
