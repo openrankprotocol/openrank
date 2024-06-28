@@ -7,10 +7,10 @@ export $(grep -v '^#' .env | xargs)
 NODE_COUNT=${NODE_COUNT:-3}
 
 # Starting ports
-VERIFIER_START_PORT=8000
+SEQUENCER_PORT=8000
 BLOCK_BUILDER_PORT=9000
-DA_PORT=10000
-SEQUENCER_PORT=11000
+COMPUTER_PORT=10000
+VERIFIER_START_PORT=11000
 
 # Function to check if a port is available
 function is_port_available() {
@@ -32,25 +32,22 @@ cat <<EOF > docker-compose.yml
 services:
 EOF
 
-# Append each verifier service to docker-compose.yml
-for i in $(seq 1 $NODE_COUNT); do
-    verifier_port=$(find_available_port $((VERIFIER_START_PORT + i)))
+# Add the sequencer service to docker-compose.yml
+sequencer_port=$(find_available_port $SEQUENCER_PORT)
 cat <<EOF >> docker-compose.yml
-  verifier-$i:
+  sequencer:
     build:
       context: .
-      dockerfile: verifier/Dockerfile
-    container_name: verifier-$i
+      dockerfile: sequencer/Dockerfile
+    container_name: sequencer
     environment:
-      - INSTANCE_NAME=verifier-$i
-      - PORT=$verifier_port
+      - INSTANCE_NAME=sequencer
+      - PORT=$sequencer_port
     ports:
-      - "$verifier_port:$verifier_port"
+      - "$sequencer_port:$sequencer_port"
     networks:
-      - verifier-network
-
+      - openrank-network
 EOF
-done
 
 # Add the block-builder service to docker-compose.yml
 block_builder_port=$(find_available_port $BLOCK_BUILDER_PORT)
@@ -66,45 +63,47 @@ cat <<EOF >> docker-compose.yml
     ports:
       - "$block_builder_port:$block_builder_port"
     networks:
-      - verifier-network
+      - openrank-network
 
 EOF
+
+# Append each verifier service to docker-compose.yml
+for i in $(seq 1 $NODE_COUNT); do
+    verifier_port=$(find_available_port $((VERIFIER_START_PORT + i)))
+cat <<EOF >> docker-compose.yml
+  verifier-$i:
+    build:
+      context: .
+      dockerfile: verifier/Dockerfile
+    container_name: verifier-$i
+    environment:
+      - INSTANCE_NAME=verifier-$i
+      - PORT=$verifier_port
+    ports:
+      - "$verifier_port:$verifier_port"
+    networks:
+      - openrank-network
+
+EOF
+done
 
 # Add the da service to docker-compose.yml
-da_port=$(find_available_port $DA_PORT)
+computer_port=$(find_available_port $COMPUTER_PORT)
 cat <<EOF >> docker-compose.yml
-  da:
+  computer:
     build:
       context: .
-      dockerfile: da/Dockerfile
-    container_name: da
+      dockerfile: computer/Dockerfile
+    container_name: computer
     environment:
-      - INSTANCE_NAME=da
-      - PORT=$da_port
+      - INSTANCE_NAME=computer
+      - PORT=$computer_port
     ports:
-      - "$da_port:$da_port"
+      - "$computer_port:$computer_port"
     networks:
-      - verifier-network
-
-EOF
-
-# Add the sequencer service to docker-compose.yml
-sequencer_port=$(find_available_port $SEQUENCER_PORT)
-cat <<EOF >> docker-compose.yml
-  sequencer:
-    build:
-      context: .
-      dockerfile: sequencer/Dockerfile
-    container_name: sequencer
-    environment:
-      - INSTANCE_NAME=sequencer
-      - PORT=$sequencer_port
-    ports:
-      - "$sequencer_port:$sequencer_port"
-    networks:
-      - verifier-network
+      - openrank-network
 
 networks:
-  verifier-network:
-    driver: bridge
+    openrank-network:
+        driver: bridge
 EOF

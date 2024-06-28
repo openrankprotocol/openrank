@@ -1,44 +1,5 @@
 
 services:
-  verifier-1:
-    build:
-      context: .
-      dockerfile: verifier/Dockerfile
-    container_name: verifier-1
-    environment:
-      - INSTANCE_NAME=verifier-1
-      - PORT=8001
-    ports:
-      - "8001:8001"
-    networks:
-      - verifier-network
-
-  block-builder:
-    build:
-      context: .
-      dockerfile: block-builder/Dockerfile
-    container_name: block-builder
-    environment:
-      - INSTANCE_NAME=block-builder
-      - PORT=9001
-    ports:
-      - "9001:9001"
-    networks:
-      - verifier-network
-
-  da:
-    build:
-      context: .
-      dockerfile: da/Dockerfile
-    container_name: da
-    environment:
-      - INSTANCE_NAME=da
-      - PORT=10000
-    ports:
-      - "10000:10000"
-    networks:
-      - verifier-network
-
   sequencer:
     build:
       context: .
@@ -46,12 +7,50 @@ services:
     container_name: sequencer
     environment:
       - INSTANCE_NAME=sequencer
-      - PORT=11000
+      - PORT=8000
     ports:
-      - "11000:11000"
+      - "8000:8000"
     networks:
-      - verifier-network
+      - openrank-network
+  block-builder:
+    build:
+      context: .
+      dockerfile: block-builder/Dockerfile
+    container_name: block-builder
+    environment:
+      - INSTANCE_NAME=block-builder
+      - PORT=9000
+    ports:
+      - "9000:9000"
+    networks:
+      - openrank-network
+
+  verifier-1:
+    build:
+      context: .
+      dockerfile: verifier/Dockerfile
+    container_name: verifier-1
+    environment:
+      - INSTANCE_NAME=verifier-1
+      - PORT=11001
+    ports:
+      - "11001:11001"
+    networks:
+      - openrank-network
+
+  computer:
+    build:
+      context: .
+      dockerfile: computer/Dockerfile
+    container_name: computer
+    environment:
+      - INSTANCE_NAME=computer
+      - PORT=10000
+    ports:
+      - "10000:10000"
+    networks:
+      - openrank-network
 
 networks:
-  verifier-network:
-    driver: bridge
+    openrank-network:
+        driver: bridge
