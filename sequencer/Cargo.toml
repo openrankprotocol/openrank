@@ -29,3 +29,4 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 hex = { workspace = true }
 rand = { workspace = true }
 alloy-rlp = { workspace = true }
+dotenv = { workspace = true }

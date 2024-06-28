@@ -562,6 +562,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
+
+[[package]]
 name = "dtoa"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1920,6 +1926,7 @@ name = "openrank-block-builder"
 version = "0.0.1"
 dependencies = [
  "alloy-rlp",
+ "dotenv",
  "futures",
  "hex",
  "libp2p",
@@ -1945,6 +1952,7 @@ name = "openrank-computer"
 version = "0.0.1"
 dependencies = [
  "alloy-rlp",
+ "dotenv",
  "futures",
  "hex",
  "libp2p",
@@ -1963,6 +1971,7 @@ name = "openrank-sequencer"
 version = "0.0.1"
 dependencies = [
  "alloy-rlp",
+ "dotenv",
  "futures",
  "hex",
  "libp2p",
@@ -1978,6 +1987,7 @@ name = "openrank-verifier"
 version = "0.0.1"
 dependencies = [
  "alloy-rlp",
+ "dotenv",
  "futures",
  "hex",
  "libp2p",

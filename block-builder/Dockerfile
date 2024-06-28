@@ -1,5 +1,6 @@
 # Start from the latest official Rust image
 FROM rust:1.78.0 as builder
+ENV RUST_LOG=info
 
 # Set the working directory
 WORKDIR /app
@@ -21,4 +22,4 @@ RUN apt-get update && apt -y install curl build-essential && apt-cache policy li
 COPY --from=builder /app/target/release/openrank-block-builder /usr/local/bin/block-builder
 
 # Set the startup command to run the binary
-CMD ["block-builder"]
+CMD ["block-builder", "/dns/sequencer/tcp/8000"]

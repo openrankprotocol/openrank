@@ -25,8 +25,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	// Listen on all interfaces and whatever port the OS assigns
-	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+	swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
+	swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
 
 	info!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
 

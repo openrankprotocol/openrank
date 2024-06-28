@@ -1,4 +1,5 @@
 use alloy_rlp::{encode, Decodable};
+use dotenv::dotenv;
 use futures::StreamExt;
 use libp2p::{
 	core::ConnectedPoint, gossipsub, identify, kad, kad::RecordKey, swarm::SwarmEvent, Multiaddr,
@@ -143,8 +144,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	// Listen on all interfaces and whatever port the OS assigns
-	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+	swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
+	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let domains = vec![Domain::new(
 		Address::default(),
@@ -194,7 +195,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	// Dial the peer identified by the multi-address given as the second
 	// command-line argument, if any.
-	let bootstrap_node_addr = if let Some(addr) = std::env::args().nth(1) {
+	let bootstrap_node_addr = if let Ok(addr) = std::env::var("SEQUENCER_ADDR") {
+		println!("{:?}", addr);
 		let remote: Multiaddr = addr.parse()?;
 		swarm.dial(remote.clone())?;
 		debug!("Dialed {addr}");
