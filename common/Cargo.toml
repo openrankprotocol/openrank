@@ -17,7 +17,7 @@ libp2p = { workspace = true, features = [
     "quic",
     "gossipsub",
     "macros",
-    "kad",
+    "mdns",
     "identify",
 ] }
 alloy-rlp = { workspace = true }

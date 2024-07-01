@@ -1,13 +1,11 @@
 use alloy_rlp::encode;
 use futures::StreamExt;
-use libp2p::{
-	core::ConnectedPoint, gossipsub, identify, kad::Mode, kad::RecordKey, swarm::SwarmEvent,
-};
+use libp2p::{gossipsub, mdns, swarm::SwarmEvent};
 use openrank_common::{
 	build_node,
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
-	txs::{Address, JobRunRequest, Tx, TxKind},
+	txs::{Address, JobRunRequest, SeedUpdate, TrustUpdate, Tx, TxKind},
 	MyBehaviourEvent,
 };
 use std::error::Error;
@@ -15,7 +13,7 @@ use tokio::{
 	io::{self, AsyncBufReadExt},
 	select,
 };
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
@@ -43,53 +41,83 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainRequest(domain_hash.clone()))
 		.collect();
-
-	for topic in &topics_request {
-		let topic = gossipsub::IdentTopic::new(topic.clone());
-		let key = RecordKey::new(&topic.hash().to_string());
-		swarm.behaviour_mut().kademlia.start_providing(key)?;
-	}
+	let topics_trust_update: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainTrustUpdate(domain_hash.clone()))
+		.collect();
+	let topics_seed_update: Vec<Topic> = domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainSeedUpdate(domain_hash.clone()))
+		.collect();
 
 	// Read full lines from stdin
 	let mut stdin = io::BufReader::new(io::stdin()).lines();
 
-	swarm.behaviour_mut().kademlia.set_mode(Some(Mode::Server));
-
 	// Kick it off
 	loop {
 		select! {
-			Ok(Some(line)) = stdin.next_line() => {
-				match line.as_str() {
-					"request" => {
-						for topic in &topics_request {
-							let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
-							let default_tx = TxEvent::default_with_data(encode(tx));
-							let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-							if let Err(e) = swarm
-								.behaviour_mut().gossipsub
-								.publish(topic_wrapper, encode(default_tx)) {
-								error!("Publish error: {e:?}");
+			inp = stdin.next_line() => {
+				match inp {
+					Ok(Some(line)) => {
+						match line.as_str() {
+							"request" => {
+								for topic in &topics_request {
+									let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
+									let default_tx = TxEvent::default_with_data(encode(tx));
+									let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+									if let Err(e) = swarm
+										.behaviour_mut().gossipsub
+										.publish(topic_wrapper, encode(default_tx)) {
+										error!("Publish error: {e:?}");
+									}
+								}
+							},
+							"trust_update" => {
+								for topic in &topics_trust_update {
+									let tx = Tx::default_with(TxKind::TrustUpdate, encode(TrustUpdate::default()));
+									let default_tx = TxEvent::default_with_data(encode(tx));
+									let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+									if let Err(e) = swarm
+										.behaviour_mut().gossipsub
+										.publish(topic_wrapper, encode(default_tx)) {
+										error!("Publish error: {e:?}");
+									}
+								}
 							}
+							"seed_update" => {
+								for topic in &topics_seed_update {
+									let tx = Tx::default_with(TxKind::SeedUpdate, encode(SeedUpdate::default()));
+									let default_tx = TxEvent::default_with_data(encode(tx));
+									let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+									if let Err(e) = swarm
+										.behaviour_mut().gossipsub
+										.publish(topic_wrapper, encode(default_tx)) {
+										error!("Publish error: {e:?}");
+									}
+								}
+							}
+							s => info!("stdin: {:?}", s),
 						}
 					},
-					&_ => {}
+					Err(e) => info!("stdin: {:?}", e),
+					_ => {}
 				}
 			}
 			event = swarm.select_next_some() => match event {
-				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-					info!("New peer: {:?} {:?}", peer_id, address);
-					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
-					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+					for (peer_id, _multiaddr) in list {
+						println!("mDNS discovered a new peer: {peer_id}");
+						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+					}
 				},
-				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
-					debug!("Connection closed: {:?} {:?}", peer_id, address);
-					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
-					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
-					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-					for addr in info.listen_addrs {
-						swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+					for (peer_id, _multiaddr) in list {
+						println!("mDNS discover peer has expired: {peer_id}");
+						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 					}
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {

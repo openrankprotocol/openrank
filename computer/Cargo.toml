@@ -20,7 +20,6 @@ libp2p = { workspace = true, features = [
     "quic",
     "gossipsub",
     "macros",
-    "kad",
     "identify",
 ] }
 tokio = { workspace = true, features = ["full", "macros"] }

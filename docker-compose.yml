@@ -1,5 +1,7 @@
 services:
   sequencer:
+    stdin_open: true
+    tty: true
     build:
       context: .
       dockerfile: sequencer/Dockerfile

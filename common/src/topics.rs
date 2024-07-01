@@ -51,6 +51,8 @@ impl Domain {
 
 #[derive(Clone, Debug)]
 pub enum Topic {
+	DomainTrustUpdate(DomainHash),
+	DomainSeedUpdate(DomainHash),
 	DomainRequest(DomainHash),
 	DomainAssignent(DomainHash),
 	DomainCommitment(DomainHash),
@@ -64,6 +66,14 @@ impl Into<String> for Topic {
 	fn into(self) -> String {
 		let mut s = String::new();
 		match self {
+			Self::DomainTrustUpdate(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":trust_update");
+			},
+			Self::DomainSeedUpdate(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":seed_update");
+			},
 			Self::DomainRequest(domain_id) => {
 				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
 				s.push_str(":request");
