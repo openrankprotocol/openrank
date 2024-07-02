@@ -22,3 +22,5 @@ libp2p = { workspace = true, features = [
 ] }
 alloy-rlp = { workspace = true }
 alloy-rlp-derive = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

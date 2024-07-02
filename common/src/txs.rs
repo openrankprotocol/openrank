@@ -1,6 +1,7 @@
 use crate::topics::DomainHash;
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use serde::{Deserialize, Serialize};
 use std::io::Read;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -84,10 +85,10 @@ impl Tx {
 	}
 }
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct OwnedNamespace(pub [u8; 32]);
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct Address(pub [u8; 32]);
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
@@ -102,7 +103,7 @@ pub struct Signature {
 	r: [u8; 32],
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoreEntry {
 	id: Address,
 	value: f32,
@@ -129,9 +130,7 @@ impl Decodable for ScoreEntry {
 	}
 }
 
-// ---
-
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrustEntry {
 	from: Address,
 	to: Address,
