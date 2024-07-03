@@ -8,3 +8,19 @@ edition.workspace = true
 
 [dependencies]
 hex = { workspace = true }
+libp2p = { workspace = true, features = [
+    "noise",
+    "ping",
+    "tcp",
+    "tokio",
+    "yamux",
+    "quic",
+    "gossipsub",
+    "macros",
+    "mdns",
+    "identify",
+] }
+alloy-rlp = { workspace = true }
+alloy-rlp-derive = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

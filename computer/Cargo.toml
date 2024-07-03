@@ -20,10 +20,11 @@ libp2p = { workspace = true, features = [
     "quic",
     "gossipsub",
     "macros",
-    "kad",
     "identify",
 ] }
 tokio = { workspace = true, features = ["full", "macros"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 hex = { workspace = true }
+alloy-rlp = { workspace = true }
+dotenv = { workspace = true }

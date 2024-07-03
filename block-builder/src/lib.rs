@@ -1,94 +1,121 @@
+use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
-use libp2p::{
-	core::ConnectedPoint,
-	gossipsub::{self, MessageId, PublishError},
-	identify,
-	kad::{self, store::MemoryStore},
-	noise,
-	swarm::{NetworkBehaviour, SwarmEvent},
-	tcp, yamux, Multiaddr, Swarm,
-};
+use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
+	broadcast_event, build_node,
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
 		Address, CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest,
 		JobVerification, ProposedBlock, Tx, TxKind,
 	},
+	MyBehaviour, MyBehaviourEvent,
 };
-use std::{error::Error, time::Duration};
-use tokio::{
-	io::{self},
-	select,
-};
+use std::error::Error;
+use tokio::select;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-// We create a custom network behaviour.
-#[derive(NetworkBehaviour)]
-pub struct MyBehaviour {
-	gossipsub: gossipsub::Behaviour,
-	kademlia: kad::Behaviour<MemoryStore>,
-	identify: identify::Behaviour,
-}
+fn handle_gossipsub_events(
+	mut swarm: &mut Swarm<MyBehaviour>, event: gossipsub::Event, topics: Vec<&Topic>,
+) {
+	match event {
+		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
+			for topic in topics {
+				match topic {
+					Topic::DomainRequest(domain_id) => {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							assert!(tx.kind() == TxKind::JobRunRequest);
+							let job_run_request =
+								JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
+							info!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								job_run_request,
+							);
 
-async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
-	let swarm = libp2p::SwarmBuilder::with_new_identity()
-		.with_tokio()
-		.with_tcp(
-			tcp::Config::default(),
-			noise::Config::new,
-			yamux::Config::default,
-		)?
-		.with_quic()
-		.with_behaviour(|key| {
-			// Set a custom gossipsub configuration
-			let gossipsub_config = gossipsub::ConfigBuilder::default()
-				// This is set to aid debugging by not cluttering the log space
-				.heartbeat_interval(Duration::from_secs(10))
-				// This sets the kind of message validation. The default is Strict (enforce message signing)
-				.validation_mode(gossipsub::ValidationMode::Strict)
-				.build()
-				// Temporary hack because `build` does not return a proper `std::error::Error`.
-				.map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))?;
+							let assignment_topic = Topic::DomainAssignent(domain_id.clone());
+							let job_assignment = encode(JobRunAssignment::default());
+							if let Err(e) = broadcast_event(
+								&mut swarm,
+								TxKind::JobRunAssignment,
+								job_assignment,
+								assignment_topic,
+							) {
+								error!("Publish error: {e:?}");
+							}
+						}
+					},
+					Topic::DomainCommitment(_) => {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							let commitment =
+								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
+							info!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								commitment,
+							);
 
-			// build a gossipsub network behaviour
-			let gossipsub = gossipsub::Behaviour::new(
-				gossipsub::MessageAuthenticity::Signed(key.clone()),
-				gossipsub_config,
-			)?;
+							let proposed_block_topic = Topic::ProposedBlock;
+							let proposed_block = encode(ProposedBlock::default());
+							if let Err(e) = broadcast_event(
+								&mut swarm,
+								TxKind::ProposedBlock,
+								proposed_block,
+								proposed_block_topic,
+							) {
+								error!("Publish error: {e:?}");
+							}
+						}
+					},
+					Topic::DomainVerification(_) => {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							let job_verification =
+								JobVerification::decode(&mut tx.body().as_slice()).unwrap();
+							info!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								job_verification,
+							);
 
-			Ok(MyBehaviour {
-				gossipsub,
-				kademlia: kad::Behaviour::new(
-					key.public().to_peer_id(),
-					MemoryStore::new(key.public().to_peer_id()),
-				),
-				identify: identify::Behaviour::new(identify::Config::new(
-					"openrank/1.0.0".to_string(),
-					key.public(),
-				)),
-			})
-		})?
-		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::MAX))
-		.build();
-
-	Ok(swarm)
-}
-
-pub fn broadcast_event(
-	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: &Topic,
-) -> Result<MessageId, PublishError> {
-	let tx = Tx::default_with(kind, data);
-	let tx_event = TxEvent::default_with_data(tx.to_bytes());
-	let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, tx_event.to_bytes())
+							let finalised_block_topic = Topic::FinalisedBlock;
+							let finalised_block = encode(FinalisedBlock::default());
+							if let Err(e) = broadcast_event(
+								&mut swarm,
+								TxKind::FinalisedBlock,
+								finalised_block,
+								finalised_block_topic,
+							) {
+								error!("Publish error: {e:?}");
+							}
+						}
+					},
+					_ => {},
+				}
+			}
+		},
+		_ => {},
+	}
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
-	let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
 	let mut swarm = build_node().await?;
-	println!("PEER_ID: {:?}", swarm.local_peer_id());
+	info!("PEER_ID: {:?}", swarm.local_peer_id());
+
+	// Listen on all interfaces and whatever port the OS assigns
+	swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
+	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let domains = vec![Domain::new(
 		Address::default(),
@@ -118,132 +145,35 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	for topic in topics_verification.iter().chain(&topics_commitment).chain(&topics_requests) {
 		// Create a Gossipsub topic
-		let topic = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
+		let topic = gossipsub::IdentTopic::new(topic.clone());
 		// subscribes to our topic
 		swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
-	}
-
-	// Listen on all interfaces and whatever port the OS assigns
-	swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-	swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-	// Dial the peer identified by the multi-address given as the second
-	// command-line argument, if any.
-	if let Some(addr) = std::env::args().nth(1) {
-		let remote: Multiaddr = addr.parse()?;
-		swarm.dial(remote)?;
-		println!("Dialed {addr}")
 	}
 
 	// Kick it off
 	loop {
 		select! {
 			event = swarm.select_next_some() => match event {
-				SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-					println!("New peer: {:?} {:?}", peer_id, address);
-					swarm.behaviour_mut().kademlia.add_address(&peer_id, address);
-					if let Err(err) = swarm.behaviour_mut().kademlia.bootstrap() {
-						println!("Failed to bootstrap DHT: {:?}", err);
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+					for (peer_id, _multiaddr) in list {
+						info!("mDNS discovered a new peer: {peer_id}");
+						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 					}
-					swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
 				},
-				SwarmEvent::ConnectionClosed { peer_id, endpoint: ConnectedPoint::Dialer { address, .. }, ..} => {
-					println!("Connection closed: {:?} {:?}", peer_id, address);
-					swarm.behaviour_mut().kademlia.remove_address(&peer_id, &address);
-					swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-					propagation_source: peer_id,
-					message_id: id,
-					message,
-				})) => {
-					let iter_chain = topics_requests
-						.iter()
-						.chain(&topics_commitment)
-						.chain(&topics_verification);
-					for topic in iter_chain {
-						match topic {
-							Topic::DomainRequest(domain_id) => {
-								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-								if message.topic == topic_wrapper.hash() {
-									let tx_event = TxEvent::from_bytes(message.data.clone());
-									let tx = Tx::from_bytes(tx_event.data());
-									assert!(tx.kind() == TxKind::JobRunRequest);
-									let job_run_request = JobRunRequest::from_bytes(tx.body());
-									println!(
-										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-										message.topic.as_str(),
-										job_run_request,
-									);
-
-									let assignment_topic = Topic::DomainAssignent(domain_id.clone());
-									let job_assignment = JobRunAssignment::default().to_bytes();
-									if let Err(e) = broadcast_event(
-										&mut swarm,
-										TxKind::JobRunAssignment,
-										job_assignment,
-										&assignment_topic,
-									) {
-										println!("Publish error: {e:?}");
-									}
-								}
-							},
-							Topic::DomainCommitment(_) => {
-								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-								if message.topic == topic_wrapper.hash() {
-									let tx_event = TxEvent::from_bytes(message.data.clone());
-									let tx = Tx::from_bytes(tx_event.data());
-									let commitment = CreateCommitment::from_bytes(tx.body());
-									println!(
-										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-										message.topic.as_str(),
-										commitment,
-									);
-
-									let proposed_block_topic = Topic::ProposedBlock;
-									let proposed_block = ProposedBlock::default().to_bytes();
-									if let Err(e) = broadcast_event(
-										&mut swarm,
-										TxKind::ProposedBlock,
-										proposed_block,
-										&proposed_block_topic,
-									) {
-										println!("Publish error: {e:?}");
-									}
-								}
-							},
-							Topic::DomainVerification(_) => {
-								let topic_wrapper = gossipsub::IdentTopic::new(topic.to_hash().to_hex());
-								if message.topic == topic_wrapper.hash() {
-									let tx_event = TxEvent::from_bytes(message.data.clone());
-									let tx = Tx::from_bytes(tx_event.data());
-									let job_verification = JobVerification::from_bytes(tx.body());
-									println!(
-										"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-										message.topic.as_str(),
-										job_verification,
-									);
-
-									let finalised_block_topic = Topic::FinalisedBlock;
-									let finalised_block = FinalisedBlock::default().to_bytes();
-									if let Err(e) = broadcast_event(
-										&mut swarm,
-										TxKind::FinalisedBlock,
-										finalised_block,
-										&finalised_block_topic,
-									) {
-										println!("Publish error: {e:?}");
-									}
-								}
-							},
-							_ => {},
-						}
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+					for (peer_id, _multiaddr) in list {
+						info!("mDNS discover peer has expired: {peer_id}");
+						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
 					}
+				},
+				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
+					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_verification);
+					handle_gossipsub_events(&mut swarm, event, iter_chain.collect());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
-					println!("Local node is listening on {address}");
+					info!("Local node is listening on {address}");
 				},
-				_ => {}
+				e => info!("NEW_EVENT: {:?}", e),
 			}
 		}
 	}
