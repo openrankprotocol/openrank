@@ -4,7 +4,7 @@ pub mod txs;
 use alloy_rlp::encode;
 use libp2p::{
 	gossipsub::{self, MessageId, PublishError},
-	identify, mdns, noise,
+	mdns, noise,
 	swarm::NetworkBehaviour,
 	tcp, yamux, Swarm,
 };
@@ -18,7 +18,7 @@ use txs::{Tx, TxKind};
 pub struct MyBehaviour {
 	pub gossipsub: gossipsub::Behaviour,
 	pub mdns: mdns::tokio::Behaviour,
-	pub identify: identify::Behaviour,
+	// pub identify: identify::Behaviour,
 }
 
 pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
@@ -50,12 +50,12 @@ pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 			let mdns =
 				mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?;
 
-			let identify = identify::Behaviour::new(identify::Config::new(
-				"openrank/1.0.0".to_string(),
-				key.public(),
-			));
+			// let identify = identify::Behaviour::new(identify::Config::new(
+			// 	"openrank/1.0.0".to_string(),
+			// 	key.public(),
+			// ));
 
-			Ok(MyBehaviour { gossipsub, mdns, identify })
+			Ok(MyBehaviour { gossipsub, mdns })
 		})?
 		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::MAX))
 		.build();
