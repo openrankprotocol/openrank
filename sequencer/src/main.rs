@@ -18,6 +18,7 @@ mod test {
 	use serde_json::Value;
 
 	#[tokio::test]
+	#[ignore = "Used only for debugging purposes"]
 	async fn call_trust_update() {
 		let data = encode(TrustUpdate::default());
 		let kind = TxKind::TrustUpdate;
@@ -39,6 +40,7 @@ mod test {
 	}
 
 	#[tokio::test]
+	#[ignore = "Used only for debugging purposes"]
 	async fn call_seed_update() {
 		let data = encode(SeedUpdate::default());
 		let kind = TxKind::SeedUpdate;
@@ -60,6 +62,7 @@ mod test {
 	}
 
 	#[tokio::test]
+	#[ignore = "Used only for debugging purposes"]
 	async fn call_job_run_request() {
 		let data = encode(JobRunRequest::default());
 		let kind = TxKind::JobRunRequest;
