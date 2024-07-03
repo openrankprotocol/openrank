@@ -1,22 +1,16 @@
 use std::hash::{DefaultHasher, Hasher};
 
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use serde::{Deserialize, Serialize};
 
 use crate::txs::Address;
 
-#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
+#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct DomainHash(u64);
 
-impl DomainHash {
-	pub fn from_bytes(data: Vec<u8>) -> Self {
-		let mut bytes = [0; 8];
-		bytes.clone_from_slice(&data);
-		let value = u64::from_be_bytes(bytes);
+impl From<u64> for DomainHash {
+	fn from(value: u64) -> Self {
 		Self(value)
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		self.0.to_be_bytes().to_vec()
 	}
 }
 
@@ -51,6 +45,8 @@ impl Domain {
 
 #[derive(Clone, Debug)]
 pub enum Topic {
+	DomainTrustUpdate(DomainHash),
+	DomainSeedUpdate(DomainHash),
 	DomainRequest(DomainHash),
 	DomainAssignent(DomainHash),
 	DomainCommitment(DomainHash),
@@ -60,34 +56,42 @@ pub enum Topic {
 	FinalisedBlock,
 }
 
-impl Into<String> for Topic {
-	fn into(self) -> String {
+impl From<Topic> for String {
+	fn from(value: Topic) -> Self {
 		let mut s = String::new();
-		match self {
-			Self::DomainRequest(domain_id) => {
+		match value {
+			Topic::DomainTrustUpdate(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":trust_update");
+			},
+			Topic::DomainSeedUpdate(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":seed_update");
+			},
+			Topic::DomainRequest(domain_id) => {
 				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
 				s.push_str(":request");
 			},
-			Self::DomainAssignent(domain_id) => {
+			Topic::DomainAssignent(domain_id) => {
 				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
 				s.push_str(":assignment");
 			},
-			Self::DomainCommitment(domain_id) => {
+			Topic::DomainCommitment(domain_id) => {
 				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
 				s.push_str(":commitment");
 			},
-			Self::DomainScores(domain_id) => {
+			Topic::DomainScores(domain_id) => {
 				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
 				s.push_str(":scores");
 			},
-			Self::DomainVerification(domain_id) => {
+			Topic::DomainVerification(domain_id) => {
 				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
 				s.push_str(":verification");
 			},
-			Self::ProposedBlock => {
+			Topic::ProposedBlock => {
 				s.push_str("proposed_block");
 			},
-			Self::FinalisedBlock => {
+			Topic::FinalisedBlock => {
 				s.push_str("finalised_block");
 			},
 		}

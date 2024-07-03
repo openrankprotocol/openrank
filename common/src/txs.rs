@@ -1,11 +1,14 @@
 use crate::topics::DomainHash;
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use serde::{Deserialize, Serialize};
 use std::io::Read;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TxKind {
+	TrustUpdate,
+	SeedUpdate,
 	JobRunRequest,
 	JobRunAssignment,
 	CreateScores,
@@ -36,13 +39,15 @@ impl Decodable for TxKind {
 impl TxKind {
 	pub fn from_byte(byte: u8) -> Self {
 		match byte {
-			0 => Self::JobRunRequest,
-			1 => Self::JobRunAssignment,
-			2 => Self::CreateScores,
-			3 => Self::CreateCommitment,
-			4 => Self::JobVerification,
-			5 => Self::ProposedBlock,
-			6 => Self::FinalisedBlock,
+			0 => Self::TrustUpdate,
+			1 => Self::SeedUpdate,
+			2 => Self::JobRunRequest,
+			3 => Self::JobRunAssignment,
+			4 => Self::CreateScores,
+			5 => Self::CreateCommitment,
+			6 => Self::JobVerification,
+			7 => Self::ProposedBlock,
+			8 => Self::FinalisedBlock,
 			_ => panic!("Invalid message type"),
 		}
 	}
@@ -80,7 +85,10 @@ impl Tx {
 	}
 }
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+pub struct OwnedNamespace(pub [u8; 32]);
+
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct Address(pub [u8; 32]);
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
@@ -95,20 +103,20 @@ pub struct Signature {
 	r: [u8; 32],
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Entry {
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScoreEntry {
 	id: Address,
 	value: f32,
 }
 
-impl Encodable for Entry {
+impl Encodable for ScoreEntry {
 	fn encode(&self, out: &mut dyn BufMut) {
 		self.id.encode(out);
 		out.put_f32(self.value);
 	}
 }
 
-impl Decodable for Entry {
+impl Decodable for ScoreEntry {
 	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
 		let id = Address::decode(buf)?;
 		let mut value_bytes = [0; 4];
@@ -118,7 +126,37 @@ impl Decodable for Entry {
 			return RlpResult::Err(RlpError::UnexpectedLength);
 		}
 		let value = f32::from_be_bytes(value_bytes);
-		Ok(Entry { id, value })
+		Ok(ScoreEntry { id, value })
+	}
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TrustEntry {
+	from: Address,
+	to: Address,
+	value: f32,
+}
+
+impl Encodable for TrustEntry {
+	fn encode(&self, out: &mut dyn BufMut) {
+		self.from.encode(out);
+		self.to.encode(out);
+		out.put_f32(self.value);
+	}
+}
+
+impl Decodable for TrustEntry {
+	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
+		let from = Address::decode(buf)?;
+		let to = Address::decode(buf)?;
+		let mut value_bytes = [0; 4];
+		let size =
+			buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
+		if size != 4 {
+			return RlpResult::Err(RlpError::UnexpectedLength);
+		}
+		let value = f32::from_be_bytes(value_bytes);
+		Ok(TrustEntry { from, to, value })
 	}
 }
 
@@ -134,7 +172,7 @@ pub struct CreateCommitment {
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateScores {
-	entries: Vec<Entry>,
+	entries: Vec<ScoreEntry>,
 }
 
 // JOB_ID = hash(domain_id, da_block_height, from)
@@ -192,4 +230,16 @@ pub struct FinalisedBlock {
 	domain_updates: Vec<DomainUpdate>,
 	timestamp: u32,
 	block_height: u32,
+}
+
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+pub struct TrustUpdate {
+	trust_id: OwnedNamespace,
+	entries: Vec<TrustEntry>,
+}
+
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+pub struct SeedUpdate {
+	seed_id: OwnedNamespace,
+	entries: Vec<ScoreEntry>,
 }
