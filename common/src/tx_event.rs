@@ -1,6 +1,7 @@
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, RlpDecodable, RlpEncodable)]
+#[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct InclusionProof([u8; 32]);
 
 impl Default for InclusionProof {
@@ -9,7 +10,7 @@ impl Default for InclusionProof {
 	}
 }
 
-#[derive(Debug, Clone, RlpDecodable, RlpEncodable)]
+#[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct TxEvent {
 	blob_id: u64,
 	proof: InclusionProof,
