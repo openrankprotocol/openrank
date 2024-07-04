@@ -1,9 +1,7 @@
-use std::hash::{DefaultHasher, Hasher};
-
+use crate::txs::Address;
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
-
-use crate::txs::Address;
+use std::hash::{DefaultHasher, Hasher};
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct DomainHash(u64);
@@ -14,7 +12,7 @@ impl From<u64> for DomainHash {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Domain {
 	trust_owner: Address,
 	trust_suffix: String,

@@ -3,16 +3,16 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	topics::{Domain, Topic},
+	topics::Topic,
 	tx_event::TxEvent,
 	txs::{
-		Address, CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest,
-		JobVerification, ProposedBlock, Tx, TxKind,
+		CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest, JobVerification,
+		ProposedBlock, Tx, TxKind,
 	},
-	MyBehaviour, MyBehaviourEvent,
+	Config, MyBehaviour, MyBehaviourEvent,
 };
-use std::error::Error;
-use tokio::select;
+use std::{env::current_dir, error::Error};
+use tokio::{fs, select};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -117,26 +117,26 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
-	let domains = vec![Domain::new(
-		Address::default(),
-		"1".to_string(),
-		Address::default(),
-		"1".to_string(),
-		0,
-	)];
-	let topics_requests: Vec<Topic> = domains
+	let current_dir = current_dir()?;
+	let config_string = fs::read_to_string(current_dir.join("../config.toml")).await?;
+	let config: Config = toml::from_str(config_string.as_str())?;
+
+	let topics_requests: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainRequest(domain_hash.clone()))
 		.collect();
-	let topics_commitment: Vec<Topic> = domains
+	let topics_commitment: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
-	let topics_verification: Vec<Topic> = domains
+	let topics_verification: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())

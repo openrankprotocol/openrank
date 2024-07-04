@@ -1,0 +1,6 @@
+[[domains]]
+trust_owner = 0x0
+trust_suffix = "1"
+seed_owner = 0x0
+seed_suffix = "1"
+algo = 1

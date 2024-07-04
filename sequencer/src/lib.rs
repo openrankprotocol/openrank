@@ -127,11 +127,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	let (sender, mut receiver) = mpsc::channel(100);
 	let sequencer = Arc::new(Sequencer::new(sender.clone()));
-	let server = Server::builder("tcp://127.0.0.1:60000")
-		.expect("create new server builder")
-		.service(sequencer)
-		.build()
-		.await?;
+	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 	server.start();
 
 	// Kick it off

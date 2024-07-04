@@ -29,3 +29,5 @@ hex = { workspace = true }
 rand = { workspace = true }
 alloy-rlp = { workspace = true }
 dotenv = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true, features = ["derive"] }

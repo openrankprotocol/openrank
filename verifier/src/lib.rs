@@ -3,16 +3,16 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	topics::{Domain, Topic},
+	topics::Topic,
+	tx_event::TxEvent,
 	txs::{
 		CreateCommitment, CreateScores, FinalisedBlock, JobRunAssignment, JobVerification,
 		ProposedBlock, SeedUpdate, TrustUpdate, Tx, TxKind,
 	},
-	MyBehaviour, MyBehaviourEvent,
+	Config, MyBehaviour, MyBehaviourEvent,
 };
-use openrank_common::{tx_event::TxEvent, txs::Address};
-use std::error::Error;
-use tokio::select;
+use std::{env::current_dir, error::Error};
+use tokio::{fs, select};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -147,38 +147,40 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-	let domains = vec![Domain::new(
-		Address::default(),
-		"1".to_string(),
-		Address::default(),
-		"1".to_string(),
-		0,
-	)];
-	let topics_trust_update: Vec<Topic> = domains
+	let current_dir = current_dir()?;
+	let config_string = fs::read_to_string(current_dir.join("../config.toml")).await?;
+	let config: Config = toml::from_str(config_string.as_str())?;
+
+	let topics_trust_update: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainTrustUpdate(domain_hash.clone()))
 		.collect();
-	let topics_seed_update: Vec<Topic> = domains
+	let topics_seed_update: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainSeedUpdate(domain_hash.clone()))
 		.collect();
-	let topics_assignment: Vec<Topic> = domains
+	let topics_assignment: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
 		.collect();
-	let topics_scores: Vec<Topic> = domains
+	let topics_scores: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
 		.collect();
-	let topics_commitment: Vec<Topic> = domains
+	let topics_commitment: Vec<Topic> = config
+		.domains
 		.clone()
 		.into_iter()
 		.map(|x| x.to_hash())
