@@ -1,9 +1,18 @@
 use std::hash::{DefaultHasher, Hasher};
 
+use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use serde::{Deserialize, Serialize};
+
 use crate::txs::Address;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct DomainHash(u64);
+
+impl From<u64> for DomainHash {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
 
 #[derive(Clone, Debug)]
 pub struct Domain {
@@ -34,53 +43,58 @@ impl Domain {
 	}
 }
 
-pub struct TopicHash(u64);
-
-impl TopicHash {
-	pub fn to_hex(&self) -> String {
-		hex::encode(self.0.to_be_bytes())
-	}
-}
-
 #[derive(Clone, Debug)]
 pub enum Topic {
+	DomainTrustUpdate(DomainHash),
+	DomainSeedUpdate(DomainHash),
+	DomainRequest(DomainHash),
 	DomainAssignent(DomainHash),
 	DomainCommitment(DomainHash),
 	DomainScores(DomainHash),
 	DomainVerification(DomainHash),
+	ProposedBlock,
+	FinalisedBlock,
 }
 
-impl Topic {
-	pub fn to_hash(&self) -> TopicHash {
-		let mut s = DefaultHasher::new();
-		match self {
-			Self::DomainAssignent(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("assignment".as_bytes());
+impl From<Topic> for String {
+	fn from(value: Topic) -> Self {
+		let mut s = String::new();
+		match value {
+			Topic::DomainTrustUpdate(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":trust_update");
 			},
-			Self::DomainCommitment(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("commitment".as_bytes());
+			Topic::DomainSeedUpdate(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":seed_update");
 			},
-			Self::DomainScores(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("scores".as_bytes());
+			Topic::DomainRequest(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":request");
 			},
-			Self::DomainVerification(domain_id) => {
-				s.write(&domain_id.0.to_be_bytes());
-				s.write("verification".as_bytes());
+			Topic::DomainAssignent(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":assignment");
+			},
+			Topic::DomainCommitment(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":commitment");
+			},
+			Topic::DomainScores(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":scores");
+			},
+			Topic::DomainVerification(domain_id) => {
+				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(":verification");
+			},
+			Topic::ProposedBlock => {
+				s.push_str("proposed_block");
+			},
+			Topic::FinalisedBlock => {
+				s.push_str("finalised_block");
 			},
 		}
-		let res = s.finish();
-		TopicHash(res)
-	}
-
-	pub fn get_domain_id(&self) -> DomainHash {
-		match self {
-			Self::DomainAssignent(domain_id) => domain_id.to_owned(),
-			Self::DomainCommitment(domain_id) => domain_id.to_owned(),
-			Self::DomainScores(domain_id) => domain_id.to_owned(),
-			Self::DomainVerification(domain_id) => domain_id.to_owned(),
-		}
+		s
 	}
 }

@@ -1,60 +1,73 @@
 pub mod topics;
+pub mod tx_event;
 pub mod txs;
+use alloy_rlp::encode;
+use libp2p::{
+	gossipsub::{self, MessageId, PublishError},
+	mdns, noise,
+	swarm::NetworkBehaviour,
+	tcp, yamux, Swarm,
+};
+use std::{error::Error, io, time::Duration};
+use topics::Topic;
+use tx_event::TxEvent;
+use txs::{Tx, TxKind};
 
-pub struct InclusionProof([u8; 32]);
-
-impl InclusionProof {
-	pub fn from_bytes(data: Vec<u8>) -> Self {
-		let mut bytes = [0; 32];
-		bytes.copy_from_slice(data.as_slice());
-		Self(bytes)
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		self.0.to_vec()
-	}
+// We create a custom network behaviour.
+#[derive(NetworkBehaviour)]
+pub struct MyBehaviour {
+	pub gossipsub: gossipsub::Behaviour,
+	pub mdns: mdns::tokio::Behaviour,
+	// pub identify: identify::Behaviour,
 }
 
-impl Default for InclusionProof {
-	fn default() -> Self {
-		Self([0; 32])
-	}
+pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
+	let swarm = libp2p::SwarmBuilder::with_new_identity()
+		.with_tokio()
+		.with_tcp(
+			tcp::Config::default(),
+			noise::Config::new,
+			yamux::Config::default,
+		)?
+		.with_quic()
+		.with_behaviour(|key| {
+			// Set a custom gossipsub configuration
+			let gossipsub_config = gossipsub::ConfigBuilder::default()
+				// This is set to aid debugging by not cluttering the log space
+				.heartbeat_interval(Duration::from_secs(15))
+				// This sets the kind of message validation. The default is Strict (enforce message signing)
+				.validation_mode(gossipsub::ValidationMode::Strict)
+				.build()
+				// Temporary hack because `build` does not return a proper `std::error::Error`.
+				.map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))?;
+
+			// build a gossipsub network behaviour
+			let gossipsub = gossipsub::Behaviour::new(
+				gossipsub::MessageAuthenticity::Signed(key.clone()),
+				gossipsub_config,
+			)?;
+
+			let mdns =
+				mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?;
+
+			// let identify = identify::Behaviour::new(identify::Config::new(
+			// 	"openrank/1.0.0".to_string(),
+			// 	key.public(),
+			// ));
+
+			Ok(MyBehaviour { gossipsub, mdns })
+		})?
+		.with_swarm_config(|c| c.with_idle_connection_timeout(Duration::MAX))
+		.build();
+
+	Ok(swarm)
 }
 
-pub struct TxEvent {
-	blob_id: u64,
-	proof: InclusionProof,
-	data: Vec<u8>,
-}
-
-impl TxEvent {
-	pub fn new(blob_id: u64, proof: InclusionProof, data: Vec<u8>) -> Self {
-		Self { blob_id, proof, data }
-	}
-
-	pub fn default_with_data(data: Vec<u8>) -> Self {
-		Self { blob_id: 0, proof: InclusionProof::default(), data }
-	}
-
-	pub fn data(&self) -> Vec<u8> {
-		self.data.clone()
-	}
-
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let mut blob_id_bytes = [0; 8];
-		blob_id_bytes.copy_from_slice(&data.drain(..8).as_slice());
-		let blob_id = u64::from_be_bytes(blob_id_bytes);
-
-		let proof = InclusionProof::from_bytes(data.drain(..32).into_iter().collect());
-
-		Self { blob_id, proof, data }
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut bytes = Vec::new();
-		bytes.extend(self.blob_id.to_be_bytes());
-		bytes.extend(self.proof.to_bytes());
-		bytes.extend(&self.data);
-		bytes
-	}
+pub fn broadcast_event(
+	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: Topic,
+) -> Result<MessageId, PublishError> {
+	let tx = Tx::default_with(kind, data);
+	let tx_event = TxEvent::default_with_data(encode(tx));
+	let topic_wrapper = gossipsub::IdentTopic::new(topic);
+	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))
 }

@@ -1,372 +1,245 @@
-#[derive(Debug, Clone)]
+use crate::topics::DomainHash;
+use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
+use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use serde::{Deserialize, Serialize};
+use std::io::Read;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TxKind {
+	TrustUpdate,
+	SeedUpdate,
+	JobRunRequest,
+	JobRunAssignment,
+	CreateScores,
+	CreateCommitment,
+	JobVerification,
+	ProposedBlock,
+	FinalisedBlock,
+}
+
+impl Encodable for TxKind {
+	fn encode(&self, out: &mut dyn BufMut) {
+		out.put_u8(*self as u8);
+	}
+}
+
+impl Decodable for TxKind {
+	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
+		let mut bytes = [0; 1];
+		let size = buf.read(&mut bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
+		if size != 1 {
+			return RlpResult::Err(RlpError::UnexpectedLength);
+		}
+
+		Ok(TxKind::from_byte(bytes[0]))
+	}
+}
+
+impl TxKind {
+	pub fn from_byte(byte: u8) -> Self {
+		match byte {
+			0 => Self::TrustUpdate,
+			1 => Self::SeedUpdate,
+			2 => Self::JobRunRequest,
+			3 => Self::JobRunAssignment,
+			4 => Self::CreateScores,
+			5 => Self::CreateCommitment,
+			6 => Self::JobVerification,
+			7 => Self::ProposedBlock,
+			8 => Self::FinalisedBlock,
+			_ => panic!("Invalid message type"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
+pub struct Tx {
+	nonce: u64,
+	from: Address,
+	// Use 0x0 for transactions intended to be processed by the network
+	to: Address,
+	kind: TxKind,
+	body: Vec<u8>,
+	signature: Signature,
+}
+
+impl Tx {
+	pub fn default_with(kind: TxKind, body: Vec<u8>) -> Self {
+		Self {
+			nonce: 0,
+			from: Address::default(),
+			to: Address::default(),
+			kind,
+			body,
+			signature: Signature::default(),
+		}
+	}
+
+	pub fn kind(&self) -> TxKind {
+		self.kind
+	}
+
+	pub fn body(&self) -> Vec<u8> {
+		self.body.clone()
+	}
+}
+
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+pub struct OwnedNamespace(pub [u8; 32]);
+
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct Address(pub [u8; 32]);
 
-impl Default for Address {
-	fn default() -> Self {
-		Self([0; 32])
-	}
-}
-
-impl Address {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let mut bytes = [0; 32];
-		bytes.copy_from_slice(data.drain(..32).as_slice());
-		Self(bytes)
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		self.0.to_vec()
-	}
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
 pub struct TxHash([u8; 32]);
 
-impl Default for TxHash {
-	fn default() -> Self {
-		Self([0; 32])
-	}
-}
-
-impl TxHash {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let mut bytes = [0; 32];
-		bytes.copy_from_slice(data.drain(..32).as_slice());
-		Self(bytes)
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		self.0.to_vec()
-	}
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
 pub struct RootHash([u8; 32]);
 
-impl Default for RootHash {
-	fn default() -> Self {
-		Self([0; 32])
-	}
-}
-
-impl RootHash {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let mut bytes = [0; 32];
-		bytes.copy_from_slice(data.drain(..32).as_slice());
-		Self(bytes)
-	}
-
-	fn to_bytes(&self) -> Vec<u8> {
-		self.0.to_vec()
-	}
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
 pub struct Signature {
 	s: [u8; 32],
 	r: [u8; 32],
 }
 
-impl Default for Signature {
-	fn default() -> Self {
-		Self { s: [0; 32], r: [0; 32] }
-	}
-}
-
-impl Signature {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let mut s_bytes = [0; 32];
-		let mut r_bytes = [0; 32];
-		s_bytes.copy_from_slice(data.drain(..32).as_slice());
-		r_bytes.copy_from_slice(data.drain(..32).as_slice());
-		Self { s: s_bytes, r: r_bytes }
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut bytes = Vec::new();
-		bytes.extend_from_slice(&self.s);
-		bytes.extend_from_slice(&self.r);
-		bytes
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct Entry {
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScoreEntry {
 	id: Address,
 	value: f32,
 }
 
-impl Default for Entry {
-	fn default() -> Self {
-		Self { id: Address::default(), value: 0. }
+impl Encodable for ScoreEntry {
+	fn encode(&self, out: &mut dyn BufMut) {
+		self.id.encode(out);
+		out.put_f32(self.value);
 	}
 }
 
-impl Entry {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let address = Address::from_bytes(data.drain(..32).into_iter().collect());
+impl Decodable for ScoreEntry {
+	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
+		let id = Address::decode(buf)?;
 		let mut value_bytes = [0; 4];
-		value_bytes.copy_from_slice(data.drain(..4).as_slice());
+		let size =
+			buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
+		if size != 4 {
+			return RlpResult::Err(RlpError::UnexpectedLength);
+		}
 		let value = f32::from_be_bytes(value_bytes);
-		Self { id: address, value }
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut bytes = Vec::new();
-		bytes.extend(self.id.to_bytes());
-		bytes.extend_from_slice(&self.value.to_be_bytes());
-		bytes
+		Ok(ScoreEntry { id, value })
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TrustEntry {
+	from: Address,
+	to: Address,
+	value: f32,
+}
+
+impl Encodable for TrustEntry {
+	fn encode(&self, out: &mut dyn BufMut) {
+		self.from.encode(out);
+		self.to.encode(out);
+		out.put_f32(self.value);
+	}
+}
+
+impl Decodable for TrustEntry {
+	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
+		let from = Address::decode(buf)?;
+		let to = Address::decode(buf)?;
+		let mut value_bytes = [0; 4];
+		let size =
+			buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
+		if size != 4 {
+			return RlpResult::Err(RlpError::UnexpectedLength);
+		}
+		let value = f32::from_be_bytes(value_bytes);
+		Ok(TrustEntry { from, to, value })
+	}
+}
+
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateCommitment {
-	tx_hash: TxHash,
 	job_run_assignment_tx_hash: TxHash,
 	lt_root_hash: RootHash,
 	compute_root_hash: RootHash,
 	scores_tx_hashes: Vec<TxHash>,
 	new_trust_tx_hashes: Vec<TxHash>,
 	new_seed_tx_hashes: Vec<TxHash>,
-	signature: Signature,
 }
 
-impl Default for CreateCommitment {
-	fn default() -> Self {
-		Self {
-			tx_hash: TxHash::default(),
-			job_run_assignment_tx_hash: TxHash::default(),
-			lt_root_hash: RootHash::default(),
-			compute_root_hash: RootHash::default(),
-			scores_tx_hashes: Vec::new(),
-			new_trust_tx_hashes: Vec::new(),
-			new_seed_tx_hashes: Vec::new(),
-			signature: Signature::default(),
-		}
-	}
-}
-
-impl CreateCommitment {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
-		let jra_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
-		let lt_root_hash = RootHash::from_bytes(data.drain(..32).into_iter().collect());
-		let c_root_hash = RootHash::from_bytes(data.drain(..32).into_iter().collect());
-
-		let scores_len = data.drain(..1).as_slice()[0];
-		let scores_txs = data.drain(..(scores_len * 32) as usize);
-
-		let scores_tx_bytes: Vec<u8> = scores_txs.into_iter().collect();
-		let mut scores_tx = Vec::new();
-		for chunk in scores_tx_bytes.chunks(32) {
-			let score_tx_hash = TxHash::from_bytes(chunk.to_vec());
-			scores_tx.push(score_tx_hash);
-		}
-
-		let new_trust_len = data.drain(..1).as_slice()[0];
-		let new_trust_txs = data.drain(..(new_trust_len * 32) as usize);
-
-		let new_trust_tx_bytes: Vec<u8> = new_trust_txs.into_iter().collect();
-		let mut new_trust_txs = Vec::new();
-		for chunk in new_trust_tx_bytes.chunks(32) {
-			let new_trust_tx_hash = TxHash::from_bytes(chunk.to_vec());
-			new_trust_txs.push(new_trust_tx_hash);
-		}
-
-		let new_seed_len = data.drain(..1).as_slice()[0];
-		let new_seed_txs = data.drain(..(new_seed_len * 32) as usize);
-
-		let new_seed_txs_bytes: Vec<u8> = new_seed_txs.into_iter().collect();
-		let mut new_seed_txs = Vec::new();
-		for chunk in new_seed_txs_bytes.chunks(32) {
-			let new_seed_tx_hash = TxHash::from_bytes(chunk.to_vec());
-			new_seed_txs.push(new_seed_tx_hash);
-		}
-
-		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
-		Self {
-			tx_hash,
-			job_run_assignment_tx_hash: jra_tx_hash,
-			lt_root_hash,
-			compute_root_hash: c_root_hash,
-			scores_tx_hashes: scores_tx,
-			new_trust_tx_hashes: new_trust_txs,
-			new_seed_tx_hashes: new_seed_txs,
-			signature,
-		}
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut bytes = Vec::new();
-		bytes.extend(self.tx_hash.to_bytes());
-		bytes.extend(self.job_run_assignment_tx_hash.to_bytes());
-		bytes.extend(self.lt_root_hash.to_bytes());
-		bytes.extend(self.compute_root_hash.to_bytes());
-
-		let scores_len = self.scores_tx_hashes.len() as u8;
-		bytes.push(scores_len);
-		for tx in &self.scores_tx_hashes {
-			bytes.extend(tx.to_bytes());
-		}
-
-		let new_trust_len = self.new_trust_tx_hashes.len() as u8;
-		bytes.push(new_trust_len);
-		for tx in &self.new_trust_tx_hashes {
-			bytes.extend(tx.to_bytes());
-		}
-
-		let new_seed_len = self.new_seed_tx_hashes.len() as u8;
-		bytes.push(new_seed_len);
-		for tx in &self.new_seed_tx_hashes {
-			bytes.extend(tx.to_bytes());
-		}
-
-		bytes.extend(self.signature.to_bytes());
-
-		bytes
-	}
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateScores {
-	tx_hash: TxHash,
-	entries: Vec<Entry>,
-	signature: Signature,
+	entries: Vec<ScoreEntry>,
 }
 
-impl Default for CreateScores {
-	fn default() -> Self {
-		Self { tx_hash: TxHash::default(), entries: Vec::new(), signature: Signature::default() }
-	}
+// JOB_ID = hash(domain_id, da_block_height, from)
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+pub struct JobRunRequest {
+	domain_id: DomainHash,
+	da_block_height: u32,
 }
 
-impl CreateScores {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
-
-		let entries_len = data.drain(..1).as_slice()[0];
-		let entries_txs = data.drain(..(entries_len * (32 + 4)) as usize);
-
-		let entries_txs_bytes: Vec<u8> = entries_txs.into_iter().collect();
-		let mut entries_txs = Vec::new();
-		for chunk in entries_txs_bytes.chunks(32 + 4) {
-			let mut chunk_vec = chunk.to_vec();
-			let entry_address = Address::from_bytes(chunk_vec.drain(..32).into_iter().collect());
-			let mut entry_value_bytes: [u8; 4] = [0; 4];
-			entry_value_bytes.copy_from_slice(chunk_vec.drain(..4).as_slice());
-			let entry_value = f32::from_be_bytes(entry_value_bytes);
-			entries_txs.push(Entry { id: entry_address, value: entry_value });
-		}
-
-		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
-
-		Self { tx_hash, entries: entries_txs, signature }
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut bytes = Vec::new();
-		bytes.extend(self.tx_hash.to_bytes());
-
-		let entries_len = self.entries.len() as u8;
-		bytes.push(entries_len);
-		for tx in &self.entries {
-			bytes.extend(tx.to_bytes());
-		}
-
-		bytes.extend(self.signature.to_bytes());
-
-		bytes
-	}
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct JobRunAssignment {
-	tx_hash: TxHash,
 	job_run_request_tx_hash: TxHash,
 	assigned_compute_node: Address,
 	assigned_verifier_node: Address,
-	signature: Signature,
 }
 
-impl Default for JobRunAssignment {
-	fn default() -> Self {
-		Self {
-			tx_hash: TxHash::default(),
-			job_run_request_tx_hash: TxHash::default(),
-			assigned_compute_node: Address::default(),
-			assigned_verifier_node: Address::default(),
-			signature: Signature::default(),
-		}
-	}
-}
-
-impl JobRunAssignment {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
-		let job_run_request_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
-
-		let assigned_compute_node = Address::from_bytes(data.drain(..32).into_iter().collect());
-		let assigned_verifier_node = Address::from_bytes(data.drain(..32).into_iter().collect());
-
-		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
-
-		Self {
-			tx_hash,
-			job_run_request_tx_hash,
-			assigned_compute_node,
-			assigned_verifier_node,
-			signature,
-		}
-	}
-
-	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut bytes = Vec::new();
-		bytes.extend(self.tx_hash.to_bytes());
-		bytes.extend(self.job_run_request_tx_hash.to_bytes());
-		bytes.extend(self.assigned_compute_node.to_bytes());
-		bytes.extend(self.assigned_verifier_node.to_bytes());
-		bytes.extend(self.signature.to_bytes());
-		bytes
-	}
-}
-
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
 pub struct JobVerification {
-	tx_hash: TxHash,
 	job_run_assignment_tx_hash: TxHash,
 	verification_result: bool,
-	signature: Signature,
 }
 
 impl Default for JobVerification {
 	fn default() -> Self {
-		Self {
-			tx_hash: TxHash::default(),
-			job_run_assignment_tx_hash: TxHash::default(),
-			verification_result: true,
-			signature: Signature::default(),
-		}
+		Self { job_run_assignment_tx_hash: TxHash::default(), verification_result: true }
 	}
 }
 
-impl JobVerification {
-	pub fn from_bytes(mut data: Vec<u8>) -> Self {
-		let tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
-		let job_run_assignment_tx_hash = TxHash::from_bytes(data.drain(..32).into_iter().collect());
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+struct PendingDomainUpdate {
+	domain_id: DomainHash,
+	commitment_tx_hash: TxHash,
+}
 
-		let verification_result_byte = data.drain(..1).as_slice()[0];
-		let verification_result = if verification_result_byte == 1 { true } else { false };
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+struct DomainUpdate {
+	domain_id: DomainHash,
+	commitment_tx_hash: TxHash,
+	verification_results_tx_hashes: Vec<TxHash>,
+}
 
-		let signature = Signature::from_bytes(data.drain(..64).into_iter().collect());
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+pub struct ProposedBlock {
+	previous_block_hash: TxHash,
+	state_root: RootHash,
+	pending_domain_updates: Vec<PendingDomainUpdate>,
+	timestamp: u32,
+	block_height: u32,
+}
 
-		Self { tx_hash, job_run_assignment_tx_hash, verification_result, signature }
-	}
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+pub struct FinalisedBlock {
+	previous_block_hash: TxHash,
+	state_root: RootHash,
+	domain_updates: Vec<DomainUpdate>,
+	timestamp: u32,
+	block_height: u32,
+}
 
-	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut bytes = Vec::new();
-		bytes.extend(self.tx_hash.to_bytes());
-		bytes.extend(self.job_run_assignment_tx_hash.to_bytes());
-		bytes.push(if self.verification_result { 1 } else { 0 });
-		bytes.extend(self.signature.to_bytes());
-		bytes
-	}
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+pub struct TrustUpdate {
+	trust_id: OwnedNamespace,
+	entries: Vec<TrustEntry>,
+}
+
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+pub struct SeedUpdate {
+	seed_id: OwnedNamespace,
+	entries: Vec<ScoreEntry>,
 }
