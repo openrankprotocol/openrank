@@ -1,4 +1,4 @@
 [toolchain]
 channel = "1.78.0"
 components = ["rustfmt", "clippy", "rust-analysis"]
-targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+targets = ["aarch64-apple-darwin"]

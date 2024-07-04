@@ -1,0 +1,64 @@
+services:
+  sequencer:
+    stdin_open: true
+    tty: true
+    build:
+      context: .
+      dockerfile: sequencer/Dockerfile
+    container_name: sequencer
+    environment:
+      - RUST_LOG=info
+      - INSTANCE_NAME=sequencer
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    networks:
+      - openrank-network
+  block-builder:
+    build:
+      context: .
+      dockerfile: block-builder/Dockerfile
+    container_name: block-builder
+    environment:
+      - SEQUENCER_ADDR=/ip4/192.168.96.2/tcp/8000
+      - RUST_LOG=info
+      - INSTANCE_NAME=block-builder
+      - PORT=9000
+    ports:
+      - "9000:9000"
+    networks:
+      - openrank-network
+
+  verifier-1:
+    build:
+      context: .
+      dockerfile: verifier/Dockerfile
+    container_name: verifier-1
+    environment:
+      - SEQUENCER_ADDR=/ip4/192.168.96.2/tcp/8000
+      - RUST_LOG=info
+      - INSTANCE_NAME=verifier-1
+      - PORT=11001
+    ports:
+      - "11001:11001"
+    networks:
+      - openrank-network
+
+  computer:
+    build:
+      context: .
+      dockerfile: computer/Dockerfile
+    container_name: computer
+    environment:
+      - SEQUENCER_ADDR=/ip4/192.168.96.2/tcp/8000
+      - RUST_LOG=info
+      - INSTANCE_NAME=computer
+      - PORT=10000
+    ports:
+      - "10000:10000"
+    networks:
+      - openrank-network
+
+networks:
+  openrank-network:
+    driver: bridge
