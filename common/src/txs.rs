@@ -1,6 +1,7 @@
 use crate::topics::DomainHash;
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
@@ -90,6 +91,14 @@ pub struct OwnedNamespace(pub [u8; 32]);
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct Address(pub [u8; 32]);
+
+impl FromHex for Address {
+	type Error = hex::FromHexError;
+
+	fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+		Ok(Address(<[u8; 32]>::from_hex(hex)?))
+	}
+}
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
 pub struct TxHash([u8; 32]);

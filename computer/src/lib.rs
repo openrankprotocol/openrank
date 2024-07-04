@@ -11,8 +11,8 @@ use openrank_common::{
 	},
 	Config, MyBehaviour, MyBehaviourEvent,
 };
-use std::{env::current_dir, error::Error};
-use tokio::{fs, select};
+use std::error::Error;
+use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -136,9 +136,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-	let current_dir = current_dir()?;
-	let config_string = fs::read_to_string(current_dir.join("../config.toml")).await?;
-	let config: Config = toml::from_str(config_string.as_str())?;
+	let config: Config = toml::from_str(include_str!("../config.toml"))?;
 
 	let topics_trust_update: Vec<Topic> = config
 		.domains

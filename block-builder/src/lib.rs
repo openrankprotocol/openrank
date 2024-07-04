@@ -11,8 +11,8 @@ use openrank_common::{
 	},
 	Config, MyBehaviour, MyBehaviourEvent,
 };
-use std::{env::current_dir, error::Error};
-use tokio::{fs, select};
+use std::error::Error;
+use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -117,9 +117,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
-	let current_dir = current_dir()?;
-	let config_string = fs::read_to_string(current_dir.join("../config.toml")).await?;
-	let config: Config = toml::from_str(config_string.as_str())?;
+	let config: Config = toml::from_str(include_str!("../config.toml"))?;
 
 	let topics_requests: Vec<Topic> = config
 		.domains
