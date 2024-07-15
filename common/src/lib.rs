@@ -11,6 +11,7 @@ use libp2p::{
 use serde::{Deserialize, Serialize};
 use std::{error::Error, io, time::Duration};
 use topics::{Domain, Topic};
+use tracing::info;
 use tx_event::TxEvent;
 use txs::{Tx, TxKind};
 
@@ -72,6 +73,7 @@ pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 pub fn broadcast_event(
 	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: Topic,
 ) -> Result<MessageId, PublishError> {
+	info!("PUBLSH: {:?}", topic.clone());
 	let tx = Tx::default_with(kind, data);
 	let tx_event = TxEvent::default_with_data(encode(tx));
 	let topic_wrapper = gossipsub::IdentTopic::new(topic);

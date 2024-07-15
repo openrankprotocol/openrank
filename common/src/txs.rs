@@ -1,7 +1,7 @@
 use crate::topics::DomainHash;
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
-use hex::FromHex;
+use hex::{FromHex, ToHex};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
@@ -90,7 +90,7 @@ impl Tx {
 pub struct OwnedNamespace(pub [u8; 32]);
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
-pub struct Address(pub [u8; 32]);
+pub struct Address(#[serde(with = "hex")] pub [u8; 32]);
 
 impl FromHex for Address {
 	type Error = hex::FromHexError;
