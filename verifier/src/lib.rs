@@ -3,6 +3,7 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
+	db::{Db, DbItem},
 	topics::Topic,
 	tx_event::TxEvent,
 	txs::{
@@ -17,7 +18,7 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 fn handle_gossipsub_events(
-	mut swarm: &mut Swarm<MyBehaviour>, event: gossipsub::Event, topics: Vec<&Topic>,
+	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
 ) {
 	match event {
 		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
@@ -27,7 +28,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							assert!(tx.kind() == TxKind::TrustUpdate);
 							let trust_update =
 								TrustUpdate::decode(&mut tx.body().as_slice()).unwrap();
@@ -42,7 +47,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							assert!(tx.kind() == TxKind::SeedUpdate);
 							let seed_update =
 								SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
@@ -57,7 +66,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							let job_run_assignment =
 								JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -71,7 +84,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							let create_scores =
 								CreateScores::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -85,7 +102,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							let create_commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -109,7 +130,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(Topic::ProposedBlock);
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							let proposed_block =
 								ProposedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -123,7 +148,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(Topic::FinalisedBlock);
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							let finalised_block =
 								FinalisedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -148,6 +177,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+	let db = Db::new(
+		"./local-db",
+		&[Tx::get_cf().as_str(), TxEvent::get_cf().as_str()],
+	)?;
 
 	let topics_trust_update: Vec<Topic> = config
 		.domains
@@ -220,7 +253,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					handle_gossipsub_events(&mut swarm, event, iter_chain.clone().collect());
+					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.clone().collect());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");
