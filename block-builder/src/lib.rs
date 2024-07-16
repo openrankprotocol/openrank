@@ -3,7 +3,7 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	db::Db,
+	db::{Db, DbItem},
 	topics::Topic,
 	tx_event::TxEvent,
 	txs::{
@@ -132,7 +132,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
 
-	let db = Db::new("./local-db")?;
+	let db = Db::new(
+		"./local-db",
+		&[Tx::get_cf().as_str(), TxEvent::get_cf().as_str()],
+	)?;
 
 	let topics_requests: Vec<Topic> = config
 		.domains

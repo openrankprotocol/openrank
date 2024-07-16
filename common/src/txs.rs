@@ -103,6 +103,10 @@ impl DbItem for Tx {
 	fn get_key(&self) -> Vec<u8> {
 		self.hash()
 	}
+
+	fn get_cf() -> String {
+		"tx".to_string()
+	}
 }
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]

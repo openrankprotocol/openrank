@@ -36,4 +36,8 @@ impl DbItem for TxEvent {
 		let result = hasher.finalize();
 		result.to_vec()
 	}
+
+	fn get_cf() -> String {
+		"tx_event".to_string()
+	}
 }

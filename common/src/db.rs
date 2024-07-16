@@ -1,4 +1,4 @@
-use rocksdb::{Error as RocksDBError, IteratorMode, DB};
+use rocksdb::{Error as RocksDBError, IteratorMode, Options, DB};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
@@ -13,7 +13,6 @@ pub enum DbError {
 impl StdError for DbError {}
 
 impl Display for DbError {
-	// This trait requires `fmt` with this exact signature.
 	fn fmt(&self, f: &mut Formatter) -> FmtResult {
 		match self {
 			Self::RocksDB(e) => write!(f, "{}", e),
@@ -24,6 +23,7 @@ impl Display for DbError {
 
 pub trait DbItem {
 	fn get_key(&self) -> Vec<u8>;
+	fn get_cf() -> String;
 }
 
 pub struct Db {
@@ -31,15 +31,16 @@ pub struct Db {
 }
 
 impl Db {
-	pub fn new(path: &str) -> Result<Self, DbError> {
-		let db = DB::open_default(path).map_err(|e| DbError::RocksDB(e))?;
+	pub fn new(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
+		let db = DB::open_cf(&Options::default(), path, cfs).map_err(|e| DbError::RocksDB(e))?;
 		Ok(Self { connection: db })
 	}
 
 	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
+		let cf = self.connection.cf_handle(I::get_cf().as_str()).unwrap();
 		let key = item.get_key();
 		let value = to_vec(&item).map_err(|e| DbError::Serde(e))?;
-		self.connection.put(key, value).map_err(|e| DbError::RocksDB(e))
+		self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
 	}
 
 	pub fn read_from_start<I: DbItem + DeserializeOwned>(&self, num_elements: usize) -> Vec<I> {
