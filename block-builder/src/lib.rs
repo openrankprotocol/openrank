@@ -3,6 +3,7 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
+	db::Db,
 	topics::Topic,
 	tx_event::TxEvent,
 	txs::{
@@ -17,7 +18,7 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 fn handle_gossipsub_events(
-	mut swarm: &mut Swarm<MyBehaviour>, event: gossipsub::Event, topics: Vec<&Topic>,
+	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
 ) {
 	match event {
 		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
@@ -27,7 +28,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							assert!(tx.kind() == TxKind::JobRunRequest);
 							let job_run_request =
 								JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
@@ -53,7 +58,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							let commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -78,7 +87,11 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							// Save to local DB
+							db.put(tx.clone()).unwrap();
 							let job_verification =
 								JobVerification::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -118,6 +131,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+
+	let db = Db::new("./local-db")?;
 
 	let topics_requests: Vec<Topic> = config
 		.domains
@@ -166,7 +181,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
 					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_verification);
-					handle_gossipsub_events(&mut swarm, event, iter_chain.collect());
+					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

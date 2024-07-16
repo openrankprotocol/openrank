@@ -1,6 +1,8 @@
+pub mod db;
 pub mod topics;
 pub mod tx_event;
 pub mod txs;
+
 use alloy_rlp::encode;
 use libp2p::{
 	gossipsub::{self, MessageId, PublishError},

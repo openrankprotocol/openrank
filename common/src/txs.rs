@@ -1,11 +1,13 @@
+use crate::db::DbItem;
 use crate::topics::DomainHash;
-use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
+use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
-use hex::{FromHex, ToHex};
+use hex::FromHex;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use std::io::Read;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TxKind {
 	TrustUpdate,
@@ -54,7 +56,7 @@ impl TxKind {
 	}
 }
 
-#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct Tx {
 	nonce: u64,
 	from: Address,
@@ -84,10 +86,27 @@ impl Tx {
 	pub fn body(&self) -> Vec<u8> {
 		self.body.clone()
 	}
+
+	pub fn hash(&self) -> Vec<u8> {
+		let mut hasher = Keccak256::new();
+		hasher.update(&self.nonce.to_be_bytes());
+		hasher.update(encode(&self.from));
+		hasher.update(encode(&self.to));
+		hasher.update(encode(self.kind));
+		hasher.update(&self.body);
+		let result = hasher.finalize();
+		result.to_vec()
+	}
+}
+
+impl DbItem for Tx {
+	fn get_key(&self) -> Vec<u8> {
+		self.hash()
+	}
 }
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
-pub struct OwnedNamespace(pub [u8; 32]);
+pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 32]);
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct Address(#[serde(with = "hex")] pub [u8; 32]);
@@ -100,13 +119,13 @@ impl FromHex for Address {
 	}
 }
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
-pub struct TxHash([u8; 32]);
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+pub struct TxHash(#[serde(with = "hex")] [u8; 32]);
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
-pub struct RootHash([u8; 32]);
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+pub struct RootHash(#[serde(with = "hex")] [u8; 32]);
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct Signature {
 	s: [u8; 32],
 	r: [u8; 32],
