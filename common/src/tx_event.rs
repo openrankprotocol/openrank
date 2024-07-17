@@ -41,3 +41,27 @@ impl DbItem for TxEvent {
 		"tx_event".to_string()
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use super::TxEvent;
+	use crate::{
+		db::DbItem,
+		txs::{JobRunRequest, Tx, TxKind},
+	};
+	use alloy_rlp::encode;
+
+	#[test]
+	fn test_tx_event_db_item() {
+		let tx_event = TxEvent::default_with_data(encode(Tx::default_with(
+			TxKind::JobRunRequest,
+			encode(JobRunRequest::default()),
+		)));
+
+		let key = tx_event.get_key();
+		assert_eq!(
+			hex::encode(key),
+			"b486c7ce0b8114c45571048c16ebc834f680ca021612d347a6560aa001bdfe97"
+		);
+	}
+}

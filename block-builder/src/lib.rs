@@ -133,7 +133,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
 
 	let db = Db::new(
-		"./local-db",
+		"./local-storage",
 		&[Tx::get_cf().as_str(), TxEvent::get_cf().as_str()],
 	)?;
 
