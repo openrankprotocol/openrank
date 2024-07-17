@@ -6,6 +6,12 @@ use std::hash::{DefaultHasher, Hasher};
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct DomainHash(u64);
 
+impl DomainHash {
+	pub fn to_hex(self) -> String {
+		hex::encode(self.0.to_be_bytes())
+	}
+}
+
 impl From<u64> for DomainHash {
 	fn from(value: u64) -> Self {
 		Self(value)
@@ -59,31 +65,31 @@ impl From<Topic> for String {
 		let mut s = String::new();
 		match value {
 			Topic::DomainTrustUpdate(domain_id) => {
-				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(&domain_id.to_hex());
 				s.push_str(":trust_update");
 			},
 			Topic::DomainSeedUpdate(domain_id) => {
-				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(&domain_id.to_hex());
 				s.push_str(":seed_update");
 			},
 			Topic::DomainRequest(domain_id) => {
-				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(&domain_id.to_hex());
 				s.push_str(":request");
 			},
 			Topic::DomainAssignent(domain_id) => {
-				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(&domain_id.to_hex());
 				s.push_str(":assignment");
 			},
 			Topic::DomainCommitment(domain_id) => {
-				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(&domain_id.to_hex());
 				s.push_str(":commitment");
 			},
 			Topic::DomainScores(domain_id) => {
-				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(&domain_id.to_hex());
 				s.push_str(":scores");
 			},
 			Topic::DomainVerification(domain_id) => {
-				s.push_str(&hex::encode(domain_id.0.to_be_bytes()));
+				s.push_str(&domain_id.to_hex());
 				s.push_str(":verification");
 			},
 			Topic::ProposedBlock => {
@@ -94,5 +100,48 @@ impl From<Topic> for String {
 			},
 		}
 		s
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use crate::txs::Address;
+
+	use super::{Domain, Topic};
+
+	#[test]
+	fn test_domain_to_hash() {
+		let domain = Domain::new(
+			Address::default(),
+			"op".to_string(),
+			Address::default(),
+			"op".to_string(),
+			1,
+		);
+
+		let hash = domain.to_hash();
+		assert_eq!(hash.to_hex(), "bb50842b7bd8ef8c");
+	}
+
+	#[test]
+	fn test_topic_to_string() {
+		let domain = Domain::new(
+			Address::default(),
+			"op".to_string(),
+			Address::default(),
+			"op".to_string(),
+			1,
+		);
+		let topic1 = Topic::DomainRequest(domain.to_hash());
+		let topic2 = Topic::DomainAssignent(domain.to_hash());
+		let topic3 = Topic::DomainVerification(domain.to_hash());
+
+		let topic1_string = String::from(topic1);
+		let topic2_string = String::from(topic2);
+		let topic3_string = String::from(topic3);
+
+		assert_eq!(topic1_string, "bb50842b7bd8ef8c:request".to_string());
+		assert_eq!(topic2_string, "bb50842b7bd8ef8c:assignment".to_string());
+		assert_eq!(topic3_string, "bb50842b7bd8ef8c:verification".to_string());
 	}
 }
