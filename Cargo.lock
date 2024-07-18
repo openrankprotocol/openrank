@@ -2627,6 +2627,10 @@ name = "openrank-da"
 version = "0.0.1"
 
 [[package]]
+name = "openrank-sdk"
+version = "0.0.1"
+
+[[package]]
 name = "openrank-sequencer"
 version = "0.0.1"
 dependencies = [
