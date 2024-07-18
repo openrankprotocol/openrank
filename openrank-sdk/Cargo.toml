@@ -1,5 +1,7 @@
 [package]
 name = "openrank-sdk"
+description = "OpenRank - SDK"
+license.workspace = true
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
