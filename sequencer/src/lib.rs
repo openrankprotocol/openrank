@@ -4,12 +4,11 @@ use karyon_jsonrpc::{rpc_impl, RPCError, Server};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent};
 use openrank_common::{
 	build_node,
-	topics::{DomainHash, Topic},
+	topics::Topic,
 	tx_event::TxEvent,
-	txs::{Tx, TxKind},
+	txs::{JobRunRequest, TrustUpdate, Tx, TxKind},
 	MyBehaviourEvent,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{error::Error, sync::Arc};
 use tokio::{
@@ -18,18 +17,6 @@ use tokio::{
 };
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct DomainRequest {
-	domain_id: u64,
-	tx_data: String,
-}
-
-impl DomainRequest {
-	pub fn new(domain_id: u64, tx_data: String) -> Self {
-		Self { domain_id, tx_data }
-	}
-}
 
 struct Sequencer {
 	sender: Sender<(Vec<u8>, Topic)>,
@@ -44,70 +31,76 @@ impl Sequencer {
 #[rpc_impl]
 impl Sequencer {
 	async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
-		let request: DomainRequest = serde_json::from_value(tx)?;
-		let tx_data_decoded = hex::decode(request.tx_data)
+		let tx_bytes = hex::decode(tx.to_string())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 
-		// Build Tx Event
-		// TODO: Replace with DA call
-		let tx_event = TxEvent::default_with_data(tx_data_decoded.clone());
-
-		let tx = Tx::decode(&mut tx_data_decoded.as_slice())
+		let tx = Tx::decode(&mut tx_bytes.as_slice())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 		if tx.kind() != TxKind::TrustUpdate {
 			return Err(RPCError::InvalidRequest("Invalid tx kind"));
 		}
+		let body: TrustUpdate = TrustUpdate::decode(&mut tx.body().as_slice())
+			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
+
+		// Build Tx Event
+		// TODO: Replace with DA call
+		let tx_event = TxEvent::default_with_data(tx_bytes);
 		let channel_message = (
 			encode(tx_event.clone()),
-			Topic::DomainTrustUpdate(DomainHash::from(request.domain_id)),
+			Topic::NamespaceTrustUpdate(body.trust_id),
 		);
 		self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
+
 		let tx_event_value = serde_json::to_value(tx_event)?;
 		Ok(tx_event_value)
 	}
 
 	async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
-		let request: DomainRequest = serde_json::from_value(tx)?;
-		let tx_data_decoded = hex::decode(request.tx_data)
+		let tx_bytes = hex::decode(tx.to_string())
+			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
+
+		let tx = Tx::decode(&mut tx_bytes.as_slice())
+			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
+		if tx.kind() != TxKind::TrustUpdate {
+			return Err(RPCError::InvalidRequest("Invalid tx kind"));
+		}
+		let body: TrustUpdate = TrustUpdate::decode(&mut tx.body().as_slice())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 
 		// Build Tx Event
 		// TODO: Replace with DA call
-		let tx_event = TxEvent::default_with_data(tx_data_decoded.clone());
-
-		let tx = Tx::decode(&mut tx_data_decoded.as_slice())
-			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-		if tx.kind() != TxKind::SeedUpdate {
-			return Err(RPCError::InvalidRequest("Invalid tx kind"));
-		}
+		let tx_event = TxEvent::default_with_data(tx_bytes);
 		let channel_message = (
 			encode(tx_event.clone()),
-			Topic::DomainSeedUpdate(DomainHash::from(request.domain_id)),
+			Topic::NamespaceTrustUpdate(body.trust_id),
 		);
 		self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
+
 		let tx_event_value = serde_json::to_value(tx_event)?;
 		Ok(tx_event_value)
 	}
 
 	async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
-		let request: DomainRequest = serde_json::from_value(tx)?;
-		let tx_data_decoded = hex::decode(request.tx_data)
+		let tx_bytes = hex::decode(tx.to_string())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 
-		// Build Tx Event
-		// TODO: Replace with DA call
-		let tx_event = TxEvent::default_with_data(tx_data_decoded.clone());
-
-		let tx = Tx::decode(&mut tx_data_decoded.as_slice())
+		let tx = Tx::decode(&mut tx_bytes.as_slice())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 		if tx.kind() != TxKind::JobRunRequest {
 			return Err(RPCError::InvalidRequest("Invalid tx kind"));
 		}
+		let body: JobRunRequest = JobRunRequest::decode(&mut tx.body().as_slice())
+			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
+
+		// Build Tx Event
+		// TODO: Replace with DA call
+		let tx_event = TxEvent::default_with_data(tx_bytes);
 		let channel_message = (
 			encode(tx_event.clone()),
-			Topic::DomainRequest(DomainHash::from(request.domain_id)),
+			Topic::DomainRequest(body.domain_id),
 		);
 		self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
+
 		let tx_event_value = serde_json::to_value(tx_event)?;
 		Ok(tx_event_value)
 	}

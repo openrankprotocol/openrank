@@ -3,21 +3,28 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	topics::Topic,
+	db::{Db, DbItem},
+	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
 		CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest, JobVerification,
 		ProposedBlock, Tx, TxKind,
 	},
-	Config, MyBehaviour, MyBehaviourEvent,
+	MyBehaviour, MyBehaviourEvent,
 };
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+	pub domains: Vec<Domain>,
+}
+
 fn handle_gossipsub_events(
-	mut swarm: &mut Swarm<MyBehaviour>, event: gossipsub::Event, topics: Vec<&Topic>,
+	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
 ) {
 	match event {
 		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
@@ -29,6 +36,8 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::JobRunRequest);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let job_run_request =
 								JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -54,6 +63,9 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							assert_eq!(tx.kind(), TxKind::CreateCommitment);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -79,6 +91,9 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							assert_eq!(tx.kind(), TxKind::JobVerification);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let job_verification =
 								JobVerification::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -118,6 +133,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+	let db = Db::new("./local-db", &[&Tx::get_cf()])?;
 
 	let topics_requests: Vec<Topic> = config
 		.domains
@@ -166,7 +182,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
 					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_verification);
-					handle_gossipsub_events(&mut swarm, event, iter_chain.collect());
+					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

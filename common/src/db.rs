@@ -1,4 +1,4 @@
-use rocksdb::{Error as RocksDBError, IteratorMode, Options, DB};
+use rocksdb::{Error as RocksDBError, Options, DB};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
@@ -28,6 +28,7 @@ impl Display for DbError {
 pub trait DbItem {
 	fn get_key(&self) -> Vec<u8>;
 	fn get_cf() -> String;
+	fn get_prefix(&self) -> String;
 }
 
 pub struct Db {
@@ -46,7 +47,9 @@ impl Db {
 
 	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
 		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let key = item.get_key();
+		let suffix = item.get_key();
+		let mut key = item.get_prefix().as_bytes().to_vec();
+		key.extend(suffix);
 		let value = to_vec(&item).map_err(|e| DbError::Serde(e))?;
 		self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
 	}
@@ -60,10 +63,10 @@ impl Db {
 	}
 
 	pub fn read_from_end<I: DbItem + DeserializeOwned>(
-		&self, num_elements: usize,
+		&self, num_elements: usize, prefix: String,
 	) -> Result<Vec<I>, DbError> {
 		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let iter = self.connection.iterator_cf(&cf, IteratorMode::End);
+		let iter = self.connection.prefix_iterator_cf(&cf, prefix);
 		let mut elements = Vec::new();
 		for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
 			let tx = serde_json::from_slice(db_value.as_ref()).unwrap();
@@ -100,7 +103,7 @@ mod test {
 		db.put(tx1.clone()).unwrap();
 		db.put(tx2.clone()).unwrap();
 		db.put(tx3.clone()).unwrap();
-		let items = db.read_from_end::<Tx>(3).unwrap();
+		let items = db.read_from_end::<Tx>(3, TxKind::JobRunRequest.into()).unwrap();
 		assert_eq!(vec![tx1, tx2, tx3], items);
 	}
 }

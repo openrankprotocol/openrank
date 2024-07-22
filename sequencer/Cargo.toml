@@ -30,4 +30,4 @@ rand = { workspace = true }
 alloy-rlp = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-karyon_jsonrpc = "0.1.5"
+karyon_jsonrpc = { workspace = true }

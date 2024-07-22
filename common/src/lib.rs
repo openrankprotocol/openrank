@@ -10,17 +10,11 @@ use libp2p::{
 	swarm::NetworkBehaviour,
 	tcp, yamux, Swarm,
 };
-use serde::{Deserialize, Serialize};
 use std::{error::Error, io, time::Duration};
-use topics::{Domain, Topic};
+use topics::Topic;
 use tracing::info;
 use tx_event::TxEvent;
 use txs::{Tx, TxKind};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-	pub domains: Vec<Domain>,
-}
 
 // We create a custom network behaviour.
 #[derive(NetworkBehaviour)]

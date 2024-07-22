@@ -56,6 +56,22 @@ impl TxKind {
 	}
 }
 
+impl Into<String> for TxKind {
+	fn into(self) -> String {
+		match self {
+			Self::TrustUpdate => "trust_update".to_string(),
+			Self::SeedUpdate => "seed_update".to_string(),
+			Self::JobRunRequest => "job_run_request".to_string(),
+			Self::JobRunAssignment => "job_run_assignment".to_string(),
+			Self::CreateScores => "create_scores".to_string(),
+			Self::CreateCommitment => "create_commitment".to_string(),
+			Self::JobVerification => "job_verification".to_string(),
+			Self::ProposedBlock => "proposed_block".to_string(),
+			Self::FinalisedBlock => "finalised_block".to_string(),
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct Tx {
 	nonce: u64,
@@ -107,21 +123,46 @@ impl DbItem for Tx {
 	fn get_cf() -> String {
 		"tx".to_string()
 	}
+
+	fn get_prefix(&self) -> String {
+		self.kind.into()
+	}
 }
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
-pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 32]);
+pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 24]);
+
+impl OwnedNamespace {
+	pub fn new(owner: Address, id: u32) -> Self {
+		let mut bytes = [0; 24];
+		bytes[..20].copy_from_slice(&owner.0);
+		bytes[20..24].copy_from_slice(&id.to_be_bytes());
+		Self(bytes)
+	}
+
+	pub fn to_hex(self) -> String {
+		hex::encode(self.0)
+	}
+}
+
+impl FromHex for OwnedNamespace {
+	type Error = hex::FromHexError;
+
+	fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+		Ok(OwnedNamespace(<[u8; 24]>::from_hex(hex)?))
+	}
+}
 
 #[derive(
 	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
-pub struct Address(#[serde(with = "hex")] pub [u8; 32]);
+pub struct Address(#[serde(with = "hex")] pub [u8; 20]);
 
 impl FromHex for Address {
 	type Error = hex::FromHexError;
 
 	fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-		Ok(Address(<[u8; 32]>::from_hex(hex)?))
+		Ok(Address(<[u8; 20]>::from_hex(hex)?))
 	}
 }
 
@@ -141,7 +182,7 @@ pub struct Signature {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScoreEntry {
-	id: Address,
+	id: u128,
 	value: f32,
 }
 
@@ -154,7 +195,7 @@ impl Encodable for ScoreEntry {
 
 impl Decodable for ScoreEntry {
 	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-		let id = Address::decode(buf)?;
+		let id = u128::decode(buf)?;
 		let mut value_bytes = [0; 4];
 		let size =
 			buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
@@ -168,8 +209,8 @@ impl Decodable for ScoreEntry {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TrustEntry {
-	from: Address,
-	to: Address,
+	from: u128,
+	to: u128,
 	value: f32,
 }
 
@@ -183,8 +224,8 @@ impl Encodable for TrustEntry {
 
 impl Decodable for TrustEntry {
 	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-		let from = Address::decode(buf)?;
-		let to = Address::decode(buf)?;
+		let from = u128::decode(buf)?;
+		let to = u128::decode(buf)?;
 		let mut value_bytes = [0; 4];
 		let size =
 			buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
@@ -214,8 +255,14 @@ pub struct CreateScores {
 // JOB_ID = hash(domain_id, da_block_height, from)
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct JobRunRequest {
-	domain_id: DomainHash,
-	da_block_height: u32,
+	pub domain_id: DomainHash,
+	pub block_height: u32,
+}
+
+impl JobRunRequest {
+	pub fn new(domain_id: DomainHash, block_height: u32) -> Self {
+		Self { domain_id, block_height }
+	}
 }
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
@@ -270,14 +317,26 @@ pub struct FinalisedBlock {
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct TrustUpdate {
-	trust_id: OwnedNamespace,
+	pub trust_id: OwnedNamespace,
 	entries: Vec<TrustEntry>,
+}
+
+impl TrustUpdate {
+	pub fn new(trust_id: OwnedNamespace, entries: Vec<TrustEntry>) -> Self {
+		Self { trust_id, entries }
+	}
 }
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct SeedUpdate {
 	seed_id: OwnedNamespace,
 	entries: Vec<ScoreEntry>,
+}
+
+impl SeedUpdate {
+	pub fn new(seed_id: OwnedNamespace, entries: Vec<ScoreEntry>) -> Self {
+		Self { seed_id, entries }
+	}
 }
 
 #[cfg(test)]

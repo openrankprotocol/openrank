@@ -3,32 +3,41 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	topics::Topic,
+	db::{Db, DbItem},
+	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
 		CreateCommitment, CreateScores, FinalisedBlock, JobRunAssignment, ProposedBlock,
 		SeedUpdate, TrustUpdate, Tx, TxKind,
 	},
-	Config, MyBehaviour, MyBehaviourEvent,
+	MyBehaviour, MyBehaviourEvent,
 };
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+	pub domains: Vec<Domain>,
+}
+
 fn handle_gossipsub_events(
-	mut swarm: &mut Swarm<MyBehaviour>, event: gossipsub::Event, topics: Vec<&Topic>,
+	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
 ) {
 	match event {
 		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
 			for topic in topics {
 				match topic {
-					Topic::DomainTrustUpdate(_) => {
+					Topic::NamespaceTrustUpdate(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::TrustUpdate);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let trust_update =
 								TrustUpdate::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -38,12 +47,14 @@ fn handle_gossipsub_events(
 							);
 						}
 					},
-					Topic::DomainSeedUpdate(_) => {
+					Topic::NamespaceSeedUpdate(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::SeedUpdate);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let seed_update =
 								SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -59,6 +70,8 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::JobRunAssignment);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let job_run_assignment =
 								JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -98,6 +111,8 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::ProposedBlock);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let proposed_block =
 								ProposedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -113,6 +128,8 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::FinalisedBlock);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
 							let finalised_block =
 								FinalisedBlock::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
@@ -137,20 +154,21 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+	let db = Db::new("./local-db", &[&Tx::get_cf()])?;
 
 	let topics_trust_update: Vec<Topic> = config
 		.domains
 		.clone()
 		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainTrustUpdate(domain_hash.clone()))
+		.map(|x| x.trust_namespace())
+		.map(|namespace| Topic::NamespaceTrustUpdate(namespace.clone()))
 		.collect();
 	let topics_seed_update: Vec<Topic> = config
 		.domains
 		.clone()
 		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainSeedUpdate(domain_hash.clone()))
+		.map(|x| x.seed_namespace())
+		.map(|namespace| Topic::NamespaceSeedUpdate(namespace.clone()))
 		.collect();
 	let topics_assignment: Vec<Topic> = config
 		.domains
@@ -193,7 +211,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					handle_gossipsub_events(&mut swarm, event, iter_chain.clone().collect());
+					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.clone().collect());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

@@ -40,6 +40,10 @@ impl DbItem for TxEvent {
 	fn get_cf() -> String {
 		"tx_event".to_string()
 	}
+
+	fn get_prefix(&self) -> String {
+		"tx_event".to_string()
+	}
 }
 
 #[cfg(test)]

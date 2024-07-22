@@ -1,5 +1,6 @@
-use crate::txs::Address;
+use crate::txs::{Address, OwnedNamespace};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hasher};
 
@@ -12,6 +13,14 @@ impl DomainHash {
 	}
 }
 
+impl FromHex for DomainHash {
+	type Error = hex::FromHexError;
+
+	fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+		Ok(DomainHash(u64::from_be_bytes(<[u8; 8]>::from_hex(hex)?)))
+	}
+}
+
 impl From<u64> for DomainHash {
 	fn from(value: u64) -> Self {
 		Self(value)
@@ -21,26 +30,33 @@ impl From<u64> for DomainHash {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Domain {
 	trust_owner: Address,
-	trust_suffix: String,
+	trust_id: u32,
 	seed_owner: Address,
-	seed_suffix: String,
+	seed_id: u32,
 	algo_id: u64,
 }
 
 impl Domain {
 	pub fn new(
-		trust_owner: Address, trust_suffix: String, seed_owner: Address, seed_suffix: String,
-		algo_id: u64,
+		trust_owner: Address, trust_id: u32, seed_owner: Address, seed_id: u32, algo_id: u64,
 	) -> Self {
-		Self { trust_owner, trust_suffix, seed_owner, seed_suffix, algo_id }
+		Self { trust_owner, trust_id, seed_owner, seed_id, algo_id }
+	}
+
+	pub fn trust_namespace(&self) -> OwnedNamespace {
+		OwnedNamespace::new(self.trust_owner.clone(), self.trust_id)
+	}
+
+	pub fn seed_namespace(&self) -> OwnedNamespace {
+		OwnedNamespace::new(self.seed_owner.clone(), self.seed_id)
 	}
 
 	pub fn to_hash(&self) -> DomainHash {
 		let mut s = DefaultHasher::new();
 		s.write(&self.trust_owner.0);
-		s.write(self.trust_suffix.as_bytes());
+		s.write(&self.trust_id.to_be_bytes());
 		s.write(&self.seed_owner.0);
-		s.write(self.seed_suffix.as_bytes());
+		s.write(&self.seed_id.to_be_bytes());
 		s.write(&self.algo_id.to_be_bytes());
 		let res = s.finish();
 		DomainHash(res)
@@ -49,8 +65,8 @@ impl Domain {
 
 #[derive(Clone, Debug)]
 pub enum Topic {
-	DomainTrustUpdate(DomainHash),
-	DomainSeedUpdate(DomainHash),
+	NamespaceTrustUpdate(OwnedNamespace),
+	NamespaceSeedUpdate(OwnedNamespace),
 	DomainRequest(DomainHash),
 	DomainAssignent(DomainHash),
 	DomainCommitment(DomainHash),
@@ -64,11 +80,11 @@ impl From<Topic> for String {
 	fn from(value: Topic) -> Self {
 		let mut s = String::new();
 		match value {
-			Topic::DomainTrustUpdate(domain_id) => {
-				s.push_str(&domain_id.to_hex());
+			Topic::NamespaceTrustUpdate(namespace) => {
+				s.push_str(&namespace.to_hex());
 				s.push_str(":trust_update");
 			},
-			Topic::DomainSeedUpdate(domain_id) => {
+			Topic::NamespaceSeedUpdate(domain_id) => {
 				s.push_str(&domain_id.to_hex());
 				s.push_str(":seed_update");
 			},
@@ -111,13 +127,7 @@ mod test {
 
 	#[test]
 	fn test_domain_to_hash() {
-		let domain = Domain::new(
-			Address::default(),
-			"op".to_string(),
-			Address::default(),
-			"op".to_string(),
-			1,
-		);
+		let domain = Domain::new(Address::default(), 1, Address::default(), 1, 1);
 
 		let hash = domain.to_hash();
 		assert_eq!(hash.to_hex(), "bb50842b7bd8ef8c");
@@ -125,13 +135,7 @@ mod test {
 
 	#[test]
 	fn test_topic_to_string() {
-		let domain = Domain::new(
-			Address::default(),
-			"op".to_string(),
-			Address::default(),
-			"op".to_string(),
-			1,
-		);
+		let domain = Domain::new(Address::default(), 1, Address::default(), 1, 1);
 		let topic1 = Topic::DomainRequest(domain.to_hash());
 		let topic2 = Topic::DomainAssignent(domain.to_hash());
 		let topic3 = Topic::DomainVerification(domain.to_hash());
