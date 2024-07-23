@@ -18,6 +18,8 @@ use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+mod algo;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
 	pub domains: Vec<Domain>,
@@ -26,124 +28,121 @@ pub struct Config {
 fn handle_gossipsub_events(
 	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
 ) {
-	match event {
-		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
-			for topic in topics {
-				match topic {
-					Topic::NamespaceTrustUpdate(_) => {
-						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							assert!(tx.kind() == TxKind::TrustUpdate);
-							// Add Tx to db
-							db.put(tx.clone()).unwrap();
-							let trust_update =
-								TrustUpdate::decode(&mut tx.body().as_slice()).unwrap();
-							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-								message.topic.as_str(),
-								trust_update,
-							);
-						}
-					},
-					Topic::NamespaceSeedUpdate(_) => {
-						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							assert!(tx.kind() == TxKind::SeedUpdate);
-							// Add Tx to db
-							db.put(tx.clone()).unwrap();
-							let seed_update =
-								SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
-							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-								message.topic.as_str(),
-								seed_update,
-							);
-						}
-					},
-					Topic::DomainAssignent(domain_id) => {
-						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							assert!(tx.kind() == TxKind::JobRunAssignment);
-							// Add Tx to db
-							db.put(tx.clone()).unwrap();
-							let job_run_assignment =
-								JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
-							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}, SOURCE: {:?}",
-								message.topic.as_str(),
-								job_run_assignment,
-								message.source,
-							);
+	if let gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } =
+		event
+	{
+		for topic in topics {
+			match topic {
+				Topic::NamespaceTrustUpdate(_) => {
+					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+					if message.topic == topic_wrapper.hash() {
+						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+						assert!(tx.kind() == TxKind::TrustUpdate);
+						// Add Tx to db
+						db.put(tx.clone()).unwrap();
+						let trust_update = TrustUpdate::decode(&mut tx.body().as_slice()).unwrap();
+						info!(
+							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+							message.topic.as_str(),
+							trust_update,
+						);
+					}
+				},
+				Topic::NamespaceSeedUpdate(_) => {
+					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+					if message.topic == topic_wrapper.hash() {
+						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+						assert!(tx.kind() == TxKind::SeedUpdate);
+						// Add Tx to db
+						db.put(tx.clone()).unwrap();
+						let seed_update = SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
+						info!(
+							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+							message.topic.as_str(),
+							seed_update,
+						);
+					}
+				},
+				Topic::DomainAssignent(domain_id) => {
+					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+					if message.topic == topic_wrapper.hash() {
+						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+						assert!(tx.kind() == TxKind::JobRunAssignment);
+						// Add Tx to db
+						db.put(tx.clone()).unwrap();
+						let job_run_assignment =
+							JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
+						info!(
+							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}, SOURCE: {:?}",
+							message.topic.as_str(),
+							job_run_assignment,
+							message.source,
+						);
 
-							let create_scores = encode(CreateScores::default());
-							for _ in 0..3 {
-								let scores_topic = Topic::DomainScores(domain_id.clone());
-								if let Err(e) = broadcast_event(
-									&mut swarm,
-									TxKind::CreateScores,
-									create_scores.clone(),
-									scores_topic,
-								) {
-									error!("Publish error: {e:?}");
-								}
-							}
-							let commitment_topic = Topic::DomainCommitment(domain_id.clone());
-							let create_commitment = encode(CreateCommitment::default());
+						let create_scores = encode(CreateScores::default());
+						for _ in 0..3 {
+							let scores_topic = Topic::DomainScores(domain_id.clone());
 							if let Err(e) = broadcast_event(
 								&mut swarm,
-								TxKind::CreateCommitment,
-								create_commitment,
-								commitment_topic,
+								TxKind::CreateScores,
+								create_scores.clone(),
+								scores_topic,
 							) {
 								error!("Publish error: {e:?}");
 							}
 						}
-					},
-					Topic::ProposedBlock => {
-						let topic_wrapper = gossipsub::IdentTopic::new(Topic::ProposedBlock);
-						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							assert!(tx.kind() == TxKind::ProposedBlock);
-							// Add Tx to db
-							db.put(tx.clone()).unwrap();
-							let proposed_block =
-								ProposedBlock::decode(&mut tx.body().as_slice()).unwrap();
-							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-								message.topic.as_str(),
-								proposed_block,
-							);
+						let commitment_topic = Topic::DomainCommitment(domain_id.clone());
+						let create_commitment = encode(CreateCommitment::default());
+						if let Err(e) = broadcast_event(
+							&mut swarm,
+							TxKind::CreateCommitment,
+							create_commitment,
+							commitment_topic,
+						) {
+							error!("Publish error: {e:?}");
 						}
-					},
-					Topic::FinalisedBlock => {
-						let topic_wrapper = gossipsub::IdentTopic::new(Topic::FinalisedBlock);
-						if message.topic == topic_wrapper.hash() {
-							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							assert!(tx.kind() == TxKind::FinalisedBlock);
-							// Add Tx to db
-							db.put(tx.clone()).unwrap();
-							let finalised_block =
-								FinalisedBlock::decode(&mut tx.body().as_slice()).unwrap();
-							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-								message.topic.as_str(),
-								finalised_block,
-							);
-						}
-					},
-					_ => {},
-				}
+					}
+				},
+				Topic::ProposedBlock => {
+					let topic_wrapper = gossipsub::IdentTopic::new(Topic::ProposedBlock);
+					if message.topic == topic_wrapper.hash() {
+						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+						assert!(tx.kind() == TxKind::ProposedBlock);
+						// Add Tx to db
+						db.put(tx.clone()).unwrap();
+						let proposed_block =
+							ProposedBlock::decode(&mut tx.body().as_slice()).unwrap();
+						info!(
+							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+							message.topic.as_str(),
+							proposed_block,
+						);
+					}
+				},
+				Topic::FinalisedBlock => {
+					let topic_wrapper = gossipsub::IdentTopic::new(Topic::FinalisedBlock);
+					if message.topic == topic_wrapper.hash() {
+						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+						assert!(tx.kind() == TxKind::FinalisedBlock);
+						// Add Tx to db
+						db.put(tx.clone()).unwrap();
+						let finalised_block =
+							FinalisedBlock::decode(&mut tx.body().as_slice()).unwrap();
+						info!(
+							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+							message.topic.as_str(),
+							finalised_block,
+						);
+					}
+				},
+				_ => {},
 			}
-		},
-		_ => {},
+		}
 	}
 }
 

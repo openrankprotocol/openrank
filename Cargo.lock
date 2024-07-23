@@ -2721,6 +2721,7 @@ dependencies = [
  "alloy-rlp-derive",
  "hex",
  "libp2p",
+ "rand",
  "rocksdb",
  "serde",
  "serde_json",

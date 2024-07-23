@@ -1,5 +1,5 @@
-use crate::db::DbItem;
 use crate::topics::DomainHash;
+use crate::{db::DbItem, merkle::Hash};
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
@@ -169,9 +169,6 @@ impl FromHex for Address {
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct TxHash(#[serde(with = "hex")] [u8; 32]);
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
-pub struct RootHash(#[serde(with = "hex")] [u8; 32]);
-
 #[derive(
 	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
@@ -240,8 +237,8 @@ impl Decodable for TrustEntry {
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateCommitment {
 	job_run_assignment_tx_hash: TxHash,
-	lt_root_hash: RootHash,
-	compute_root_hash: RootHash,
+	lt_root_hash: Hash,
+	compute_root_hash: Hash,
 	scores_tx_hashes: Vec<TxHash>,
 	new_trust_tx_hashes: Vec<TxHash>,
 	new_seed_tx_hashes: Vec<TxHash>,
@@ -300,7 +297,7 @@ struct DomainUpdate {
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct ProposedBlock {
 	previous_block_hash: TxHash,
-	state_root: RootHash,
+	state_root: Hash,
 	pending_domain_updates: Vec<PendingDomainUpdate>,
 	timestamp: u32,
 	block_height: u32,
@@ -309,7 +306,7 @@ pub struct ProposedBlock {
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct FinalisedBlock {
 	previous_block_hash: TxHash,
-	state_root: RootHash,
+	state_root: Hash,
 	domain_updates: Vec<DomainUpdate>,
 	timestamp: u32,
 	block_height: u32,
