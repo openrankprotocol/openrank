@@ -19,6 +19,7 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 mod algo;
+mod runner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

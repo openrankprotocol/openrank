@@ -4,6 +4,7 @@ use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result 
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
+use serde_json::value;
 use sha3::{Digest, Keccak256};
 use std::io::Read;
 
@@ -129,7 +130,9 @@ impl DbItem for Tx {
 	}
 }
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+#[derive(
+	Debug, Clone, Hash, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
+)]
 pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 24]);
 
 impl OwnedNamespace {
@@ -154,7 +157,7 @@ impl FromHex for OwnedNamespace {
 }
 
 #[derive(
-	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
+	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize, Hash,
 )]
 pub struct Address(#[serde(with = "hex")] pub [u8; 20]);
 
@@ -179,8 +182,14 @@ pub struct Signature {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScoreEntry {
-	id: u128,
-	value: f32,
+	pub id: Address,
+	pub value: f32,
+}
+
+impl ScoreEntry {
+	pub fn new(id: Address, value: f32) -> Self {
+		Self { id, value }
+	}
 }
 
 impl Encodable for ScoreEntry {
@@ -192,7 +201,7 @@ impl Encodable for ScoreEntry {
 
 impl Decodable for ScoreEntry {
 	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-		let id = u128::decode(buf)?;
+		let id = Address::decode(buf)?;
 		let mut value_bytes = [0; 4];
 		let size =
 			buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
@@ -206,9 +215,9 @@ impl Decodable for ScoreEntry {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TrustEntry {
-	from: u128,
-	to: u128,
-	value: f32,
+	pub from: Address,
+	pub to: Address,
+	pub value: f32,
 }
 
 impl Encodable for TrustEntry {
@@ -221,8 +230,8 @@ impl Encodable for TrustEntry {
 
 impl Decodable for TrustEntry {
 	fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-		let from = u128::decode(buf)?;
-		let to = u128::decode(buf)?;
+		let from = Address::decode(buf)?;
+		let to = Address::decode(buf)?;
 		let mut value_bytes = [0; 4];
 		let size =
 			buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
@@ -247,6 +256,12 @@ pub struct CreateCommitment {
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateScores {
 	entries: Vec<ScoreEntry>,
+}
+
+impl CreateScores {
+	pub fn new(entries: Vec<ScoreEntry>) -> Self {
+		Self { entries }
+	}
 }
 
 // JOB_ID = hash(domain_id, da_block_height, from)
@@ -315,7 +330,7 @@ pub struct FinalisedBlock {
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct TrustUpdate {
 	pub trust_id: OwnedNamespace,
-	entries: Vec<TrustEntry>,
+	pub entries: Vec<TrustEntry>,
 }
 
 impl TrustUpdate {
@@ -326,8 +341,8 @@ impl TrustUpdate {
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct SeedUpdate {
-	seed_id: OwnedNamespace,
-	entries: Vec<ScoreEntry>,
+	pub seed_id: OwnedNamespace,
+	pub entries: Vec<ScoreEntry>,
 }
 
 impl SeedUpdate {
