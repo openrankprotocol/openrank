@@ -7,15 +7,16 @@ use openrank_common::{
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
-		CreateCommitment, CreateScores, FinalisedBlock, JobRunAssignment, ProposedBlock,
-		SeedUpdate, TrustUpdate, Tx, TxKind,
+		CreateCommitment, FinalisedBlock, JobRunAssignment, ProposedBlock, SeedUpdate, TrustUpdate,
+		Tx, TxHash, TxKind,
 	},
 	MyBehaviour, MyBehaviourEvent,
 };
+use runner::ComputeJobRunner;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
-use tracing::{error, info};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 mod algo;
@@ -27,14 +28,15 @@ pub struct Config {
 }
 
 fn handle_gossipsub_events(
-	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
+	swarm: &mut Swarm<MyBehaviour>, job_runner: &mut ComputeJobRunner, db: &Db,
+	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
 ) {
 	if let gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } =
 		event
 	{
 		for topic in topics {
 			match topic {
-				Topic::NamespaceTrustUpdate(_) => {
+				Topic::NamespaceTrustUpdate(namespace) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
@@ -43,6 +45,10 @@ fn handle_gossipsub_events(
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
 						let trust_update = TrustUpdate::decode(&mut tx.body().as_slice()).unwrap();
+						assert!(*namespace == trust_update.trust_id);
+						let domain =
+							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
+						job_runner.update_trust(domain.clone(), trust_update.entries.clone());
 						info!(
 							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 							message.topic.as_str(),
@@ -50,7 +56,7 @@ fn handle_gossipsub_events(
 						);
 					}
 				},
-				Topic::NamespaceSeedUpdate(_) => {
+				Topic::NamespaceSeedUpdate(namespace) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
@@ -59,6 +65,10 @@ fn handle_gossipsub_events(
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
 						let seed_update = SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
+						assert!(*namespace == seed_update.seed_id);
+						let domain =
+							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
+						job_runner.update_seed(domain.clone(), seed_update.entries.clone());
 						info!(
 							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 							message.topic.as_str(),
@@ -83,28 +93,33 @@ fn handle_gossipsub_events(
 							message.source,
 						);
 
-						let create_scores = encode(CreateScores::default());
-						for _ in 0..3 {
-							let scores_topic = Topic::DomainScores(domain_id.clone());
-							if let Err(e) = broadcast_event(
-								&mut swarm,
-								TxKind::CreateScores,
-								create_scores.clone(),
-								scores_topic,
-							) {
-								error!("Publish error: {e:?}");
-							}
-						}
+						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
+						job_runner.compute(domain.clone());
+						job_runner.create_compute_tree(domain.clone());
+						let create_scores = job_runner.get_create_scores(domain.clone());
+						let (compute_root, lt_root) = job_runner.get_root_hashes(domain.clone());
+
+						let create_scores_tx: Vec<Tx> = create_scores
+							.iter()
+							.map(|tx_body| Tx::default_with(TxKind::CreateScores, encode(tx_body)))
+							.collect();
+						let create_scores_tx_hashes: Vec<TxHash> =
+							create_scores_tx.iter().map(|x| x.hash()).collect();
+
+						let create_scores_topic = Topic::DomainScores(domain_id.clone());
 						let commitment_topic = Topic::DomainCommitment(domain_id.clone());
-						let create_commitment = encode(CreateCommitment::default());
-						if let Err(e) = broadcast_event(
-							&mut swarm,
-							TxKind::CreateCommitment,
-							create_commitment,
-							commitment_topic,
-						) {
-							error!("Publish error: {e:?}");
+						let create_commitment = CreateCommitment::default_with(
+							tx.hash(),
+							lt_root,
+							compute_root,
+							create_scores_tx_hashes,
+						);
+						let create_commitment_tx =
+							Tx::default_with(TxKind::CreateCommitment, encode(create_commitment));
+						for scores in create_scores_tx {
+							broadcast_event(swarm, scores, create_scores_topic.clone()).unwrap();
 						}
+						broadcast_event(swarm, create_commitment_tx, commitment_topic).unwrap();
 					}
 				},
 				Topic::ProposedBlock => {
@@ -155,6 +170,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
 	let db = Db::new("./local-db", &[&Tx::get_cf()])?;
+
+	let mut job_runner = ComputeJobRunner::new();
 
 	let topics_trust_update: Vec<Topic> = config
 		.domains
@@ -211,7 +228,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.clone().collect());
+					handle_gossipsub_events(&mut swarm, &mut job_runner, &db, event, iter_chain.clone().collect(), config.domains.clone());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

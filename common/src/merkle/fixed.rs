@@ -25,8 +25,13 @@ where
 	}
 
 	/// Build a MerkleTree from given leaf nodes and height
-	pub fn new(leaves: Vec<Hash>) -> Self {
-		let num_levels = (u32::BITS - leaves.len().next_power_of_two().leading_zeros()) as u8;
+	pub fn new(mut leaves: Vec<Hash>) -> Self {
+		let next_power_of_two = leaves.len().next_power_of_two();
+		if leaves.len() < next_power_of_two {
+			let diff = next_power_of_two - leaves.len();
+			leaves.extend(vec![Hash::default(); diff]);
+		}
+		let num_levels = (u32::BITS - next_power_of_two.leading_zeros()) as u8;
 
 		let mut tree = HashMap::new();
 		tree.insert(0u8, leaves);

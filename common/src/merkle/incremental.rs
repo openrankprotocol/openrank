@@ -15,8 +15,6 @@ where
 	default: Vec<Hash>,
 	// Number of levels
 	num_levels: u8,
-	// Current size of the tree / number of leaf nodes
-	curr_size: u32,
 	/// PhantomData for the hasher
 	_h: PhantomData<H>,
 }
@@ -38,11 +36,12 @@ where
 			default.push(h);
 		}
 
-		Self { nodes: HashMap::new(), default, num_levels, curr_size: 0, _h: PhantomData }
+		Self { nodes: HashMap::new(), default, num_levels, _h: PhantomData }
 	}
 
-	pub fn insert_leaf(&mut self, leaf: Hash) {
-		let index = self.curr_size;
+	pub fn insert_leaf(&mut self, index: u32, leaf: Hash) {
+		let max_size = 2i32.pow(self.num_levels as u32).abs() as u32;
+		assert!(index < max_size);
 		let bits = num_to_bits_vec(index);
 
 		self.nodes.insert((0, index), leaf.clone());
@@ -66,13 +65,12 @@ where
 
 			self.nodes.insert((i + 1, curr_index), curr_node.clone());
 		}
-
-		self.curr_size += 1;
 	}
 
-	pub fn insert_batch(&mut self, leaves: Vec<Hash>) {
+	pub fn insert_batch(&mut self, mut index: u32, leaves: Vec<Hash>) {
 		for leaf in leaves {
-			self.insert_leaf(leaf);
+			self.insert_leaf(index, leaf);
+			index += 1;
 		}
 	}
 }
@@ -108,7 +106,7 @@ mod test {
 			Hash::default(),
 		];
 		let mut merkle = DenseIncrementalMerkleTree::<Keccak256>::new(32);
-		merkle.insert_batch(leaves);
+		merkle.insert_batch(0, leaves);
 		let root = merkle.root();
 
 		assert_eq!(

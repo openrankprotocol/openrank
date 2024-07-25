@@ -4,7 +4,6 @@ use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result 
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
-use serde_json::value;
 use sha3::{Digest, Keccak256};
 use std::io::Read;
 
@@ -104,7 +103,7 @@ impl Tx {
 		self.body.clone()
 	}
 
-	pub fn hash(&self) -> Vec<u8> {
+	pub fn hash(&self) -> TxHash {
 		let mut hasher = Keccak256::new();
 		hasher.update(&self.nonce.to_be_bytes());
 		hasher.update(encode(&self.from));
@@ -112,13 +111,17 @@ impl Tx {
 		hasher.update(encode(self.kind));
 		hasher.update(&self.body);
 		let result = hasher.finalize();
-		result.to_vec()
+		let bytes = result.to_vec();
+
+		let mut tx_bytes = [0; 32];
+		tx_bytes.copy_from_slice(&bytes);
+		TxHash(tx_bytes)
 	}
 }
 
 impl DbItem for Tx {
 	fn get_key(&self) -> Vec<u8> {
-		self.hash()
+		self.hash().0.to_vec()
 	}
 
 	fn get_cf() -> String {
@@ -253,6 +256,22 @@ pub struct CreateCommitment {
 	new_seed_tx_hashes: Vec<TxHash>,
 }
 
+impl CreateCommitment {
+	pub fn default_with(
+		job_run_assignment_tx_hash: TxHash, lt_root_hash: Hash, compute_root_hash: Hash,
+		scores_tx_hashes: Vec<TxHash>,
+	) -> Self {
+		Self {
+			job_run_assignment_tx_hash,
+			lt_root_hash,
+			compute_root_hash,
+			scores_tx_hashes,
+			new_trust_tx_hashes: Vec::new(),
+			new_seed_tx_hashes: Vec::new(),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateScores {
 	entries: Vec<ScoreEntry>,
@@ -373,7 +392,7 @@ mod test {
 		let tx = Tx::default_with(TxKind::TrustUpdate, encode(TrustUpdate::default()));
 		let tx_hash = tx.hash();
 		assert_eq!(
-			hex::encode(tx_hash),
+			hex::encode(tx_hash.0),
 			"77b37e9a80c4d4bb476f67b0a6523e6dc41ca8fc255d583db03d62e1b67b73dc"
 		);
 	}

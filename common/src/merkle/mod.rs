@@ -5,8 +5,8 @@ use sha3::Digest;
 #[cfg(test)]
 use rand::Rng;
 
-mod fixed;
-mod incremental;
+pub mod fixed;
+pub mod incremental;
 
 #[derive(
 	Debug, Clone, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
@@ -52,10 +52,19 @@ pub fn num_to_bits_vec(num: u32) -> Vec<bool> {
 	sliced_bits
 }
 
-fn hash_two<H: Digest>(left: Hash, right: Hash) -> Hash {
+pub fn hash_two<H: Digest>(left: Hash, right: Hash) -> Hash {
 	let mut hasher = H::new();
 	hasher.update(left.0);
 	hasher.update(right.0);
+	let hash = hasher.finalize().to_vec();
+	let mut bytes: [u8; 32] = [0; 32];
+	bytes.copy_from_slice(&hash);
+	Hash(bytes)
+}
+
+pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
+	let mut hasher = H::new();
+	hasher.update(preimage);
 	let hash = hasher.finalize().to_vec();
 	let mut bytes: [u8; 32] = [0; 32];
 	bytes.copy_from_slice(&hash);

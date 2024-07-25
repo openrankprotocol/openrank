@@ -27,8 +27,8 @@ impl Display for DbError {
 
 pub trait DbItem {
 	fn get_key(&self) -> Vec<u8>;
-	fn get_cf() -> String;
 	fn get_prefix(&self) -> String;
+	fn get_cf() -> String;
 }
 
 pub struct Db {

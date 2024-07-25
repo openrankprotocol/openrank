@@ -2,7 +2,7 @@ use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-	broadcast_event, build_node,
+	broadcast_default_event, build_node,
 	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
@@ -48,7 +48,7 @@ fn handle_gossipsub_events(
 
 							let assignment_topic = Topic::DomainAssignent(domain_id.clone());
 							let job_assignment = encode(JobRunAssignment::default());
-							if let Err(e) = broadcast_event(
+							if let Err(e) = broadcast_default_event(
 								&mut swarm,
 								TxKind::JobRunAssignment,
 								job_assignment,
@@ -76,7 +76,7 @@ fn handle_gossipsub_events(
 
 							let proposed_block_topic = Topic::ProposedBlock;
 							let proposed_block = encode(ProposedBlock::default());
-							if let Err(e) = broadcast_event(
+							if let Err(e) = broadcast_default_event(
 								&mut swarm,
 								TxKind::ProposedBlock,
 								proposed_block,
@@ -104,7 +104,7 @@ fn handle_gossipsub_events(
 
 							let finalised_block_topic = Topic::FinalisedBlock;
 							let finalised_block = encode(FinalisedBlock::default());
-							if let Err(e) = broadcast_event(
+							if let Err(e) = broadcast_default_event(
 								&mut swarm,
 								TxKind::FinalisedBlock,
 								finalised_block,

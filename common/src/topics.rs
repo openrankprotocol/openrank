@@ -4,7 +4,9 @@ use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hasher};
 
-#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
+#[derive(
+	Clone, Debug, Default, Hash, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize,
+)]
 pub struct DomainHash(u64);
 
 impl DomainHash {
@@ -60,6 +62,14 @@ impl Domain {
 		s.write(&self.algo_id.to_be_bytes());
 		let res = s.finish();
 		DomainHash(res)
+	}
+
+	pub fn topics(&self) -> Vec<Topic> {
+		vec![
+			Topic::NamespaceTrustUpdate(self.trust_namespace()),
+			Topic::NamespaceSeedUpdate(self.seed_namespace()),
+			Topic::DomainAssignent(self.to_hash()),
+		]
 	}
 }
 
