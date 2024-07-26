@@ -6,10 +6,7 @@ use openrank_common::{
 	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
-	txs::{
-		CreateCommitment, FinalisedBlock, JobRunAssignment, ProposedBlock, SeedUpdate, TrustUpdate,
-		Tx, TxHash, TxKind,
-	},
+	txs::{CreateCommitment, JobRunAssignment, SeedUpdate, TrustUpdate, Tx, TxHash, TxKind},
 	MyBehaviour, MyBehaviourEvent,
 };
 use runner::ComputeJobRunner;
@@ -19,7 +16,7 @@ use tokio::select;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-mod algo;
+mod algos;
 mod runner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,40 +117,6 @@ fn handle_gossipsub_events(
 							broadcast_event(swarm, scores, create_scores_topic.clone()).unwrap();
 						}
 						broadcast_event(swarm, create_commitment_tx, commitment_topic).unwrap();
-					}
-				},
-				Topic::ProposedBlock => {
-					let topic_wrapper = gossipsub::IdentTopic::new(Topic::ProposedBlock);
-					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert!(tx.kind() == TxKind::ProposedBlock);
-						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let proposed_block =
-							ProposedBlock::decode(&mut tx.body().as_slice()).unwrap();
-						info!(
-							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-							message.topic.as_str(),
-							proposed_block,
-						);
-					}
-				},
-				Topic::FinalisedBlock => {
-					let topic_wrapper = gossipsub::IdentTopic::new(Topic::FinalisedBlock);
-					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert!(tx.kind() == TxKind::FinalisedBlock);
-						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let finalised_block =
-							FinalisedBlock::decode(&mut tx.body().as_slice()).unwrap();
-						info!(
-							"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-							message.topic.as_str(),
-							finalised_block,
-						);
 					}
 				},
 				_ => {},

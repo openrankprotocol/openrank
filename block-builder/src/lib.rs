@@ -6,10 +6,7 @@ use openrank_common::{
 	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
-	txs::{
-		CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest, JobVerification,
-		ProposedBlock, Tx, TxKind,
-	},
+	txs::{CreateCommitment, JobRunAssignment, JobRunRequest, JobVerification, Tx, TxKind},
 	MyBehaviour, MyBehaviourEvent,
 };
 use serde::{Deserialize, Serialize};
@@ -73,17 +70,6 @@ fn handle_gossipsub_events(
 								message.topic.as_str(),
 								commitment,
 							);
-
-							let proposed_block_topic = Topic::ProposedBlock;
-							let proposed_block = encode(ProposedBlock::default());
-							if let Err(e) = broadcast_default_event(
-								&mut swarm,
-								TxKind::ProposedBlock,
-								proposed_block,
-								proposed_block_topic,
-							) {
-								error!("Publish error: {e:?}");
-							}
 						}
 					},
 					Topic::DomainVerification(_) => {
@@ -101,17 +87,6 @@ fn handle_gossipsub_events(
 								message.topic.as_str(),
 								job_verification,
 							);
-
-							let finalised_block_topic = Topic::FinalisedBlock;
-							let finalised_block = encode(FinalisedBlock::default());
-							if let Err(e) = broadcast_default_event(
-								&mut swarm,
-								TxKind::FinalisedBlock,
-								finalised_block,
-								finalised_block_topic,
-							) {
-								error!("Publish error: {e:?}");
-							}
 						}
 					},
 					_ => {},

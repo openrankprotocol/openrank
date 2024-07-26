@@ -2797,6 +2797,7 @@ dependencies = [
  "openrank-common",
  "rand",
  "serde",
+ "sha3",
  "tokio",
  "toml",
  "tracing",

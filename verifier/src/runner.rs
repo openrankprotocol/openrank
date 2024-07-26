@@ -3,25 +3,25 @@ use openrank_common::{
 		fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
 	},
 	topics::{Domain, DomainHash},
-	txs::{Address, CreateScores, ScoreEntry, TrustEntry},
+	txs::{Address, CreateCommitment, CreateScores, ScoreEntry, TrustEntry, TxHash},
 };
 use sha3::Keccak256;
 use std::collections::HashMap;
 
-use crate::algos::et::positive_run;
-
-pub struct ComputeJobRunner {
+pub struct VerificationJobRunner {
 	count: HashMap<DomainHash, u32>,
 	indices: HashMap<DomainHash, HashMap<Address, u32>>,
 	local_trust: HashMap<DomainHash, HashMap<u32, HashMap<u32, f32>>>,
 	seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
 	lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
 	lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
-	compute_results: HashMap<DomainHash, Vec<f32>>,
+	create_scores: HashMap<DomainHash, Vec<(TxHash, CreateScores)>>,
 	compute_tree: HashMap<DomainHash, DenseMerkleTree<Keccak256>>,
+	active_assignments: HashMap<DomainHash, Option<TxHash>>,
+	commitments: HashMap<TxHash, CreateCommitment>,
 }
 
-impl ComputeJobRunner {
+impl VerificationJobRunner {
 	pub fn new() -> Self {
 		Self {
 			count: HashMap::new(),
@@ -31,7 +31,9 @@ impl ComputeJobRunner {
 			lt_sub_trees: HashMap::new(),
 			lt_master_tree: HashMap::new(),
 			compute_tree: HashMap::new(),
-			compute_results: HashMap::new(),
+			create_scores: HashMap::new(),
+			active_assignments: HashMap::new(),
+			commitments: HashMap::new(),
 		}
 	}
 
@@ -99,39 +101,85 @@ impl ComputeJobRunner {
 		}
 	}
 
-	pub fn compute(&mut self, domain: Domain) {
-		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
-		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
-		let res = positive_run::<30>(lt, seed);
-		self.compute_results.insert(domain.to_hash(), res);
+	pub fn update_scores(
+		&mut self, domain: Domain, tx_hash: TxHash, create_scores: CreateScores,
+	) -> Option<(TxHash, bool)> {
+		let score_values = self.create_scores.get_mut(&domain.to_hash()).unwrap();
+		score_values.push((tx_hash, create_scores));
+
+		let assignment = self.active_assignments.get_mut(&domain.to_hash()).unwrap();
+		if let Some(assignment_id) = assignment {
+			let commitment = self.commitments.get(&assignment_id.clone()).unwrap();
+			let create_scores_txs = self.create_scores.get(&domain.to_hash()).unwrap();
+			let scores_tx_hashes: Vec<TxHash> =
+				create_scores_txs.iter().map(|(tx_hash, _)| tx_hash.clone()).collect();
+			if commitment.scores_tx_hashes == scores_tx_hashes {
+				let assgn_tx = assignment_id.clone();
+				let lt_hash = commitment.lt_root_hash.clone();
+				let cp_hash = commitment.compute_root_hash.clone();
+
+				self.create_compute_tree(domain.clone());
+				let (lt_root, compute_root) = self.get_root_hashes(domain);
+				Some((assgn_tx, lt_hash == lt_root && cp_hash == compute_root))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	}
+
+	pub fn update_assigment(&mut self, domain: Domain, id: TxHash) {
+		self.active_assignments.insert(domain.to_hash(), Some(id));
+	}
+
+	pub fn update_commitment(
+		&mut self, domain: Domain, commitment: CreateCommitment,
+	) -> Option<(TxHash, bool)> {
+		self.commitments.insert(
+			commitment.job_run_assignment_tx_hash.clone(),
+			commitment.clone(),
+		);
+		let assignment = self.active_assignments.get_mut(&domain.to_hash()).unwrap();
+		if let Some(assignment_id) = assignment {
+			let commitment = self.commitments.get(&assignment_id.clone()).unwrap();
+			let create_scores_txs = self.create_scores.get(&domain.to_hash()).unwrap();
+			let scores_tx_hashes: Vec<TxHash> =
+				create_scores_txs.iter().map(|(tx_hash, _)| tx_hash.clone()).collect();
+			if commitment.scores_tx_hashes == scores_tx_hashes {
+				let assgn_tx = assignment_id.clone();
+				let lt_hash = commitment.lt_root_hash.clone();
+				let cp_hash = commitment.compute_root_hash.clone();
+
+				self.create_compute_tree(domain.clone());
+				let (lt_root, compute_root) = self.get_root_hashes(domain);
+				Some((assgn_tx, lt_hash == lt_root && cp_hash == compute_root))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
 	}
 
 	pub fn create_compute_tree(&mut self, domain: Domain) {
-		let scores = self.compute_results.get(&domain.to_hash()).unwrap();
+		let scores = self.create_scores.get(&domain.to_hash()).unwrap();
+		let score_entries: Vec<ScoreEntry> =
+			scores.iter().fold(Vec::new(), |mut acc, (_, scores)| {
+				acc.extend_from_slice(&scores.entries);
+				acc
+			});
+		let indices = self.indices.get(&domain.to_hash()).unwrap();
+		let count = self.count.get(&domain.to_hash()).unwrap();
+		let mut scores = vec![0.0; *count as usize];
+		for score in score_entries {
+			let index = indices.get(&score.id).unwrap();
+			scores[*index as usize] = score.value;
+		}
 		let score_hashes: Vec<Hash> =
 			scores.iter().map(|x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
 		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes);
 		self.compute_tree.insert(domain.to_hash(), compute_tree);
-	}
-
-	pub fn get_create_scores(&self, domain: Domain) -> Vec<CreateScores> {
-		let namespace_indices = self.indices.get(&domain.to_hash()).unwrap();
-		let scores = self.compute_results.get(&domain.to_hash()).unwrap();
-		let index_to_address: HashMap<&u32, &Address> =
-			namespace_indices.iter().map(|(k, v)| (v, k)).collect();
-		let mut create_scores_txs = Vec::new();
-		for (i, chunk) in scores.chunks(1000).enumerate() {
-			let mut entries = Vec::new();
-			for j in 0..chunk.len() {
-				let index = (i * chunk.len() + j) as u32;
-				let address = index_to_address.get(&index).unwrap();
-				let score_entry = ScoreEntry::new((*address).clone(), chunk[i]);
-				entries.push(score_entry);
-			}
-			let create_scores = CreateScores::new(entries);
-			create_scores_txs.push(create_scores);
-		}
-		create_scores_txs
 	}
 
 	pub fn get_root_hashes(&self, domain: Domain) -> (Hash, Hash) {

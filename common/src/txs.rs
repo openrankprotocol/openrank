@@ -172,7 +172,9 @@ impl FromHex for Address {
 	}
 }
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+#[derive(
+	Debug, Clone, Hash, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
+)]
 pub struct TxHash(#[serde(with = "hex")] [u8; 32]);
 
 #[derive(
@@ -248,10 +250,10 @@ impl Decodable for TrustEntry {
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateCommitment {
-	job_run_assignment_tx_hash: TxHash,
-	lt_root_hash: Hash,
-	compute_root_hash: Hash,
-	scores_tx_hashes: Vec<TxHash>,
+	pub job_run_assignment_tx_hash: TxHash,
+	pub lt_root_hash: Hash,
+	pub compute_root_hash: Hash,
+	pub scores_tx_hashes: Vec<TxHash>,
 	new_trust_tx_hashes: Vec<TxHash>,
 	new_seed_tx_hashes: Vec<TxHash>,
 }
@@ -274,7 +276,7 @@ impl CreateCommitment {
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct CreateScores {
-	entries: Vec<ScoreEntry>,
+	pub entries: Vec<ScoreEntry>,
 }
 
 impl CreateScores {
@@ -307,6 +309,12 @@ pub struct JobRunAssignment {
 pub struct JobVerification {
 	job_run_assignment_tx_hash: TxHash,
 	verification_result: bool,
+}
+
+impl JobVerification {
+	pub fn new(job_run_assignment_tx_hash: TxHash, verification_result: bool) -> Self {
+		Self { job_run_assignment_tx_hash, verification_result }
+	}
 }
 
 impl Default for JobVerification {
