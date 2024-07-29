@@ -175,7 +175,7 @@ impl FromHex for Address {
 #[derive(
 	Debug, Clone, Hash, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
-pub struct TxHash(#[serde(with = "hex")] [u8; 32]);
+pub struct TxHash(#[serde(with = "hex")] pub [u8; 32]);
 
 #[derive(
 	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
@@ -300,7 +300,7 @@ impl JobRunRequest {
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct JobRunAssignment {
-	job_run_request_tx_hash: TxHash,
+	pub job_run_request_tx_hash: TxHash,
 	assigned_compute_node: Address,
 	assigned_verifier_node: Address,
 }

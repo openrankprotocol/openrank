@@ -4,9 +4,13 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_default_event, build_node,
 	db::{Db, DbItem},
+	result::JobResult,
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
-	txs::{CreateCommitment, JobRunAssignment, JobRunRequest, JobVerification, Tx, TxKind},
+	txs::{
+		CreateCommitment, CreateScores, JobRunAssignment, JobRunRequest, JobVerification, Tx,
+		TxKind,
+	},
 	MyBehaviour, MyBehaviourEvent,
 };
 use serde::{Deserialize, Serialize};
@@ -63,8 +67,36 @@ fn handle_gossipsub_events(
 							assert_eq!(tx.kind(), TxKind::CreateCommitment);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
+
 							let commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
+
+							let assignment_tx: Tx =
+								db.get(commitment.job_run_assignment_tx_hash.0.to_vec()).unwrap();
+							let assignment_body =
+								JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+									.unwrap();
+							let request: Tx =
+								db.get(assignment_body.job_run_request_tx_hash.0.to_vec()).unwrap();
+							let result = JobResult::new(tx.hash(), request.hash());
+							db.put(result).unwrap();
+							info!(
+								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								message.topic.as_str(),
+								commitment,
+							);
+						}
+					},
+					Topic::DomainScores(_) => {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							assert_eq!(tx.kind(), TxKind::CreateScores);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
+							let commitment =
+								CreateScores::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
 								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
 								message.topic.as_str(),

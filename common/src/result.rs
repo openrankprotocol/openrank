@@ -1,0 +1,29 @@
+use crate::{db::DbItem, txs::TxHash};
+use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
+pub struct JobResult {
+	create_commitment_tx_hash: TxHash,
+	job_run_request_tx_hash: TxHash,
+}
+
+impl JobResult {
+	pub fn new(create_commitment_tx_hash: TxHash, job_run_request_tx_hash: TxHash) -> Self {
+		Self { create_commitment_tx_hash, job_run_request_tx_hash }
+	}
+}
+
+impl DbItem for JobResult {
+	fn get_key(&self) -> Vec<u8> {
+		self.job_run_request_tx_hash.0.to_vec()
+	}
+
+	fn get_cf() -> String {
+		"metadata".to_string()
+	}
+
+	fn get_prefix(&self) -> String {
+		"result".to_string()
+	}
+}

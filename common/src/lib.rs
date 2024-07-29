@@ -1,5 +1,6 @@
 pub mod db;
 pub mod merkle;
+pub mod result;
 pub mod topics;
 pub mod tx_event;
 pub mod txs;

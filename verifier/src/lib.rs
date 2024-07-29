@@ -2,7 +2,7 @@ use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-	broadcast_default_event, broadcast_event, build_node,
+	broadcast_event, build_node,
 	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
@@ -16,7 +16,7 @@ use runner::VerificationJobRunner;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
-use tracing::{error, info};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 mod runner;
@@ -27,7 +27,7 @@ pub struct Config {
 }
 
 fn handle_gossipsub_events(
-	mut swarm: &mut Swarm<MyBehaviour>, job_runner: &mut VerificationJobRunner, db: &Db,
+	swarm: &mut Swarm<MyBehaviour>, job_runner: &mut VerificationJobRunner, db: &Db,
 	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
 ) {
 	match event {
@@ -110,12 +110,13 @@ fn handle_gossipsub_events(
 
 							let domain =
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
-							let res = job_runner.update_scores(
+							job_runner.update_scores(
 								domain.clone(),
 								tx.hash(),
 								create_scores.clone(),
 							);
-							if let Some((tx_hash, verification_res)) = res {
+							let res = job_runner.check_finished_jobs(domain.clone());
+							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
 								let tx = Tx::default_with(
@@ -149,9 +150,9 @@ fn handle_gossipsub_events(
 
 							let domain =
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
-							let res = job_runner
-								.update_commitment(domain.clone(), create_commitment.clone());
-							if let Some((tx_hash, verification_res)) = res {
+							job_runner.update_commitment(create_commitment.clone());
+							let res = job_runner.check_finished_jobs(domain.clone());
+							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
 								let tx = Tx::default_with(
