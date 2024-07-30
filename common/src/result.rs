@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct JobResult {
-	create_commitment_tx_hash: TxHash,
+	pub create_commitment_tx_hash: TxHash,
 	job_run_request_tx_hash: TxHash,
 }
 

@@ -20,6 +20,7 @@ enum Method {
 	TrustUpdate,
 	SeedUpdate,
 	JobRunRequest,
+	GetResults,
 }
 
 /// Simple program to greet a person
@@ -28,6 +29,7 @@ enum Method {
 struct Args {
 	#[arg(value_enum)]
 	method: Method,
+	arg: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +106,14 @@ async fn job_run_request() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
+async fn get_results(arg: String) -> Result<Vec<ScoreEntry>, Box<dyn Error>> {
+	// Creates a new client
+	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
+	let result: Value = client.call("Sequencer.get_results", arg).await?;
+	let scores: Vec<ScoreEntry> = serde_json::from_value(result)?;
+	Ok(scores)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	let cli = Args::parse();
@@ -117,6 +127,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		},
 		Method::JobRunRequest => {
 			job_run_request().await?;
+		},
+		Method::GetResults => {
+			let arg = cli.arg.unwrap();
+			let results = get_results(arg).await?;
+			for res in results.get(0..100).unwrap() {
+				println!("{:?}: {}", res.id, res.value);
+			}
 		},
 	}
 	Ok(())

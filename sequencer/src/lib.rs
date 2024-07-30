@@ -4,9 +4,13 @@ use karyon_jsonrpc::{rpc_impl, RPCError, Server};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent};
 use openrank_common::{
 	build_node,
+	db::{Db, DbItem},
+	result::JobResult,
 	topics::Topic,
 	tx_event::TxEvent,
-	txs::{JobRunRequest, TrustUpdate, Tx, TxKind},
+	txs::{
+		CreateCommitment, CreateScores, JobRunRequest, ScoreEntry, TrustUpdate, Tx, TxHash, TxKind,
+	},
 	MyBehaviourEvent,
 };
 use serde_json::Value;
@@ -20,11 +24,12 @@ use tracing_subscriber::EnvFilter;
 
 struct Sequencer {
 	sender: Sender<(Vec<u8>, Topic)>,
+	db: Db,
 }
 
 impl Sequencer {
-	fn new(sender: Sender<(Vec<u8>, Topic)>) -> Self {
-		Self { sender }
+	fn new(sender: Sender<(Vec<u8>, Topic)>, db: Db) -> Self {
+		Self { sender, db }
 	}
 }
 
@@ -104,6 +109,30 @@ impl Sequencer {
 		let tx_event_value = serde_json::to_value(tx_event)?;
 		Ok(tx_event_value)
 	}
+
+	async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
+		let tx_hash_bytes = hex::decode(job_run_tx_hash.to_string())
+			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
+		let tx_hash = TxHash::decode(&mut tx_hash_bytes.as_slice())
+			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
+		let result = self.db.get::<JobResult>(tx_hash.0.to_vec()).unwrap();
+		let tx = self.db.get::<Tx>(result.create_commitment_tx_hash.0.to_vec()).unwrap();
+		let commitment = CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
+		let create_scores_tx: Vec<Tx> = commitment
+			.scores_tx_hashes
+			.into_iter()
+			.map(|x| self.db.get::<Tx>(x.0.to_vec()).unwrap())
+			.collect();
+		let create_scores: Vec<CreateScores> = create_scores_tx
+			.into_iter()
+			.map(|tx| CreateScores::decode(&mut tx.body().as_slice()).unwrap())
+			.collect();
+		let mut score_entries: Vec<ScoreEntry> =
+			create_scores.into_iter().map(|x| x.entries).flatten().collect();
+		score_entries.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
+
+		Ok(serde_json::to_value(score_entries).unwrap())
+	}
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
@@ -111,6 +140,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
+	let db = Db::new("./local-db", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
@@ -119,7 +149,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	info!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
 
 	let (sender, mut receiver) = mpsc::channel(100);
-	let sequencer = Arc::new(Sequencer::new(sender.clone()));
+	let sequencer = Arc::new(Sequencer::new(sender.clone(), db));
 	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 	server.start();
 

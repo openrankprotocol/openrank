@@ -140,7 +140,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
-	let db = Db::new("./local-db", &[&Tx::get_cf()])?;
+	let db = Db::new("./local-db", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
 	let topics_requests: Vec<Topic> = config
 		.domains

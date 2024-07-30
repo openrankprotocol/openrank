@@ -13,7 +13,7 @@ use crate::algos::et::positive_run;
 pub struct ComputeJobRunner {
 	count: HashMap<DomainHash, u32>,
 	indices: HashMap<DomainHash, HashMap<Address, u32>>,
-	local_trust: HashMap<DomainHash, HashMap<u32, HashMap<u32, f32>>>,
+	local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
 	seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
 	lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
 	lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
@@ -57,8 +57,8 @@ impl ComputeJobRunner {
 				domain_indices.insert(entry.to.clone(), *count);
 				*count
 			};
-			lt.entry(from_index.clone()).and_modify(|e| {
-				e.insert(to_index, entry.value);
+			lt.entry((from_index, to_index)).and_modify(|e| {
+				*e = entry.value;
 			});
 
 			let from_index = domain_indices.get(&entry.from).unwrap();
@@ -102,7 +102,7 @@ impl ComputeJobRunner {
 	pub fn compute(&mut self, domain: Domain) {
 		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
 		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
-		let res = positive_run::<30>(lt, seed);
+		let res = positive_run::<30>(lt.clone(), seed);
 		self.compute_results.insert(domain.to_hash(), res);
 	}
 
