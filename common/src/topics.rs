@@ -2,7 +2,10 @@ use crate::txs::{Address, OwnedNamespace};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
-use std::hash::{DefaultHasher, Hasher};
+use std::{
+	fmt::Display,
+	hash::{DefaultHasher, Hasher},
+};
 
 #[derive(
 	Clone, Debug, Default, Hash, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize,
@@ -126,6 +129,12 @@ impl From<Topic> for String {
 			},
 		}
 		s
+	}
+}
+
+impl Display for Topic {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(String::from(self.clone()).as_str())
 	}
 }
 

@@ -2,7 +2,7 @@ use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-	broadcast_default_event, build_node,
+	broadcast_event, build_node,
 	db::{Db, DbItem},
 	result::JobResult,
 	topics::{Domain, Topic},
@@ -39,22 +39,17 @@ fn handle_gossipsub_events(
 							assert!(tx.kind() == TxKind::JobRunRequest);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
-							let job_run_request =
-								JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
+							let _ = JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								job_run_request,
 							);
 
 							let assignment_topic = Topic::DomainAssignent(domain_id.clone());
-							let job_assignment = encode(JobRunAssignment::default());
-							if let Err(e) = broadcast_default_event(
-								&mut swarm,
-								TxKind::JobRunAssignment,
-								job_assignment,
-								assignment_topic,
-							) {
+							let job_assignment = encode(JobRunAssignment::default_with(tx.hash()));
+							let tx = Tx::default_with(TxKind::JobRunAssignment, job_assignment);
+							db.put(tx.clone()).unwrap();
+							if let Err(e) = broadcast_event(&mut swarm, tx, assignment_topic) {
 								error!("Publish error: {e:?}");
 							}
 						}
@@ -71,19 +66,24 @@ fn handle_gossipsub_events(
 							let commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
 
-							let assignment_tx: Tx =
-								db.get(commitment.job_run_assignment_tx_hash.0.to_vec()).unwrap();
+							let assignment_tx_key = Tx::construct_full_key(
+								TxKind::JobRunAssignment,
+								commitment.job_run_assignment_tx_hash.0.to_vec(),
+							);
+							let assignment_tx: Tx = db.get(assignment_tx_key).unwrap();
 							let assignment_body =
 								JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
 									.unwrap();
-							let request: Tx =
-								db.get(assignment_body.job_run_request_tx_hash.0.to_vec()).unwrap();
+							let request_tx_key = Tx::construct_full_key(
+								TxKind::JobRunRequest,
+								assignment_body.job_run_request_tx_hash.0.to_vec(),
+							);
+							let request: Tx = db.get(request_tx_key).unwrap();
 							let result = JobResult::new(tx.hash(), request.hash());
 							db.put(result).unwrap();
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								commitment,
 							);
 						}
 					},
@@ -95,12 +95,10 @@ fn handle_gossipsub_events(
 							assert_eq!(tx.kind(), TxKind::CreateScores);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
-							let commitment =
-								CreateScores::decode(&mut tx.body().as_slice()).unwrap();
+							let _ = CreateScores::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								commitment,
 							);
 						}
 					},
@@ -112,12 +110,10 @@ fn handle_gossipsub_events(
 							assert_eq!(tx.kind(), TxKind::JobVerification);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
-							let job_verification =
-								JobVerification::decode(&mut tx.body().as_slice()).unwrap();
+							let _ = JobVerification::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								job_verification,
 							);
 						}
 					},
@@ -140,7 +136,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
-	let db = Db::new("./local-db", &[&Tx::get_cf(), &JobResult::get_cf()])?;
+	let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
 	let topics_requests: Vec<Topic> = config
 		.domains
@@ -156,6 +152,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
+	let topics_scores: Vec<Topic> = config
+		.domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+		.collect();
 	let topics_verification: Vec<Topic> = config
 		.domains
 		.clone()
@@ -164,7 +167,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
 		.collect();
 
-	for topic in topics_verification.iter().chain(&topics_commitment).chain(&topics_requests) {
+	for topic in topics_verification
+		.iter()
+		.chain(&topics_commitment)
+		.chain(&topics_scores)
+		.chain(&topics_requests)
+	{
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.clone());
 		// subscribes to our topic
@@ -188,7 +196,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_verification);
+					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
 					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {

@@ -12,7 +12,7 @@ where
 	/// HashMap to keep the level and index of the nodes
 	pub(crate) nodes: HashMap<(u8, u32), Hash>,
 	/// Default nodes
-	default: Vec<Hash>,
+	default: HashMap<(u8, u32), Hash>,
 	// Number of levels
 	num_levels: u8,
 	/// PhantomData for the hasher
@@ -29,18 +29,21 @@ where
 
 	/// Build a MerkleTree from given leaf nodes and height
 	pub fn new(num_levels: u8) -> Self {
-		let mut default = Vec::new();
-		default.push(Hash::default());
-		for i in 1..num_levels as usize {
-			let h = hash_two::<H>(default[i - 1].clone(), default[i - 1].clone());
-			default.push(h);
+		let mut default: HashMap<(u8, u32), Hash> = HashMap::new();
+		default.insert((0, 0), Hash::default());
+		for i in 0..num_levels as usize {
+			let h = hash_two::<H>(
+				default[&(i as u8, 0u32)].clone(),
+				default[&(i as u8, 0u32)].clone(),
+			);
+			default.insert(((i + 1) as u8, 0), h);
 		}
 
-		Self { nodes: HashMap::new(), default, num_levels, _h: PhantomData }
+		Self { nodes: default.clone(), default, num_levels, _h: PhantomData }
 	}
 
 	pub fn insert_leaf(&mut self, index: u32, leaf: Hash) {
-		let max_size = 2i32.pow(self.num_levels as u32).abs() as u32;
+		let max_size = 2u32.pow(self.num_levels as u32) - 1;
 		assert!(index < max_size);
 		let bits = num_to_bits_vec(index);
 
@@ -48,14 +51,14 @@ where
 
 		let mut curr_index = index;
 		let mut curr_node = leaf;
-		for i in 0..u32::BITS as u8 {
+		for i in 0..self.num_levels {
 			let (left, right) = if bits[i as usize] {
 				let n_key = (i, curr_index - 1);
-				let n = self.nodes.get(&n_key).unwrap_or(&self.default[i as usize]);
+				let n = self.nodes.get(&n_key).unwrap_or(&self.default[&(i, 0)]);
 				(n.clone(), curr_node)
 			} else {
 				let n_key = (i, curr_index + 1);
-				let n = self.nodes.get(&n_key).unwrap_or(&self.default[i as usize]);
+				let n = self.nodes.get(&n_key).unwrap_or(&self.default[&(i, 0)]);
 				(curr_node, n.clone())
 			};
 

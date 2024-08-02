@@ -33,6 +33,13 @@ where
 		}
 		let num_levels = (u32::BITS - next_power_of_two.leading_zeros()) as u8;
 
+		let mut default = Vec::new();
+		default.push(Hash::default());
+		for i in 1..num_levels as usize {
+			let h = hash_two::<H>(default[i - 1].clone(), default[i - 1].clone());
+			default.push(h);
+		}
+
 		let mut tree = HashMap::new();
 		tree.insert(0u8, leaves);
 
@@ -40,12 +47,18 @@ where
 			let nodes = tree.get(&i).unwrap();
 			let next: Vec<Hash> = nodes
 				.chunks(2)
-				.map(|chunk| hash_two::<H>(chunk[0].clone(), chunk[1].clone()))
+				.map(|chunk| {
+					if chunk.len() == 2 {
+						hash_two::<H>(chunk[0].clone(), chunk[1].clone())
+					} else {
+						hash_two::<H>(chunk[0].clone(), default[i as usize].clone())
+					}
+				})
 				.collect();
 			tree.insert(i + 1, next);
 		}
 
-		Self { nodes: HashMap::new(), num_levels, _h: PhantomData }
+		Self { nodes: tree, num_levels, _h: PhantomData }
 	}
 }
 

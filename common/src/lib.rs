@@ -71,7 +71,7 @@ pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 pub fn broadcast_default_event(
 	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: Topic,
 ) -> Result<MessageId, PublishError> {
-	info!("PUBLSH: {:?}", topic.clone());
+	info!("PUBLISH: {}", topic.clone());
 	let tx = Tx::default_with(kind, data);
 	let tx_event = TxEvent::default_with_data(encode(tx));
 	let topic_wrapper = gossipsub::IdentTopic::new(topic);
@@ -81,7 +81,7 @@ pub fn broadcast_default_event(
 pub fn broadcast_event(
 	swarm: &mut Swarm<MyBehaviour>, tx: Tx, topic: Topic,
 ) -> Result<MessageId, PublishError> {
-	info!("PUBLSH: {:?}", topic.clone());
+	info!("PUBLISH: {}", topic.clone());
 	let tx_event = TxEvent::default_with_data(encode(tx));
 	let topic_wrapper = gossipsub::IdentTopic::new(topic);
 	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))

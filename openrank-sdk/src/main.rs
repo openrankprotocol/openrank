@@ -38,19 +38,22 @@ pub struct Config {
 }
 
 async fn update_trust() -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/trust.csv")?;
+	let f = File::open("./openrank-sdk/trust-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {
 		let record: StringRecord = result?;
-		let te: TrustEntry = record.deserialize(None)?;
-		entries.push(te);
+		let (from, to, value): (u32, u32, f32) = record.deserialize(None)?;
+		let from_addr = Address::from(from);
+		let to_addr = Address::from(to);
+		let trust_entry = TrustEntry::new(from_addr, to_addr, value);
+		entries.push(trust_entry);
 	}
 
 	// Creates a new client
 	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
 
-	for chunk in entries.chunks(1000) {
+	for chunk in entries.chunks(500) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
 		let data = encode(TrustUpdate::new(owned_namespace.clone(), chunk.to_vec()));
 		let tx = encode(Tx::default_with(TxKind::TrustUpdate, data));
@@ -64,13 +67,15 @@ async fn update_trust() -> Result<(), Box<dyn Error>> {
 }
 
 async fn update_seed() -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/seed.csv")?;
+	let f = File::open("./openrank-sdk/seed-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {
 		let record: StringRecord = result?;
-		let se: ScoreEntry = record.deserialize(None)?;
-		entries.push(se);
+		let (i, value): (u32, f32) = record.deserialize(None)?;
+		let i_addr = Address::from(i);
+		let score_entry = ScoreEntry::new(i_addr, value);
+		entries.push(score_entry);
 	}
 
 	// Creates a new client
@@ -97,9 +102,12 @@ async fn job_run_request() -> Result<(), Box<dyn Error>> {
 
 	let domain_id = config.domain.to_hash();
 	let data = encode(JobRunRequest::new(domain_id, u32::MAX));
-	let tx = encode(Tx::default_with(TxKind::SeedUpdate, data));
+	let tx = Tx::default_with(TxKind::JobRunRequest, data);
+	let tx_hash = tx.hash();
+	let hex_encoded_tx_hash = hex::encode(tx_hash.0);
+	println!("JobRunRequest TX_HASH: {}", hex_encoded_tx_hash);
 
-	let result: Value = client.call("Sequencer.job_run_request", hex::encode(tx)).await?;
+	let result: Value = client.call("Sequencer.job_run_request", hex::encode(encode(tx))).await?;
 	let tx_event: TxEvent = serde_json::from_value(result)?;
 
 	println!("Res: {:?}", tx_event);
@@ -130,9 +138,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		},
 		Method::GetResults => {
 			let arg = cli.arg.unwrap();
-			let results = get_results(arg).await?;
-			for res in results.get(0..100).unwrap() {
-				println!("{:?}: {}", res.id, res.value);
+			let mut results = get_results(arg).await?;
+			results.reverse();
+			for res in results.chunks(100).next().unwrap() {
+				println!("{}: {}", res.id, res.value);
 			}
 		},
 	}

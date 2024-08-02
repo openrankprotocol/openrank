@@ -5,6 +5,7 @@ use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
+use std::fmt::{Display, Write};
 use std::io::Read;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,6 +118,13 @@ impl Tx {
 		tx_bytes.copy_from_slice(&bytes);
 		TxHash(tx_bytes)
 	}
+
+	pub fn construct_full_key(kind: TxKind, key: Vec<u8>) -> Vec<u8> {
+		let kind_string: String = kind.into();
+		let mut prefix = kind_string.as_bytes().to_vec();
+		prefix.extend(key);
+		prefix
+	}
 }
 
 impl DbItem for Tx {
@@ -164,6 +172,26 @@ impl FromHex for OwnedNamespace {
 )]
 pub struct Address(#[serde(with = "hex")] pub [u8; 20]);
 
+impl From<u32> for Address {
+	fn from(value: u32) -> Self {
+		let mut bytes = [0; 20];
+		bytes[..4].copy_from_slice(&value.to_be_bytes());
+		Address(bytes)
+	}
+}
+
+impl Address {
+	pub fn to_hex(&self) -> String {
+		hex::encode(self.0)
+	}
+}
+
+impl Display for Address {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&format!("Address({})", self.to_hex()))
+	}
+}
+
 impl FromHex for Address {
 	type Error = hex::FromHexError;
 
@@ -176,6 +204,14 @@ impl FromHex for Address {
 	Debug, Clone, Hash, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
 pub struct TxHash(#[serde(with = "hex")] pub [u8; 32]);
+
+impl TxHash {
+	pub fn from_bytes(bytes: Vec<u8>) -> Self {
+		let mut inner = [0u8; 32];
+		inner.copy_from_slice(bytes.as_slice());
+		Self(inner)
+	}
+}
 
 #[derive(
 	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
@@ -223,6 +259,12 @@ pub struct TrustEntry {
 	pub from: Address,
 	pub to: Address,
 	pub value: f32,
+}
+
+impl TrustEntry {
+	pub fn new(from: Address, to: Address, value: f32) -> Self {
+		Self { from, to, value }
+	}
 }
 
 impl Encodable for TrustEntry {
@@ -303,6 +345,16 @@ pub struct JobRunAssignment {
 	pub job_run_request_tx_hash: TxHash,
 	assigned_compute_node: Address,
 	assigned_verifier_node: Address,
+}
+
+impl JobRunAssignment {
+	pub fn default_with(job_run_request_tx_hash: TxHash) -> Self {
+		Self {
+			job_run_request_tx_hash,
+			assigned_compute_node: Address::default(),
+			assigned_verifier_node: Address::default(),
+		}
+	}
 }
 
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable)]

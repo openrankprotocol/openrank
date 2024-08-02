@@ -29,6 +29,12 @@ pub trait DbItem {
 	fn get_key(&self) -> Vec<u8>;
 	fn get_prefix(&self) -> String;
 	fn get_cf() -> String;
+	fn get_full_key(&self) -> Vec<u8> {
+		let suffix = self.get_key();
+		let mut key = self.get_prefix().as_bytes().to_vec();
+		key.extend(suffix);
+		key
+	}
 }
 
 pub struct Db {
@@ -45,11 +51,19 @@ impl Db {
 		Ok(Self { connection: db })
 	}
 
+	pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
+		assert!(path.ends_with("-storage"));
+		let mut opts = Options::default();
+		opts.create_if_missing(true);
+		opts.create_missing_column_families(true);
+		let db =
+			DB::open_cf_for_read_only(&opts, path, cfs, false).map_err(|e| DbError::RocksDB(e))?;
+		Ok(Self { connection: db })
+	}
+
 	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
 		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let suffix = item.get_key();
-		let mut key = item.get_prefix().as_bytes().to_vec();
-		key.extend(suffix);
+		let key = item.get_full_key();
 		let value = to_vec(&item).map_err(|e| DbError::Serde(e))?;
 		self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
 	}

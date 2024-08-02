@@ -9,6 +9,7 @@ pub struct InclusionProof([u8; 32]);
 
 #[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct TxEvent {
+	// Supposed to be block height
 	blob_id: u64,
 	proof: InclusionProof,
 	data: Vec<u8>,

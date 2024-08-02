@@ -49,9 +49,8 @@ fn handle_gossipsub_events(
 								domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 							job_runner.update_trust(domain.clone(), trust_update.entries.clone());
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								trust_update,
 							);
 						}
 					},
@@ -70,9 +69,8 @@ fn handle_gossipsub_events(
 								domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 							job_runner.update_seed(domain.clone(), seed_update.entries.clone());
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								seed_update,
 							);
 						}
 					},
@@ -84,16 +82,15 @@ fn handle_gossipsub_events(
 							assert_eq!(tx.kind(), TxKind::JobRunAssignment);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
-							let job_run_assignment =
-								JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
+							// Not checking if this node is assigned for the job
+							let _ = JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
 
 							let domain =
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 							job_runner.update_assigment(domain.clone(), tx.hash());
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								job_run_assignment,
 							);
 						}
 					},
@@ -131,9 +128,8 @@ fn handle_gossipsub_events(
 								.unwrap();
 							}
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								create_scores,
 							);
 						}
 					},
@@ -167,9 +163,8 @@ fn handle_gossipsub_events(
 								.unwrap();
 							}
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								create_commitment,
 							);
 						}
 					},
@@ -188,8 +183,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
-	let db = Db::new("./local-db", &[&Tx::get_cf()])?;
-	let mut job_runner = VerificationJobRunner::new();
+	let db = Db::new("./local-storage", &[&Tx::get_cf()])?;
+	let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
+	let mut job_runner = VerificationJobRunner::new(domain_hashes);
 
 	let topics_trust_update: Vec<Topic> = config
 		.domains
