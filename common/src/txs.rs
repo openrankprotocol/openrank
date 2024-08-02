@@ -5,7 +5,7 @@ use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 use std::io::Read;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]

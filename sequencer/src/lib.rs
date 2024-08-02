@@ -24,12 +24,11 @@ use tracing::{error, info};
 
 pub struct Sequencer {
 	sender: Sender<(Vec<u8>, Topic)>,
-	db: Db,
 }
 
 impl Sequencer {
-	pub fn new(sender: Sender<(Vec<u8>, Topic)>, db: Db) -> Self {
-		Self { sender, db }
+	pub fn new(sender: Sender<(Vec<u8>, Topic)>) -> Self {
+		Self { sender }
 	}
 }
 
@@ -122,27 +121,32 @@ impl Sequencer {
 			RPCError::ParseError("Failed to parse TX data".to_string())
 		})?;
 		let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+		let db = Db::new_read_only("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])
+			.map_err(|e| {
+				error!("{}", e);
+				RPCError::InternalError
+			})?;
+
 		let key = JobResult::construct_full_key(tx_hash.0.to_vec());
-		let result = self.db.get::<JobResult>(key).unwrap();
+		let result = db.get::<JobResult>(key).unwrap();
 		let key = Tx::construct_full_key(
 			TxKind::CreateCommitment,
 			result.create_commitment_tx_hash.0.to_vec(),
 		);
-		let tx = self.db.get::<Tx>(key).unwrap();
+		let tx = db.get::<Tx>(key).unwrap();
 		let commitment = CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
 		let create_scores_tx: Vec<Tx> = commitment
 			.scores_tx_hashes
 			.into_iter()
 			.map(|x| {
 				let key = Tx::construct_full_key(TxKind::CreateScores, x.0.to_vec());
-				self.db.get::<Tx>(key).unwrap()
+				db.get::<Tx>(key).unwrap()
 			})
 			.collect();
 		let create_scores: Vec<CreateScores> = create_scores_tx
 			.into_iter()
 			.map(|tx| CreateScores::decode(&mut tx.body().as_slice()).unwrap())
 			.collect();
-		println!("create_scores {}", create_scores.len());
 		let mut score_entries: Vec<ScoreEntry> =
 			create_scores.into_iter().map(|x| x.entries).flatten().collect();
 		score_entries.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
@@ -154,14 +158,13 @@ impl Sequencer {
 pub async fn run() -> Result<(), Box<dyn Error>> {
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
-	let db = Db::new_read_only("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
 
 	let (sender, mut receiver) = mpsc::channel(100);
-	let sequencer = Arc::new(Sequencer::new(sender.clone(), db));
+	let sequencer = Arc::new(Sequencer::new(sender.clone()));
 	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 	server.start();
 

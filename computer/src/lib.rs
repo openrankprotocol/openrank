@@ -6,9 +6,7 @@ use openrank_common::{
 	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
-	txs::{
-		CreateCommitment, JobRunAssignment, ScoreEntry, SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
-	},
+	txs::{CreateCommitment, JobRunAssignment, SeedUpdate, TrustUpdate, Tx, TxHash, TxKind},
 	MyBehaviour, MyBehaviourEvent,
 };
 use runner::ComputeJobRunner;
@@ -48,6 +46,10 @@ fn handle_gossipsub_events(
 						let domain =
 							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 						job_runner.update_trust(domain.clone(), trust_update.entries.clone());
+						println!(
+							"message.id: {:?}, message.sequence_number: {:?}",
+							id, message.sequence_number
+						);
 						info!(
 							"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 							message.topic.as_str(),

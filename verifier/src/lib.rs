@@ -48,6 +48,10 @@ fn handle_gossipsub_events(
 							let domain =
 								domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 							job_runner.update_trust(domain.clone(), trust_update.entries.clone());
+							println!(
+								"message.id: {:?}, message.sequence_number: {:?}",
+								id, message.sequence_number
+							);
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -113,6 +117,11 @@ fn handle_gossipsub_events(
 								create_scores.clone(),
 							);
 							let res = job_runner.check_finished_jobs(domain.clone());
+							println!(
+								"message.id: {:?}, message.sequence_number: {:?}",
+								id, message.sequence_number
+							);
+							println!("res: {:?}", res);
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
@@ -148,6 +157,7 @@ fn handle_gossipsub_events(
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 							job_runner.update_commitment(create_commitment.clone());
 							let res = job_runner.check_finished_jobs(domain.clone());
+							println!("res: {:?}", res);
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);

@@ -61,6 +61,7 @@ impl ComputeJobRunner {
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).unwrap();
 		let lt = self.local_trust.get_mut(&domain.to_hash()).unwrap();
 		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
+		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
 		for entry in trust_entries {
 			let from_index = if let Some(i) = domain_indices.get(&entry.from) {
 				*i
@@ -79,19 +80,18 @@ impl ComputeJobRunner {
 			let old_value = lt.get(&(from_index, to_index)).unwrap_or(&0.0);
 			lt.insert((from_index, to_index), entry.value + old_value);
 
-			let from_index = domain_indices.get(&entry.from).unwrap();
-			let to_index = domain_indices.get(&entry.to).unwrap();
-			let sub_tree = lt_sub_trees
-				.entry(*from_index)
-				.or_insert(DenseIncrementalMerkleTree::<Keccak256>::new(32));
+			if !lt_sub_trees.contains_key(&from_index) {
+				lt_sub_trees.insert(from_index, default_sub_tree.clone());
+			}
+			let sub_tree = lt_sub_trees.get_mut(&from_index).unwrap();
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
-			sub_tree.insert_leaf(*to_index, leaf);
+			sub_tree.insert_leaf(to_index, leaf);
 
 			let sub_tree_root = sub_tree.root();
 			let seed_value = seed.get(&to_index).unwrap_or(&0.0);
 			let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
 			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
-			lt_master_tree.insert_leaf(*from_index, leaf);
+			lt_master_tree.insert_leaf(from_index, leaf);
 		}
 	}
 
@@ -112,7 +112,10 @@ impl ComputeJobRunner {
 				*count
 			};
 
-			let sub_tree = lt_sub_trees.get(&index).unwrap_or(&default_sub_tree);
+			if !lt_sub_trees.contains_key(&index) {
+				lt_sub_trees.insert(index, default_sub_tree.clone());
+			}
+			let sub_tree = lt_sub_trees.get_mut(&index).unwrap();
 			let sub_tree_root = sub_tree.root();
 			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -126,7 +129,6 @@ impl ComputeJobRunner {
 		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
 		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
 		let res = positive_run::<10>(lt.clone(), seed.clone());
-		println!("res: {}", res.iter().sum::<f32>());
 		self.compute_results.insert(domain.to_hash(), res);
 	}
 
@@ -141,7 +143,6 @@ impl ComputeJobRunner {
 	pub fn get_create_scores(&self, domain: Domain) -> Vec<CreateScores> {
 		let namespace_indices = self.indices.get(&domain.to_hash()).unwrap();
 		let scores = self.compute_results.get(&domain.to_hash()).unwrap();
-		println!("scores: {}", scores.iter().sum::<f32>());
 		let index_to_address: HashMap<&u32, &Address> =
 			namespace_indices.iter().map(|(k, v)| (v, k)).collect();
 		let mut create_scores_txs = Vec::new();
@@ -156,11 +157,6 @@ impl ComputeJobRunner {
 			let create_scores = CreateScores::new(entries);
 			create_scores_txs.push(create_scores);
 		}
-		let mut score_entries: Vec<ScoreEntry> =
-			create_scores_txs.clone().into_iter().map(|x| x.entries).flatten().collect();
-		// score_entries.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
-		let sum: f32 = score_entries.iter().map(|x| x.value).sum();
-		println!("sum: {}", sum);
 		create_scores_txs
 	}
 

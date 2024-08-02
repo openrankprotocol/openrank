@@ -79,7 +79,7 @@ fn handle_gossipsub_events(
 								assignment_body.job_run_request_tx_hash.0.to_vec(),
 							);
 							let request: Tx = db.get(request_tx_key).unwrap();
-							let result = JobResult::new(tx.hash(), request.hash());
+							let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
 							db.put(result).unwrap();
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
