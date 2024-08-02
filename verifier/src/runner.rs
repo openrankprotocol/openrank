@@ -197,6 +197,7 @@ impl VerificationJobRunner {
 		let scores: Vec<f32> = score_entries.iter().map(|x| x.value).collect();
 		let score_hashes: Vec<Hash> =
 			scores.iter().map(|x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
+		println!("score_hashes: {:?}", score_hashes);
 		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes);
 		compute_tree_map.insert(assignment_id.clone(), compute_tree);
 		self.get_root_hashes(domain, assignment_id)

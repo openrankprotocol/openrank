@@ -136,6 +136,7 @@ impl ComputeJobRunner {
 		let scores = self.compute_results.get(&domain.to_hash()).unwrap();
 		let score_hashes: Vec<Hash> =
 			scores.iter().map(|x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
+		println!("score_hashes: {:?}", score_hashes);
 		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes);
 		self.compute_tree.insert(domain.to_hash(), compute_tree);
 	}
