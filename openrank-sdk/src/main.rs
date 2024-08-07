@@ -114,11 +114,11 @@ async fn job_run_request() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-async fn get_results(arg: String) -> Result<Vec<ScoreEntry>, Box<dyn Error>> {
+async fn get_results(arg: String) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
 	// Creates a new client
 	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
 	let result: Value = client.call("Sequencer.get_results", arg).await?;
-	let scores: Vec<ScoreEntry> = serde_json::from_value(result)?;
+	let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
 	Ok(scores)
 }
 
@@ -138,7 +138,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		},
 		Method::GetResults => {
 			let arg = cli.arg.unwrap();
-			let mut results = get_results(arg).await?;
+			let (votes, mut results) = get_results(arg).await?;
+			println!("votes: {:?}", votes);
 			results.reverse();
 			for res in results.chunks(100).next().unwrap() {
 				println!("{}: {}", res.id, res.value);

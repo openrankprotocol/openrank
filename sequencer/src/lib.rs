@@ -9,8 +9,8 @@ use openrank_common::{
 	topics::Topic,
 	tx_event::TxEvent,
 	txs::{
-		CreateCommitment, CreateScores, JobRunRequest, ScoreEntry, SeedUpdate, TrustUpdate, Tx,
-		TxHash, TxKind,
+		CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry, SeedUpdate,
+		TrustUpdate, Tx, TxHash, TxKind,
 	},
 	MyBehaviourEvent,
 };
@@ -127,19 +127,17 @@ impl Sequencer {
 				RPCError::InternalError
 			})?;
 
-		let key = JobResult::construct_full_key(tx_hash.0.to_vec());
+		let key = JobResult::construct_full_key(tx_hash);
 		let result = db.get::<JobResult>(key).unwrap();
-		let key = Tx::construct_full_key(
-			TxKind::CreateCommitment,
-			result.create_commitment_tx_hash.0.to_vec(),
-		);
+		let key =
+			Tx::construct_full_key(TxKind::CreateCommitment, result.create_commitment_tx_hash);
 		let tx = db.get::<Tx>(key).unwrap();
 		let commitment = CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
 		let create_scores_tx: Vec<Tx> = commitment
 			.scores_tx_hashes
 			.into_iter()
 			.map(|x| {
-				let key = Tx::construct_full_key(TxKind::CreateScores, x.0.to_vec());
+				let key = Tx::construct_full_key(TxKind::CreateScores, x);
 				db.get::<Tx>(key).unwrap()
 			})
 			.collect();
@@ -151,7 +149,22 @@ impl Sequencer {
 			create_scores.into_iter().map(|x| x.entries).flatten().collect();
 		score_entries.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
 
-		Ok(serde_json::to_value(score_entries).unwrap())
+		let verificarion_results_tx: Vec<Tx> = result
+			.job_verification_tx_hashes
+			.iter()
+			.map(|x| {
+				let key = Tx::construct_full_key(TxKind::JobVerification, x.clone());
+				db.get::<Tx>(key).unwrap()
+			})
+			.collect();
+		let verification_results: Vec<JobVerification> = verificarion_results_tx
+			.into_iter()
+			.map(|tx| JobVerification::decode(&mut tx.body().as_slice()).unwrap())
+			.collect();
+		let verification_results_bools: Vec<bool> =
+			verification_results.into_iter().map(|x| x.verification_result).collect();
+
+		Ok(serde_json::to_value((verification_results_bools, score_entries)).unwrap())
 	}
 }
 
@@ -174,7 +187,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			sibling = receiver.recv() => {
 				if let Some((data, topic)) = sibling {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-					info!("PUBLISH: {:?}", topic.clone());
+					// info!("PUBLISH: {:?}", topic.clone());
 					if let Err(e) =
 					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
 					{

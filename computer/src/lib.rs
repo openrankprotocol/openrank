@@ -46,10 +46,10 @@ fn handle_gossipsub_events(
 						let domain =
 							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 						job_runner.update_trust(domain.clone(), trust_update.entries.clone());
-						println!(
-							"message.id: {:?}, message.sequence_number: {:?}",
-							id, message.sequence_number
-						);
+						// println!(
+						// 	"message.id: {:?}, message.sequence_number: {:?}",
+						// 	id, message.sequence_number
+						// );
 						info!(
 							"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 							message.topic.as_str(),
@@ -64,6 +64,7 @@ fn handle_gossipsub_events(
 						assert!(tx.kind() == TxKind::SeedUpdate);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
+						// println!("tx_hash: {}", tx.hash().to_hex());
 						let seed_update = SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
 						assert!(*namespace == seed_update.seed_id);
 						let domain =
@@ -95,7 +96,8 @@ fn handle_gossipsub_events(
 						job_runner.compute(domain.clone());
 						job_runner.create_compute_tree(domain.clone());
 						let create_scores = job_runner.get_create_scores(domain.clone());
-						let (compute_root, lt_root) = job_runner.get_root_hashes(domain.clone());
+						let (lt_root, compute_root) = job_runner.get_root_hashes(domain.clone());
+						// println!("root after compute: {}", lt_root.clone().to_hex());
 
 						let create_scores_tx: Vec<Tx> = create_scores
 							.iter()

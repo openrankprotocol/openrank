@@ -68,7 +68,7 @@ fn handle_gossipsub_events(
 
 							let assignment_tx_key = Tx::construct_full_key(
 								TxKind::JobRunAssignment,
-								commitment.job_run_assignment_tx_hash.0.to_vec(),
+								commitment.job_run_assignment_tx_hash,
 							);
 							let assignment_tx: Tx = db.get(assignment_tx_key).unwrap();
 							let assignment_body =
@@ -76,7 +76,7 @@ fn handle_gossipsub_events(
 									.unwrap();
 							let request_tx_key = Tx::construct_full_key(
 								TxKind::JobRunRequest,
-								assignment_body.job_run_request_tx_hash.0.to_vec(),
+								assignment_body.job_run_request_tx_hash,
 							);
 							let request: Tx = db.get(request_tx_key).unwrap();
 							let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
@@ -110,7 +110,23 @@ fn handle_gossipsub_events(
 							assert_eq!(tx.kind(), TxKind::JobVerification);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
-							let _ = JobVerification::decode(&mut tx.body().as_slice()).unwrap();
+							let job_verification =
+								JobVerification::decode(&mut tx.body().as_slice()).unwrap();
+
+							let assignment_tx_key = Tx::construct_full_key(
+								TxKind::JobRunAssignment,
+								job_verification.job_run_assignment_tx_hash,
+							);
+							let assignment_tx: Tx = db.get(assignment_tx_key).unwrap();
+							let assignment_body =
+								JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+									.unwrap();
+							let job_result_key = JobResult::construct_full_key(
+								assignment_body.job_run_request_tx_hash,
+							);
+							let mut job_result: JobResult = db.get(job_result_key).unwrap();
+							job_result.job_verification_tx_hashes.push(tx.hash());
+							db.put(job_result).unwrap();
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),

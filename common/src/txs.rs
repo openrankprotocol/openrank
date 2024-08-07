@@ -119,10 +119,10 @@ impl Tx {
 		TxHash(tx_bytes)
 	}
 
-	pub fn construct_full_key(kind: TxKind, key: Vec<u8>) -> Vec<u8> {
+	pub fn construct_full_key(kind: TxKind, tx_hash: TxHash) -> Vec<u8> {
 		let kind_string: String = kind.into();
 		let mut prefix = kind_string.as_bytes().to_vec();
-		prefix.extend(key);
+		prefix.extend(tx_hash.0);
 		prefix
 	}
 }
@@ -210,6 +210,10 @@ impl TxHash {
 		let mut inner = [0u8; 32];
 		inner.copy_from_slice(bytes.as_slice());
 		Self(inner)
+	}
+
+	pub fn to_hex(self) -> String {
+		hex::encode(self.0)
 	}
 }
 
@@ -359,8 +363,8 @@ impl JobRunAssignment {
 
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
 pub struct JobVerification {
-	job_run_assignment_tx_hash: TxHash,
-	verification_result: bool,
+	pub job_run_assignment_tx_hash: TxHash,
+	pub verification_result: bool,
 }
 
 impl JobVerification {

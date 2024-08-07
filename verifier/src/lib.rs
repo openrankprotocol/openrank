@@ -48,10 +48,10 @@ fn handle_gossipsub_events(
 							let domain =
 								domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 							job_runner.update_trust(domain.clone(), trust_update.entries.clone());
-							println!(
-								"message.id: {:?}, message.sequence_number: {:?}",
-								id, message.sequence_number
-							);
+							// println!(
+							// 	"message.id: {:?}, message.sequence_number: {:?}",
+							// 	id, message.sequence_number
+							// );
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -66,6 +66,7 @@ fn handle_gossipsub_events(
 							assert!(tx.kind() == TxKind::SeedUpdate);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
+							// println!("tx_hash: {}", tx.hash().to_hex());
 							let seed_update =
 								SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
 							assert!(*namespace == seed_update.seed_id);
@@ -88,10 +89,24 @@ fn handle_gossipsub_events(
 							db.put(tx.clone()).unwrap();
 							// Not checking if this node is assigned for the job
 							let _ = JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
-
 							let domain =
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 							job_runner.update_assigment(domain.clone(), tx.hash());
+							let res = job_runner.check_finished_jobs(domain.clone());
+							for (tx_hash, verification_res) in res {
+								let verification_res =
+									JobVerification::new(tx_hash, verification_res);
+								let tx = Tx::default_with(
+									TxKind::JobVerification,
+									encode(verification_res),
+								);
+								broadcast_event(
+									swarm,
+									tx,
+									Topic::DomainVerification(domain_id.clone()),
+								)
+								.unwrap();
+							}
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -117,11 +132,6 @@ fn handle_gossipsub_events(
 								create_scores.clone(),
 							);
 							let res = job_runner.check_finished_jobs(domain.clone());
-							println!(
-								"message.id: {:?}, message.sequence_number: {:?}",
-								id, message.sequence_number
-							);
-							println!("res: {:?}", res);
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
@@ -157,7 +167,6 @@ fn handle_gossipsub_events(
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 							job_runner.update_commitment(create_commitment.clone());
 							let res = job_runner.check_finished_jobs(domain.clone());
-							println!("res: {:?}", res);
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);

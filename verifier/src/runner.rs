@@ -109,13 +109,12 @@ impl VerificationJobRunner {
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).unwrap();
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).unwrap();
 		let seed = self.seed_trust.get_mut(&domain.to_hash()).unwrap();
-
 		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
 		for entry in seed_entries {
 			let index = if let Some(i) = domain_indices.get(&entry.id) {
 				*i
 			} else {
-				domain_indices.insert(entry.id, *count);
+				domain_indices.insert(entry.id.clone(), *count);
 				*count += 1;
 				*count
 			};
@@ -149,24 +148,20 @@ impl VerificationJobRunner {
 		let mut results = Vec::new();
 		let mut completed = Vec::new();
 		for (i, assignment_id) in assignments.clone().into_iter().enumerate() {
-			let commitment = self.commitments.get(&assignment_id.clone()).unwrap();
-			if self.check_scores_tx_hashes(domain.clone(), commitment.clone()) {
-				let assgn_tx = assignment_id.clone();
-				let lt_root = commitment.lt_root_hash.clone();
-				let cp_root = commitment.compute_root_hash.clone();
+			if let Some(commitment) = self.commitments.get(&assignment_id.clone()) {
+				if self.check_scores_tx_hashes(domain.clone(), commitment.clone()) {
+					let assgn_tx = assignment_id.clone();
+					let lt_root = commitment.lt_root_hash.clone();
+					let cp_root = commitment.compute_root_hash.clone();
 
-				let (res_lt_root, res_compute_root) =
-					self.create_compute_tree(domain.clone(), assignment_id.clone());
-				println!(
-					"lt_root == res_lt_root && cp_root == res_compute_root, {}, {}",
-					lt_root == res_lt_root,
-					cp_root == res_compute_root
-				);
-				results.push((
-					assgn_tx,
-					lt_root == res_lt_root && cp_root == res_compute_root,
-				));
-				completed.push(i);
+					let (res_lt_root, res_compute_root) =
+						self.create_compute_tree(domain.clone(), assignment_id.clone());
+					results.push((
+						assgn_tx,
+						lt_root == res_lt_root && cp_root == res_compute_root,
+					));
+					completed.push(i);
+				}
 			}
 		}
 		results
@@ -191,13 +186,16 @@ impl VerificationJobRunner {
 
 	pub fn create_compute_tree(&mut self, domain: Domain, assignment_id: TxHash) -> (Hash, Hash) {
 		let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).unwrap();
-		let scores = self.create_scores.get(&domain.to_hash()).unwrap();
-		let score_entries: Vec<ScoreEntry> =
-			scores.iter().map(|(_, cs)| cs.entries.clone()).flatten().collect();
-		let scores: Vec<f32> = score_entries.iter().map(|x| x.value).collect();
-		let score_hashes: Vec<Hash> =
-			scores.iter().map(|x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
-		println!("score_hashes: {:?}", score_hashes);
+		let commitment = self.commitments.get(&assignment_id).unwrap();
+		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
+		let scores: Vec<&CreateScores> =
+			commitment.scores_tx_hashes.iter().map(|x| create_scores.get(&x).unwrap()).collect();
+		let score_entries: Vec<f32> =
+			scores.iter().map(|cs| cs.entries.clone()).flatten().map(|x| x.value).collect();
+		let score_hashes: Vec<Hash> = score_entries
+			.iter()
+			.map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
+			.collect();
 		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes);
 		compute_tree_map.insert(assignment_id.clone(), compute_tree);
 		self.get_root_hashes(domain, assignment_id)
