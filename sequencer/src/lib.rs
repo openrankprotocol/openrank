@@ -187,7 +187,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			sibling = receiver.recv() => {
 				if let Some((data, topic)) = sibling {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-					// info!("PUBLISH: {:?}", topic.clone());
+					info!("PUBLISH: {:?}", topic.clone());
 					if let Err(e) =
 					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
 					{

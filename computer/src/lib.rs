@@ -16,7 +16,6 @@ use tokio::select;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-mod algos;
 mod runner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

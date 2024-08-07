@@ -1,4 +1,5 @@
 use openrank_common::{
+	algos::et::positive_run,
 	merkle::{
 		fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
 	},
@@ -7,8 +8,6 @@ use openrank_common::{
 };
 use sha3::Keccak256;
 use std::collections::HashMap;
-
-use crate::algos::et::positive_run;
 
 pub struct ComputeJobRunner {
 	count: HashMap<DomainHash, u32>,

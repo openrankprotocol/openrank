@@ -1,4 +1,5 @@
 use openrank_common::{
+	algos::et::convergence_check,
 	merkle::{
 		fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
 	},
@@ -147,23 +148,26 @@ impl VerificationJobRunner {
 		let assignments = self.active_assignments.get(&domain.clone().to_hash()).unwrap();
 		let mut results = Vec::new();
 		let mut completed = Vec::new();
-		for (i, assignment_id) in assignments.clone().into_iter().enumerate() {
+		for assignment_id in assignments.clone().into_iter() {
 			if let Some(commitment) = self.commitments.get(&assignment_id.clone()) {
 				if self.check_scores_tx_hashes(domain.clone(), commitment.clone()) {
 					let assgn_tx = assignment_id.clone();
 					let lt_root = commitment.lt_root_hash.clone();
 					let cp_root = commitment.compute_root_hash.clone();
 
+					self.create_compute_tree(domain.clone(), assignment_id.clone());
 					let (res_lt_root, res_compute_root) =
-						self.create_compute_tree(domain.clone(), assignment_id.clone());
-					results.push((
-						assgn_tx,
-						lt_root == res_lt_root && cp_root == res_compute_root,
-					));
-					completed.push(i);
+						self.get_root_hashes(domain.clone(), assignment_id.clone());
+					let is_root_equal = lt_root == res_lt_root && cp_root == res_compute_root;
+					let is_converged =
+						self.compute_verification(domain.clone(), assignment_id.clone());
+					results.push((assgn_tx, is_root_equal && is_converged));
+					completed.push(assignment_id.clone());
 				}
 			}
 		}
+		let assignments = self.active_assignments.get_mut(&domain.clone().to_hash()).unwrap();
+		assignments.retain(|x| !completed.contains(x));
 		results
 	}
 
@@ -184,7 +188,7 @@ impl VerificationJobRunner {
 		);
 	}
 
-	pub fn create_compute_tree(&mut self, domain: Domain, assignment_id: TxHash) -> (Hash, Hash) {
+	pub fn create_compute_tree(&mut self, domain: Domain, assignment_id: TxHash) {
 		let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).unwrap();
 		let commitment = self.commitments.get(&assignment_id).unwrap();
 		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
@@ -198,7 +202,18 @@ impl VerificationJobRunner {
 			.collect();
 		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes);
 		compute_tree_map.insert(assignment_id.clone(), compute_tree);
-		self.get_root_hashes(domain, assignment_id)
+	}
+
+	pub fn compute_verification(&mut self, domain: Domain, assignment_id: TxHash) -> bool {
+		let commitment = self.commitments.get(&assignment_id).unwrap();
+		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
+		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
+		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
+		let scores: Vec<&CreateScores> =
+			commitment.scores_tx_hashes.iter().map(|x| create_scores.get(&x).unwrap()).collect();
+		let score_entries: Vec<f32> =
+			scores.iter().map(|cs| cs.entries.clone()).flatten().map(|x| x.value).collect();
+		convergence_check(lt.clone(), seed, &score_entries)
 	}
 
 	pub fn get_root_hashes(&self, domain: Domain, assignment_id: TxHash) -> (Hash, Hash) {

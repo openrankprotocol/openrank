@@ -1,3 +1,4 @@
+pub mod algos;
 pub mod db;
 pub mod merkle;
 pub mod result;

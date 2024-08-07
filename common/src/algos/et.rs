@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 const PRE_TRUST_WEIGHT: f32 = 0.5;
+const DELTA: f32 = 0.01;
 
 fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
 	for ((from, to), value) in lt {
@@ -57,4 +58,30 @@ pub fn positive_run<const NUM_ITER: usize>(
 	let mut scores: Vec<(u32, f32)> = scores.into_iter().collect();
 	scores.sort_by_key(|e| e.0);
 	scores.into_iter().map(|e| e.1).collect()
+}
+
+pub fn convergence_check(
+	mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &Vec<f32>,
+) -> bool {
+	normalise_lt(&mut lt);
+	let mut next_scores = vec![0.0; scores.len()];
+	for ((from, to), value) in &lt {
+		let origin_score = scores.get(*from as usize).unwrap_or(&0.0);
+		let score = *value * origin_score;
+		let to_score = next_scores.get(*to as usize).unwrap_or(&0.0);
+		let final_to_score = to_score + score;
+		let pre_trust = seed.get(to).unwrap_or(&0.0);
+		let weighted_to_score =
+			PRE_TRUST_WEIGHT * pre_trust + (final_to_score * (1. - PRE_TRUST_WEIGHT));
+		next_scores[*to as usize] = weighted_to_score;
+	}
+
+	let mut is_converged = true;
+	for i in 0..scores.len() {
+		let prev_score = scores[i];
+		let next_score = next_scores[i];
+		is_converged &= (next_score - prev_score).abs() < DELTA;
+	}
+
+	is_converged
 }
