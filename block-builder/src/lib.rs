@@ -3,7 +3,7 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	db::{Db, DbItem},
+	db::{Db, DbError, DbItem},
 	result::JobResult,
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
@@ -76,11 +76,16 @@ fn handle_gossipsub_events(
 									.unwrap();
 							let request_tx_key = Tx::construct_full_key(
 								TxKind::JobRunRequest,
-								assignment_body.job_run_request_tx_hash,
+								assignment_body.job_run_request_tx_hash.clone(),
 							);
 							let request: Tx = db.get(request_tx_key).unwrap();
-							let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
-							db.put(result).unwrap();
+							let job_result_key = JobResult::construct_full_key(
+								assignment_body.job_run_request_tx_hash,
+							);
+							if let Err(DbError::NotFound) = db.get::<JobResult>(job_result_key) {
+								let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
+								db.put(result).unwrap();
+							}
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),

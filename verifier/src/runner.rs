@@ -19,6 +19,7 @@ pub struct VerificationJobRunner {
 	create_scores: HashMap<DomainHash, HashMap<TxHash, CreateScores>>,
 	compute_tree: HashMap<DomainHash, HashMap<TxHash, DenseMerkleTree<Keccak256>>>,
 	active_assignments: HashMap<DomainHash, Vec<TxHash>>,
+	completed_assignments: HashMap<DomainHash, Vec<TxHash>>,
 	commitments: HashMap<TxHash, CreateCommitment>,
 }
 
@@ -34,6 +35,7 @@ impl VerificationJobRunner {
 		let mut create_scores = HashMap::new();
 		let mut compute_tree = HashMap::new();
 		let mut active_assignments = HashMap::new();
+		let mut completed_assignments = HashMap::new();
 		for domain in domains {
 			count.insert(domain.clone(), 0);
 			indices.insert(domain.clone(), HashMap::new());
@@ -47,7 +49,8 @@ impl VerificationJobRunner {
 			compute_results.insert(domain.clone(), Vec::<f32>::new());
 			create_scores.insert(domain.clone(), HashMap::new());
 			compute_tree.insert(domain.clone(), HashMap::new());
-			active_assignments.insert(domain, Vec::new());
+			active_assignments.insert(domain.clone(), Vec::new());
+			completed_assignments.insert(domain, Vec::new());
 		}
 		Self {
 			count,
@@ -59,6 +62,7 @@ impl VerificationJobRunner {
 			create_scores,
 			compute_tree,
 			active_assignments,
+			completed_assignments,
 			commitments: HashMap::new(),
 		}
 	}
@@ -75,16 +79,18 @@ impl VerificationJobRunner {
 			let from_index = if let Some(i) = domain_indices.get(&entry.from) {
 				*i
 			} else {
-				domain_indices.insert(entry.from.clone(), *count);
+				let curr_count = count.clone();
+				domain_indices.insert(entry.from.clone(), curr_count);
 				*count += 1;
-				*count
+				curr_count
 			};
 			let to_index = if let Some(i) = domain_indices.get(&entry.to) {
 				*i
 			} else {
-				domain_indices.insert(entry.to.clone(), *count);
+				let curr_count = count.clone();
+				domain_indices.insert(entry.to.clone(), curr_count);
 				*count += 1;
-				*count
+				curr_count
 			};
 			let old_value = lt.get(&(from_index, to_index)).unwrap_or(&0.0);
 			lt.insert((from_index, to_index), entry.value + old_value);
@@ -115,9 +121,10 @@ impl VerificationJobRunner {
 			let index = if let Some(i) = domain_indices.get(&entry.id) {
 				*i
 			} else {
-				domain_indices.insert(entry.id.clone(), *count);
+				let curr_count = count.clone();
+				domain_indices.insert(entry.id.clone(), curr_count);
 				*count += 1;
-				*count
+				curr_count
 			};
 
 			if !lt_sub_trees.contains_key(&index) {
@@ -158,16 +165,26 @@ impl VerificationJobRunner {
 					self.create_compute_tree(domain.clone(), assignment_id.clone());
 					let (res_lt_root, res_compute_root) =
 						self.get_root_hashes(domain.clone(), assignment_id.clone());
+					println!(
+						"is_root_equal: {} {}",
+						lt_root == res_lt_root,
+						cp_root == res_compute_root
+					);
 					let is_root_equal = lt_root == res_lt_root && cp_root == res_compute_root;
 					let is_converged =
 						self.compute_verification(domain.clone(), assignment_id.clone());
+					println!("is_converged: {}", is_converged);
 					results.push((assgn_tx, is_root_equal && is_converged));
 					completed.push(assignment_id.clone());
 				}
 			}
 		}
-		let assignments = self.active_assignments.get_mut(&domain.clone().to_hash()).unwrap();
-		assignments.retain(|x| !completed.contains(x));
+		let active_assignments =
+			self.active_assignments.get_mut(&domain.clone().to_hash()).unwrap();
+		let completed_assignments =
+			self.completed_assignments.get_mut(&domain.clone().to_hash()).unwrap();
+		active_assignments.retain(|x| !completed.contains(x));
+		completed_assignments.extend(completed);
 		results
 	}
 
@@ -177,8 +194,12 @@ impl VerificationJobRunner {
 	}
 
 	pub fn update_assigment(&mut self, domain: Domain, job_run_assignment_tx_hash: TxHash) {
-		let active_assignments = self.active_assignments.get_mut(&domain.to_hash()).unwrap();
-		active_assignments.push(job_run_assignment_tx_hash);
+		let completed_assignments =
+			self.completed_assignments.get(&domain.clone().to_hash()).unwrap();
+		if !completed_assignments.contains(&job_run_assignment_tx_hash) {
+			let active_assignments = self.active_assignments.get_mut(&domain.to_hash()).unwrap();
+			active_assignments.push(job_run_assignment_tx_hash);
+		}
 	}
 
 	pub fn update_commitment(&mut self, commitment: CreateCommitment) {
@@ -207,12 +228,20 @@ impl VerificationJobRunner {
 	pub fn compute_verification(&mut self, domain: Domain, assignment_id: TxHash) -> bool {
 		let commitment = self.commitments.get(&assignment_id).unwrap();
 		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
+		let domain_indices = self.indices.get(&domain.to_hash()).unwrap();
 		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
 		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
 		let scores: Vec<&CreateScores> =
 			commitment.scores_tx_hashes.iter().map(|x| create_scores.get(&x).unwrap()).collect();
-		let score_entries: Vec<f32> =
-			scores.iter().map(|cs| cs.entries.clone()).flatten().map(|x| x.value).collect();
+		let score_entries: HashMap<u32, f32> = scores
+			.iter()
+			.map(|cs| cs.entries.clone())
+			.flatten()
+			.map(|x| {
+				let i = domain_indices.get(&x.id).unwrap();
+				(*i, x.value)
+			})
+			.collect();
 		convergence_check(lt.clone(), seed, &score_entries)
 	}
 

@@ -15,6 +15,9 @@ use serde_json::Value;
 use std::error::Error;
 use std::fs::File;
 
+const TRUST_CHUNK_SIZE: usize = 500;
+const SEED_CHUNK_SIZE: usize = 1000;
+
 #[derive(Parser, Debug, Clone, ValueEnum)]
 enum Method {
 	TrustUpdate,
@@ -53,7 +56,7 @@ async fn update_trust() -> Result<(), Box<dyn Error>> {
 	// Creates a new client
 	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
 
-	for chunk in entries.chunks(500) {
+	for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
 		let data = encode(TrustUpdate::new(owned_namespace.clone(), chunk.to_vec()));
 		let tx = encode(Tx::default_with(TxKind::TrustUpdate, data));
@@ -81,7 +84,7 @@ async fn update_seed() -> Result<(), Box<dyn Error>> {
 	// Creates a new client
 	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
 
-	for chunk in entries.chunks(1000) {
+	for chunk in entries.chunks(SEED_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
 		let data = encode(SeedUpdate::new(owned_namespace.clone(), chunk.to_vec()));
 		let tx = encode(Tx::default_with(TxKind::SeedUpdate, data));

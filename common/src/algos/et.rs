@@ -33,55 +33,68 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) {
 
 pub fn positive_run<const NUM_ITER: usize>(
 	mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
-) -> Vec<f32> {
+) -> Vec<(u32, f32)> {
 	pre_process(&mut lt);
 	normalise_lt(&mut lt);
 	normalise_seed(&mut seed);
 
 	let mut scores = seed.clone();
-	for _ in 0..NUM_ITER {
+	loop {
 		let mut next_scores: HashMap<u32, f32> = HashMap::new();
 		for ((from, to), value) in &lt {
 			let origin_score = scores.get(from).unwrap_or(&0.0);
 			let score = *value * origin_score;
 			let to_score = next_scores.get(to).unwrap_or(&0.0);
 			let final_to_score = to_score + score;
-			let pre_trust = seed.get(to).unwrap_or(&0.0);
-			let weighted_to_score =
-				PRE_TRUST_WEIGHT * pre_trust + (final_to_score * (1. - PRE_TRUST_WEIGHT));
-			next_scores.insert(*to, weighted_to_score);
+			next_scores.insert(*to, final_to_score);
+		}
+		for (i, v) in &mut next_scores {
+			let pre_trust = seed.get(&i).unwrap_or(&0.0);
+			let weighted_to_score = PRE_TRUST_WEIGHT * pre_trust + (*v * (1. - PRE_TRUST_WEIGHT));
+			*v = weighted_to_score;
 		}
 		normalise_seed(&mut next_scores);
+		if is_converged(&scores, &next_scores) {
+			break;
+		}
 		scores = next_scores;
 	}
 
-	let mut scores: Vec<(u32, f32)> = scores.into_iter().collect();
-	scores.sort_by_key(|e| e.0);
-	scores.into_iter().map(|e| e.1).collect()
+	scores.into_iter().collect()
+}
+
+pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>) -> bool {
+	let mut is_converged = true;
+	let mut count = 0;
+	for (i, v) in scores {
+		let next_score = next_scores.get(i).unwrap_or(&0.0);
+		let curr_converged = (next_score - v).abs() < DELTA;
+		if !curr_converged {
+			count += 1;
+		}
+		is_converged &= curr_converged;
+	}
+	is_converged
 }
 
 pub fn convergence_check(
-	mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &Vec<f32>,
+	mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
 ) -> bool {
 	normalise_lt(&mut lt);
-	let mut next_scores = vec![0.0; scores.len()];
+	let mut next_scores = HashMap::new();
 	for ((from, to), value) in &lt {
-		let origin_score = scores.get(*from as usize).unwrap_or(&0.0);
+		let origin_score = scores.get(from).unwrap_or(&0.0);
 		let score = *value * origin_score;
-		let to_score = next_scores.get(*to as usize).unwrap_or(&0.0);
+		let to_score = next_scores.get(to).unwrap_or(&0.0);
 		let final_to_score = to_score + score;
-		let pre_trust = seed.get(to).unwrap_or(&0.0);
-		let weighted_to_score =
-			PRE_TRUST_WEIGHT * pre_trust + (final_to_score * (1. - PRE_TRUST_WEIGHT));
-		next_scores[*to as usize] = weighted_to_score;
+		next_scores.insert(*to, final_to_score);
 	}
-
-	let mut is_converged = true;
-	for i in 0..scores.len() {
-		let prev_score = scores[i];
-		let next_score = next_scores[i];
-		is_converged &= (next_score - prev_score).abs() < DELTA;
+	for (i, v) in &mut next_scores {
+		let pre_trust = seed.get(&i).unwrap_or(&0.0);
+		let weighted_to_score = PRE_TRUST_WEIGHT * pre_trust + (*v * (1. - PRE_TRUST_WEIGHT));
+		*v = weighted_to_score;
 	}
+	normalise_seed(&mut next_scores);
 
-	is_converged
+	is_converged(scores, &next_scores)
 }
