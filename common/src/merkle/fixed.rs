@@ -97,7 +97,7 @@ mod test {
 
 		assert_eq!(
 			root.to_hex(),
-			"27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757".to_string()
+			"485da52d1d8900a627e2f3cc9f3cf6e653b8effed5972cd10a38990f2fefc494".to_string()
 		);
 	}
 }

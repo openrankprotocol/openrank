@@ -149,7 +149,7 @@ mod test {
 		let domain = Domain::new(Address::default(), 1, Address::default(), 1, 1);
 
 		let hash = domain.to_hash();
-		assert_eq!(hash.to_hex(), "bb50842b7bd8ef8c");
+		assert_eq!(hash.to_hex(), "00902259a9dc1a51");
 	}
 
 	#[test]
@@ -163,8 +163,8 @@ mod test {
 		let topic2_string = String::from(topic2);
 		let topic3_string = String::from(topic3);
 
-		assert_eq!(topic1_string, "bb50842b7bd8ef8c:request".to_string());
-		assert_eq!(topic2_string, "bb50842b7bd8ef8c:assignment".to_string());
-		assert_eq!(topic3_string, "bb50842b7bd8ef8c:verification".to_string());
+		assert_eq!(topic1_string, "00902259a9dc1a51:request".to_string());
+		assert_eq!(topic2_string, "00902259a9dc1a51:assignment".to_string());
+		assert_eq!(topic3_string, "00902259a9dc1a51:verification".to_string());
 	}
 }

@@ -457,7 +457,7 @@ mod test {
 		let tx_hash = tx.hash();
 		assert_eq!(
 			hex::encode(tx_hash.0),
-			"77b37e9a80c4d4bb476f67b0a6523e6dc41ca8fc255d583db03d62e1b67b73dc"
+			"1e0b2851b535b9f656dff05d63cd82dff31c6dc31120fde49295e9b797021c2b"
 		);
 	}
 

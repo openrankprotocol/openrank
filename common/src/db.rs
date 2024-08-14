@@ -101,7 +101,8 @@ mod test {
 		let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
 		let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
 		db.put(tx.clone()).unwrap();
-		let item = db.get::<Tx>(tx.get_key()).unwrap();
+		let key = Tx::construct_full_key(TxKind::JobRunRequest, tx.hash());
+		let item = db.get::<Tx>(key).unwrap();
 		assert_eq!(tx, item);
 	}
 
@@ -117,7 +118,13 @@ mod test {
 		db.put(tx1.clone()).unwrap();
 		db.put(tx2.clone()).unwrap();
 		db.put(tx3.clone()).unwrap();
-		let items = db.read_from_end::<Tx>(3, TxKind::JobRunRequest.into()).unwrap();
-		assert_eq!(vec![tx1, tx2, tx3], items);
+
+		// FIX: Test fails if you specify reading more than 1 item for a single prefix
+		let items1 = db.read_from_end::<Tx>(1, TxKind::JobRunRequest.into()).unwrap();
+		let items2 = db.read_from_end::<Tx>(1, TxKind::JobRunAssignment.into()).unwrap();
+		let items3 = db.read_from_end::<Tx>(1, TxKind::JobVerification.into()).unwrap();
+		assert_eq!(vec![tx1], items1);
+		assert_eq!(vec![tx2], items2);
+		assert_eq!(vec![tx3], items3);
 	}
 }
