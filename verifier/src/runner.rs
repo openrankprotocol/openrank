@@ -165,15 +165,9 @@ impl VerificationJobRunner {
 					self.create_compute_tree(domain.clone(), assignment_id.clone());
 					let (res_lt_root, res_compute_root) =
 						self.get_root_hashes(domain.clone(), assignment_id.clone());
-					println!(
-						"is_root_equal: {} {}",
-						lt_root == res_lt_root,
-						cp_root == res_compute_root
-					);
 					let is_root_equal = lt_root == res_lt_root && cp_root == res_compute_root;
 					let is_converged =
 						self.compute_verification(domain.clone(), assignment_id.clone());
-					println!("is_converged: {}", is_converged);
 					results.push((assgn_tx, is_root_equal && is_converged));
 					completed.push(assignment_id.clone());
 				}
