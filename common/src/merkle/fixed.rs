@@ -21,7 +21,13 @@ where
 	H: Digest,
 {
 	pub fn root(&self) -> Hash {
-		self.nodes.get(&self.num_levels).unwrap()[0].clone()
+		match self.nodes.get(&self.num_levels) {
+			Some(h) => h[0].clone(),
+			None => {
+				eprintln!("Tree is empty");
+				todo!("Tree is empty")
+			},
+		}
 	}
 
 	/// Build a MerkleTree from given leaf nodes and height

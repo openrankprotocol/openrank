@@ -129,7 +129,13 @@ impl ComputeJobRunner {
 	pub fn compute(&mut self, domain: Domain) {
 		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
 		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
-		let res = positive_run::<20>(lt.clone(), seed.clone());
+		let res = match positive_run::<20>(lt.clone(), seed.clone()) {
+			Ok(r) => r,
+			Err(e) => {
+				eprintln!("Positive run Error: {:?}", e);
+				todo!("Error handling")
+			},
+		};
 		self.compute_results.insert(domain.to_hash(), res);
 	}
 

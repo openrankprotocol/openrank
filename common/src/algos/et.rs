@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::error::{AlgoError, CommonError};
+
 const PRE_TRUST_WEIGHT: f32 = 0.5;
 const DELTA: f32 = 0.01;
 
@@ -11,7 +13,7 @@ fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
 	}
 }
 
-fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) {
+fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), CommonError> {
 	let mut sum_map: HashMap<u32, f32> = HashMap::new();
 	for ((from, _), value) in lt.iter() {
 		let val = sum_map.get(from).unwrap_or(&0.0);
@@ -19,24 +21,32 @@ fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) {
 	}
 
 	for ((from, _), value) in lt {
-		let sum = sum_map.get(&from).unwrap();
+		let sum = match sum_map.get(&from) {
+			Some(s) => s,
+			None => return Err(AlgoError::ZeroSum.into()),
+		};
 		*value /= sum;
 	}
+	Ok(())
 }
 
-fn normalise_seed(seed: &mut HashMap<u32, f32>) {
+fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), CommonError> {
 	let sum: f32 = seed.iter().map(|(_, v)| v).sum();
+	if sum == 0.0 {
+		return Err(AlgoError::ZeroSum.into());
+	}
 	for (_, value) in seed {
 		*value /= sum;
 	}
+	Ok(())
 }
 
 pub fn positive_run<const NUM_ITER: usize>(
 	mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
-) -> Vec<(u32, f32)> {
+) -> Result<Vec<(u32, f32)>, CommonError> {
 	pre_process(&mut lt);
-	normalise_lt(&mut lt);
-	normalise_seed(&mut seed);
+	normalise_lt(&mut lt)?;
+	normalise_seed(&mut seed)?;
 
 	let mut scores = seed.clone();
 	loop {
@@ -53,25 +63,21 @@ pub fn positive_run<const NUM_ITER: usize>(
 			let weighted_to_score = PRE_TRUST_WEIGHT * pre_trust + (*v * (1. - PRE_TRUST_WEIGHT));
 			*v = weighted_to_score;
 		}
-		normalise_seed(&mut next_scores);
+		normalise_seed(&mut next_scores)?;
 		if is_converged(&scores, &next_scores) {
 			break;
 		}
 		scores = next_scores;
 	}
 
-	scores.into_iter().collect()
+	Ok(scores.into_iter().collect())
 }
 
 pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>) -> bool {
 	let mut is_converged = true;
-	let mut count = 0;
 	for (i, v) in scores {
 		let next_score = next_scores.get(i).unwrap_or(&0.0);
 		let curr_converged = (next_score - v).abs() < DELTA;
-		if !curr_converged {
-			count += 1;
-		}
 		is_converged &= curr_converged;
 	}
 	is_converged
@@ -79,8 +85,8 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
 
 pub fn convergence_check(
 	mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
-) -> bool {
-	normalise_lt(&mut lt);
+) -> Result<bool, CommonError> {
+	normalise_lt(&mut lt)?;
 	let mut next_scores = HashMap::new();
 	for ((from, to), value) in &lt {
 		let origin_score = scores.get(from).unwrap_or(&0.0);
@@ -94,7 +100,7 @@ pub fn convergence_check(
 		let weighted_to_score = PRE_TRUST_WEIGHT * pre_trust + (*v * (1. - PRE_TRUST_WEIGHT));
 		*v = weighted_to_score;
 	}
-	normalise_seed(&mut next_scores);
+	normalise_seed(&mut next_scores)?;
 
-	is_converged(scores, &next_scores)
+	Ok(is_converged(scores, &next_scores))
 }

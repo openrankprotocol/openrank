@@ -236,7 +236,13 @@ impl VerificationJobRunner {
 				(*i, x.value)
 			})
 			.collect();
-		convergence_check(lt.clone(), seed, &score_entries)
+		match convergence_check(lt.clone(), seed, &score_entries) {
+			Ok(r) => r,
+			Err(e) => {
+				eprintln!("Convergence check Error: {:?}", e);
+				todo!("Error handling")
+			},
+		}
 	}
 
 	pub fn get_root_hashes(&self, domain: Domain, assignment_id: TxHash) -> (Hash, Hash) {

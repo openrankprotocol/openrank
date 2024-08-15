@@ -1,5 +1,6 @@
 pub mod algos;
 pub mod db;
+pub mod error;
 pub mod merkle;
 pub mod result;
 pub mod topics;
