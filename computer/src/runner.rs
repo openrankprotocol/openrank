@@ -58,12 +58,40 @@ impl ComputeJobRunner {
 	pub fn update_trust(
 		&mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
 	) -> Result<(), ComputeNodeError> {
-		let domain_indices = self.indices.get_mut(&domain.to_hash()).unwrap();
-		let count = self.count.get_mut(&domain.to_hash()).unwrap();
-		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).unwrap();
-		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).unwrap();
-		let lt = self.local_trust.get_mut(&domain.to_hash()).unwrap();
-		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
+		let domain_indices = self.indices.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"indices not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let count =
+			self.count.get_mut(&domain.to_hash()).ok_or(ComputeNodeError::ComputeInternalError(
+				format!("count not found for domain {:?}", domain.to_hash()),
+			))?;
+		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"lt_sub_trees not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"lt_master_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt = self.local_trust.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"local_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let seed = self.seed_trust.get(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"seed_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
 		for entry in trust_entries {
 			let from_index = if let Some(i) = domain_indices.get(&entry.from) {
@@ -88,7 +116,10 @@ impl ComputeJobRunner {
 			if !lt_sub_trees.contains_key(&from_index) {
 				lt_sub_trees.insert(from_index, default_sub_tree.clone());
 			}
-			let sub_tree = lt_sub_trees.get_mut(&from_index).unwrap();
+			let sub_tree =
+				lt_sub_trees.get_mut(&from_index).ok_or(ComputeNodeError::ComputeInternalError(
+					format!("lt_sub_trees not found for index {:?}", from_index),
+				))?;
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			sub_tree.insert_leaf(to_index, leaf);
 
@@ -106,11 +137,34 @@ impl ComputeJobRunner {
 	pub fn update_seed(
 		&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
 	) -> Result<(), ComputeNodeError> {
-		let domain_indices = self.indices.get_mut(&domain.to_hash()).unwrap();
-		let count = self.count.get_mut(&domain.to_hash()).unwrap();
-		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).unwrap();
-		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).unwrap();
-		let seed = self.seed_trust.get_mut(&domain.to_hash()).unwrap();
+		let domain_indices = self.indices.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"indices not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let count =
+			self.count.get_mut(&domain.to_hash()).ok_or(ComputeNodeError::ComputeInternalError(
+				format!("count not found for domain {:?}", domain.to_hash()),
+			))?;
+		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"lt_sub_trees not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"lt_master_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let seed = self.seed_trust.get_mut(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"seed_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
 		for entry in seed_entries {
 			let index = if let Some(i) = domain_indices.get(&entry.id) {
@@ -125,7 +179,10 @@ impl ComputeJobRunner {
 			if !lt_sub_trees.contains_key(&index) {
 				lt_sub_trees.insert(index, default_sub_tree.clone());
 			}
-			let sub_tree = lt_sub_trees.get_mut(&index).unwrap();
+			let sub_tree =
+				lt_sub_trees.get_mut(&index).ok_or(ComputeNodeError::ComputeInternalError(
+					format!("lt_sub_trees not found for index {:?}", index),
+				))?;
 			let sub_tree_root =
 				sub_tree.root().map_err(|e| ComputeNodeError::ComputeMerkleError(e))?;
 			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
@@ -139,8 +196,18 @@ impl ComputeJobRunner {
 	}
 
 	pub fn compute(&mut self, domain: Domain) -> Result<(), ComputeNodeError> {
-		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
-		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
+		let lt = self.local_trust.get(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"local_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let seed = self.seed_trust.get(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"seed_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let res = positive_run::<20>(lt.clone(), seed.clone())
 			.map_err(|e| ComputeNodeError::ComputeAlgoError(e))?;
 		self.compute_results.insert(domain.to_hash(), res);
@@ -148,7 +215,12 @@ impl ComputeJobRunner {
 	}
 
 	pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), ComputeNodeError> {
-		let scores = self.compute_results.get(&domain.to_hash()).unwrap();
+		let scores = self.compute_results.get(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"compute_results not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let score_hashes: Vec<Hash> =
 			scores.iter().map(|(_, x)| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
 		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
@@ -157,28 +229,49 @@ impl ComputeJobRunner {
 		Ok(())
 	}
 
-	pub fn get_create_scores(&self, domain: Domain) -> Vec<CreateScores> {
-		let domain_indices = self.indices.get(&domain.to_hash()).unwrap();
-		let scores = self.compute_results.get(&domain.to_hash()).unwrap();
+	pub fn get_create_scores(&self, domain: Domain) -> Result<Vec<CreateScores>, ComputeNodeError> {
+		let domain_indices =
+			self.indices.get(&domain.to_hash()).ok_or(ComputeNodeError::ComputeInternalError(
+				format!("indices not found for domain {:?}", domain.to_hash()),
+			))?;
+		let scores = self.compute_results.get(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"compute_results not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let index_to_address: HashMap<&u32, &Address> =
 			domain_indices.iter().map(|(k, v)| (v, k)).collect();
 		let mut create_scores_txs = Vec::new();
 		for chunk in scores.chunks(1000) {
 			let mut entries = Vec::new();
 			for (index, val) in chunk {
-				let address = index_to_address.get(&index).unwrap();
+				let address =
+					index_to_address.get(&index).ok_or(ComputeNodeError::ComputeInternalError(
+						format!("index_to_address not found for index {:?}", index),
+					))?;
 				let score_entry = ScoreEntry::new((*address).clone(), *val);
 				entries.push(score_entry);
 			}
 			let create_scores = CreateScores::new(entries);
 			create_scores_txs.push(create_scores);
 		}
-		create_scores_txs
+		Ok(create_scores_txs)
 	}
 
 	pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), ComputeNodeError> {
-		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).unwrap();
-		let compute_tree = self.compute_tree.get(&domain.to_hash()).unwrap();
+		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"lt_master_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let compute_tree = self.compute_tree.get(&domain.to_hash()).ok_or(
+			ComputeNodeError::ComputeInternalError(format!(
+				"compute_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let lt_tree_root = lt_tree.root().map_err(|e| ComputeNodeError::ComputeMerkleError(e))?;
 		let ct_tree_root =
 			compute_tree.root().map_err(|e| ComputeNodeError::ComputeMerkleError(e))?;

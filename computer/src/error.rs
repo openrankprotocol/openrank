@@ -13,6 +13,7 @@ pub enum ComputeNodeError {
 	DbError(DbError),
 	DomainNotFound(String),
 	P2PError(String),
+	ComputeInternalError(String),
 }
 
 impl StdError for ComputeNodeError {}
@@ -26,6 +27,7 @@ impl Display for ComputeNodeError {
 			Self::DbError(err) => err.fmt(f),
 			Self::DomainNotFound(domain) => write!(f, "Domain not found: {}", domain),
 			Self::P2PError(err) => write!(f, "p2p error: {}", err),
+			Self::ComputeInternalError(err) => write!(f, "internal error: {}", err),
 		}
 	}
 }
