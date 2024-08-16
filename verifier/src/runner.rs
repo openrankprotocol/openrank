@@ -106,7 +106,8 @@ impl VerificationJobRunner {
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			sub_tree.insert_leaf(to_index, leaf);
 
-			let sub_tree_root = sub_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
+			let sub_tree_root =
+				sub_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 			let seed_value = seed.get(&to_index).unwrap_or(&0.0);
 			let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
 			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -139,7 +140,8 @@ impl VerificationJobRunner {
 				lt_sub_trees.insert(index, default_sub_tree.clone());
 			}
 			let sub_tree = lt_sub_trees.get_mut(&index).unwrap();
-			let sub_tree_root = sub_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
+			let sub_tree_root =
+				sub_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
 			lt_master_tree.insert_leaf(index, leaf);
@@ -230,7 +232,7 @@ impl VerificationJobRunner {
 			.map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
 			.collect();
 		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
-			.map_err(|e| VerifierNodeError::ComputeError(e))?;
+			.map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 		compute_tree_map.insert(assignment_id.clone(), compute_tree);
 
 		Ok(())
@@ -265,8 +267,9 @@ impl VerificationJobRunner {
 		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).unwrap();
 		let compute_tree_map = self.compute_tree.get(&domain.to_hash()).unwrap();
 		let compute_tree = compute_tree_map.get(&assignment_id).unwrap();
-		let lt_tree_root = lt_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
-		let ct_tree_root = compute_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
+		let lt_tree_root = lt_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
+		let ct_tree_root =
+			compute_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 		Ok((lt_tree_root, ct_tree_root))
 	}
 }
