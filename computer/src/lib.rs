@@ -1,5 +1,7 @@
 use alloy_rlp::{encode, Decodable};
+use dotenv::dotenv;
 use futures::StreamExt;
+use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
@@ -25,7 +27,7 @@ pub struct Config {
 
 fn handle_gossipsub_events(
 	swarm: &mut Swarm<MyBehaviour>, job_runner: &mut ComputeJobRunner, db: &Db,
-	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
+	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>, sk: &SigningKey,
 ) {
 	if let gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } =
 		event
@@ -38,6 +40,8 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert!(tx.kind() == TxKind::TrustUpdate);
+						let res = tx.verify_against(namespace.owner());
+						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
 						let trust_update = TrustUpdate::decode(&mut tx.body().as_slice()).unwrap();
@@ -45,10 +49,6 @@ fn handle_gossipsub_events(
 						let domain =
 							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 						job_runner.update_trust(domain.clone(), trust_update.entries.clone());
-						// println!(
-						// 	"message.id: {:?}, message.sequence_number: {:?}",
-						// 	id, message.sequence_number
-						// );
 						info!(
 							"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 							message.topic.as_str(),
@@ -61,6 +61,8 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert!(tx.kind() == TxKind::SeedUpdate);
+						let res = tx.verify_against(namespace.owner());
+						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
 						// println!("tx_hash: {}", tx.hash().to_hex());
@@ -81,6 +83,8 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert!(tx.kind() == TxKind::JobRunAssignment);
+						let (res, _) = tx.verify();
+						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
 						// Not checking if we are assigned for the job, for now
@@ -96,15 +100,16 @@ fn handle_gossipsub_events(
 						job_runner.create_compute_tree(domain.clone());
 						let create_scores = job_runner.get_create_scores(domain.clone());
 						let (lt_root, compute_root) = job_runner.get_root_hashes(domain.clone());
-						// println!("root after compute: {}", lt_root.clone().to_hex());
-
 						let create_scores_tx: Vec<Tx> = create_scores
 							.iter()
 							.map(|tx_body| Tx::default_with(TxKind::CreateScores, encode(tx_body)))
+							.map(|mut tx| {
+								tx.sign(sk);
+								tx
+							})
 							.collect();
 						let create_scores_tx_hashes: Vec<TxHash> =
 							create_scores_tx.iter().map(|x| x.hash()).collect();
-
 						let create_scores_topic = Topic::DomainScores(domain_id.clone());
 						let commitment_topic = Topic::DomainCommitment(domain_id.clone());
 						let create_commitment = CreateCommitment::default_with(
@@ -113,8 +118,9 @@ fn handle_gossipsub_events(
 							compute_root,
 							create_scores_tx_hashes,
 						);
-						let create_commitment_tx =
+						let mut create_commitment_tx =
 							Tx::default_with(TxKind::CreateCommitment, encode(create_commitment));
+						create_commitment_tx.sign(sk);
 						for scores in create_scores_tx {
 							broadcast_event(swarm, scores, create_scores_topic.clone()).unwrap();
 						}
@@ -128,7 +134,12 @@ fn handle_gossipsub_events(
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
+	dotenv().ok();
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+
+	let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
+	let secret_key =
+		SigningKey::from_slice(hex::decode(secret_key_hex).unwrap().as_slice()).unwrap();
 
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -194,7 +205,15 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					handle_gossipsub_events(&mut swarm, &mut job_runner, &db, event, iter_chain.clone().collect(), config.domains.clone());
+					handle_gossipsub_events(
+						&mut swarm,
+						&mut job_runner,
+						&db,
+						event,
+						iter_chain.clone().collect(),
+						config.domains.clone(),
+						&secret_key
+					);
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

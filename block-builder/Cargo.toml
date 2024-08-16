@@ -31,3 +31,5 @@ rand = { workspace = true }
 alloy-rlp = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
+dotenv = { workspace = true }
+k256 = { workspace = true }

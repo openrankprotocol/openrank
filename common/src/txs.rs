@@ -137,7 +137,7 @@ impl Tx {
 		self.signature = Signature::new(s, r, rec.to_byte());
 	}
 
-	pub fn verify(&self, address: Address) -> bool {
+	pub fn verify_against(&self, address: Address) -> bool {
 		let mut bytes = Vec::new();
 		bytes.extend(self.signature.s);
 		bytes.extend(self.signature.r);
@@ -156,6 +156,26 @@ impl Tx {
 
 		let res = verifying_key.verify(self.hash().as_bytes(), &sig);
 		res.is_ok()
+	}
+
+	pub fn verify(&self) -> (bool, Address) {
+		let mut bytes = Vec::new();
+		bytes.extend(self.signature.s);
+		bytes.extend(self.signature.r);
+
+		let sig = EcdsaSignature::try_from(bytes.as_slice()).unwrap();
+		let rec_id = RecoveryId::from_byte(self.signature.r_id).unwrap();
+		let verifying_key =
+			VerifyingKey::recover_from_msg(self.hash().as_bytes(), &sig, rec_id).unwrap();
+		let vk_bytes = verifying_key.to_sec1_bytes();
+
+		let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+		let mut address_bytes = [0u8; 20];
+		address_bytes.copy_from_slice(&hash.0[..20]);
+		let address = Address(address_bytes);
+
+		let res = verifying_key.verify(self.hash().as_bytes(), &sig);
+		(res.is_ok(), address)
 	}
 }
 
@@ -188,6 +208,12 @@ impl OwnedNamespace {
 
 	pub fn to_hex(self) -> String {
 		hex::encode(self.0)
+	}
+
+	pub fn owner(&self) -> Address {
+		let mut bytes = [0; 20];
+		bytes.copy_from_slice(&self.0[..20]);
+		Address(bytes)
 	}
 }
 

@@ -2788,8 +2788,10 @@ name = "openrank-block-builder"
 version = "0.0.1"
 dependencies = [
  "alloy-rlp",
+ "dotenv",
  "futures",
  "hex",
+ "k256",
  "libp2p",
  "openrank-common",
  "openrank-sequencer",
@@ -2826,6 +2828,7 @@ dependencies = [
  "dotenv",
  "futures",
  "hex",
+ "k256",
  "libp2p",
  "openrank-common",
  "serde",
@@ -2884,6 +2887,7 @@ dependencies = [
  "dotenv",
  "futures",
  "hex",
+ "k256",
  "libp2p",
  "openrank-common",
  "rand",

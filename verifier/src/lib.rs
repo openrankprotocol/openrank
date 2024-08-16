@@ -1,5 +1,7 @@
 use alloy_rlp::{encode, Decodable};
+use dotenv::dotenv;
 use futures::StreamExt;
+use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
@@ -28,7 +30,7 @@ pub struct Config {
 
 fn handle_gossipsub_events(
 	swarm: &mut Swarm<MyBehaviour>, job_runner: &mut VerificationJobRunner, db: &Db,
-	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
+	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>, sk: &SigningKey,
 ) {
 	match event {
 		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
@@ -40,6 +42,8 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::TrustUpdate);
+							let res = tx.verify_against(namespace.owner());
+							assert!(res);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
 							let trust_update =
@@ -48,10 +52,6 @@ fn handle_gossipsub_events(
 							let domain =
 								domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 							job_runner.update_trust(domain.clone(), trust_update.entries.clone());
-							// println!(
-							// 	"message.id: {:?}, message.sequence_number: {:?}",
-							// 	id, message.sequence_number
-							// );
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -64,9 +64,10 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert!(tx.kind() == TxKind::SeedUpdate);
+							let res = tx.verify_against(namespace.owner());
+							assert!(res);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
-							// println!("tx_hash: {}", tx.hash().to_hex());
 							let seed_update =
 								SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
 							assert!(*namespace == seed_update.seed_id);
@@ -85,6 +86,8 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert_eq!(tx.kind(), TxKind::JobRunAssignment);
+							let (res, _) = tx.verify();
+							assert!(res);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
 							// Not checking if this node is assigned for the job
@@ -96,10 +99,11 @@ fn handle_gossipsub_events(
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
-								let tx = Tx::default_with(
+								let mut tx = Tx::default_with(
 									TxKind::JobVerification,
 									encode(verification_res),
 								);
+								tx.sign(sk);
 								broadcast_event(
 									swarm,
 									tx,
@@ -119,11 +123,12 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert_eq!(tx.kind(), TxKind::CreateScores);
+							let (res, _) = tx.verify();
+							assert!(res);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
 							let create_scores =
 								CreateScores::decode(&mut tx.body().as_slice()).unwrap();
-
 							let domain =
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 							job_runner.update_scores(
@@ -135,10 +140,11 @@ fn handle_gossipsub_events(
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
-								let tx = Tx::default_with(
+								let mut tx = Tx::default_with(
 									TxKind::JobVerification,
 									encode(verification_res),
 								);
+								tx.sign(sk);
 								broadcast_event(
 									swarm,
 									tx,
@@ -158,11 +164,12 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert_eq!(tx.kind(), TxKind::CreateCommitment);
+							let (res, _) = tx.verify();
+							assert!(res);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
 							let create_commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
-
 							let domain =
 								domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 							job_runner.update_commitment(create_commitment.clone());
@@ -170,10 +177,11 @@ fn handle_gossipsub_events(
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
-								let tx = Tx::default_with(
+								let mut tx = Tx::default_with(
 									TxKind::JobVerification,
 									encode(verification_res),
 								);
+								tx.sign(sk);
 								broadcast_event(
 									swarm,
 									tx,
@@ -196,7 +204,12 @@ fn handle_gossipsub_events(
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
+	dotenv().ok();
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+
+	let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
+	let secret_key =
+		SigningKey::from_slice(hex::decode(secret_key_hex).unwrap().as_slice()).unwrap();
 
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -277,7 +290,15 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					handle_gossipsub_events(&mut swarm, &mut job_runner, &db, event, iter_chain.clone().collect(), config.domains.clone());
+					handle_gossipsub_events(
+						&mut swarm,
+						&mut job_runner,
+						&db,
+						event,
+						iter_chain.clone().collect(),
+						config.domains.clone(),
+						&secret_key,
+					);
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");
