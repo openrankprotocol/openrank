@@ -10,8 +10,8 @@ use openrank_common::{
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
-		CreateCommitment, CreateScores, JobRunAssignment, JobRunRequest, JobVerification, Tx,
-		TxKind,
+		Address, CreateCommitment, CreateScores, JobRunAssignment, JobRunRequest, JobVerification,
+		Tx, TxKind,
 	},
 	MyBehaviour, MyBehaviourEvent,
 };
@@ -22,8 +22,15 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Whitelist {
+	pub computer: Vec<Address>,
+	pub verifier: Vec<Address>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
 	pub domains: Vec<Domain>,
+	pub whitelist: Whitelist,
 }
 
 fn handle_gossipsub_events(

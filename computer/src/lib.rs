@@ -8,7 +8,9 @@ use openrank_common::{
 	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
-	txs::{CreateCommitment, JobRunAssignment, SeedUpdate, TrustUpdate, Tx, TxHash, TxKind},
+	txs::{
+		Address, CreateCommitment, JobRunAssignment, SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
+	},
 	MyBehaviour, MyBehaviourEvent,
 };
 use runner::ComputeJobRunner;
@@ -21,8 +23,14 @@ use tracing_subscriber::EnvFilter;
 mod runner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Whitelist {
+	block_builder: Vec<Address>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
 	pub domains: Vec<Domain>,
+	pub whitelist: Whitelist,
 }
 
 fn handle_gossipsub_events(

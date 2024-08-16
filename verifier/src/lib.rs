@@ -9,8 +9,8 @@ use openrank_common::{
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
-		CreateCommitment, CreateScores, JobRunAssignment, JobVerification, SeedUpdate, TrustUpdate,
-		Tx, TxKind,
+		Address, CreateCommitment, CreateScores, JobRunAssignment, JobVerification, SeedUpdate,
+		TrustUpdate, Tx, TxKind,
 	},
 	MyBehaviour, MyBehaviourEvent,
 };
@@ -24,8 +24,15 @@ use tracing_subscriber::EnvFilter;
 mod runner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Whitelist {
+	block_builder: Vec<Address>,
+	computer: Vec<Address>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
 	pub domains: Vec<Domain>,
+	pub whitelist: Whitelist,
 }
 
 fn handle_gossipsub_events(
@@ -86,7 +93,8 @@ fn handle_gossipsub_events(
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 							assert_eq!(tx.kind(), TxKind::JobRunAssignment);
-							let (res, _) = tx.verify();
+							let (res, address) = tx.verify();
+							// whitelist.contains(address);
 							assert!(res);
 							// Add Tx to db
 							db.put(tx.clone()).unwrap();
