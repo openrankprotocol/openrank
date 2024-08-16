@@ -72,12 +72,42 @@ impl VerificationJobRunner {
 	pub fn update_trust(
 		&mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
 	) -> Result<(), VerifierNodeError> {
-		let domain_indices = self.indices.get_mut(&domain.to_hash()).unwrap();
-		let count = self.count.get_mut(&domain.to_hash()).unwrap();
-		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).unwrap();
-		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).unwrap();
-		let lt = self.local_trust.get_mut(&domain.to_hash()).unwrap();
-		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
+		let domain_indices = self.indices.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"indices not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let count = self.count.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"count not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"lt_sub_trees not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"lt_master_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt = self.local_trust.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"local_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let seed = self.seed_trust.get(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"seed_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
 		for entry in trust_entries {
 			let from_index = if let Some(i) = domain_indices.get(&entry.from) {
@@ -102,7 +132,12 @@ impl VerificationJobRunner {
 			if !lt_sub_trees.contains_key(&from_index) {
 				lt_sub_trees.insert(from_index, default_sub_tree.clone());
 			}
-			let sub_tree = lt_sub_trees.get_mut(&from_index).unwrap();
+			let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
+				VerifierNodeError::ComputeInternalError(format!(
+					"lt_sub_trees not found for index {:?}",
+					from_index
+				)),
+			)?;
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			sub_tree.insert_leaf(to_index, leaf);
 
@@ -120,11 +155,36 @@ impl VerificationJobRunner {
 	pub fn update_seed(
 		&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
 	) -> Result<(), VerifierNodeError> {
-		let domain_indices = self.indices.get_mut(&domain.to_hash()).unwrap();
-		let count = self.count.get_mut(&domain.to_hash()).unwrap();
-		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).unwrap();
-		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).unwrap();
-		let seed = self.seed_trust.get_mut(&domain.to_hash()).unwrap();
+		let domain_indices = self.indices.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"indices not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let count = self.count.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"count not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"lt_sub_trees not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"lt_master_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let seed = self.seed_trust.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"seed_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
 		for entry in seed_entries {
 			let index = if let Some(i) = domain_indices.get(&entry.id) {
@@ -139,7 +199,10 @@ impl VerificationJobRunner {
 			if !lt_sub_trees.contains_key(&index) {
 				lt_sub_trees.insert(index, default_sub_tree.clone());
 			}
-			let sub_tree = lt_sub_trees.get_mut(&index).unwrap();
+			let sub_tree =
+				lt_sub_trees.get_mut(&index).ok_or(VerifierNodeError::ComputeInternalError(
+					format!("lt_sub_trees not found for index {:?}", index),
+				))?;
 			let sub_tree_root =
 				sub_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
@@ -152,26 +215,40 @@ impl VerificationJobRunner {
 		Ok(())
 	}
 
-	pub fn check_scores_tx_hashes(&self, domain: Domain, commitment: CreateCommitment) -> bool {
-		let create_scores_txs = self.create_scores.get(&domain.clone().to_hash()).unwrap();
+	pub fn check_scores_tx_hashes(
+		&self, domain: Domain, commitment: CreateCommitment,
+	) -> Result<bool, VerifierNodeError> {
+		let create_scores_txs = self.create_scores.get(&domain.clone().to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"create_scores not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		for score_tx in commitment.scores_tx_hashes {
 			let res = create_scores_txs.contains_key(&score_tx);
 			if !res {
-				return false;
+				return Ok(false);
 			}
 		}
-		true
+		Ok(true)
 	}
 
 	pub fn check_finished_jobs(
 		&mut self, domain: Domain,
 	) -> Result<Vec<(TxHash, bool)>, VerifierNodeError> {
-		let assignments = self.active_assignments.get(&domain.clone().to_hash()).unwrap();
+		let assignments = self.active_assignments.get(&domain.clone().to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"active_assignments not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let mut results = Vec::new();
 		let mut completed = Vec::new();
 		for assignment_id in assignments.clone().into_iter() {
 			if let Some(commitment) = self.commitments.get(&assignment_id.clone()) {
-				if self.check_scores_tx_hashes(domain.clone(), commitment.clone()) {
+				let is_check_score_tx_hashes =
+					self.check_scores_tx_hashes(domain.clone(), commitment.clone())?;
+				if is_check_score_tx_hashes {
 					let assgn_tx = assignment_id.clone();
 					let lt_root = commitment.lt_root_hash.clone();
 					let cp_root = commitment.compute_root_hash.clone();
@@ -187,27 +264,57 @@ impl VerificationJobRunner {
 				}
 			}
 		}
-		let active_assignments =
-			self.active_assignments.get_mut(&domain.clone().to_hash()).unwrap();
-		let completed_assignments =
-			self.completed_assignments.get_mut(&domain.clone().to_hash()).unwrap();
+		let active_assignments = self.active_assignments.get_mut(&domain.clone().to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"active_assignments not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let completed_assignments = self
+			.completed_assignments
+			.get_mut(&domain.clone().to_hash())
+			.ok_or(VerifierNodeError::ComputeInternalError(format!(
+			"completed_assignments not found for domain {:?}",
+			domain.to_hash()
+		)))?;
 		active_assignments.retain(|x| !completed.contains(x));
 		completed_assignments.extend(completed);
 		Ok(results)
 	}
 
-	pub fn update_scores(&mut self, domain: Domain, tx_hash: TxHash, create_scores: CreateScores) {
-		let score_values = self.create_scores.get_mut(&domain.clone().to_hash()).unwrap();
+	pub fn update_scores(
+		&mut self, domain: Domain, tx_hash: TxHash, create_scores: CreateScores,
+	) -> Result<(), VerifierNodeError> {
+		let score_values = self.create_scores.get_mut(&domain.clone().to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"create_scores not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		score_values.insert(tx_hash, create_scores);
+		Ok(())
 	}
 
-	pub fn update_assigment(&mut self, domain: Domain, job_run_assignment_tx_hash: TxHash) {
-		let completed_assignments =
-			self.completed_assignments.get(&domain.clone().to_hash()).unwrap();
+	pub fn update_assigment(
+		&mut self, domain: Domain, job_run_assignment_tx_hash: TxHash,
+	) -> Result<(), VerifierNodeError> {
+		let completed_assignments = self
+			.completed_assignments
+			.get(&domain.clone().to_hash())
+			.ok_or(VerifierNodeError::ComputeInternalError(format!(
+				"completed_assignments not found for domain {:?}",
+				domain.to_hash()
+			)))?;
 		if !completed_assignments.contains(&job_run_assignment_tx_hash) {
-			let active_assignments = self.active_assignments.get_mut(&domain.to_hash()).unwrap();
+			let active_assignments = self.active_assignments.get_mut(&domain.to_hash()).ok_or(
+				VerifierNodeError::ComputeInternalError(format!(
+					"active_assignments not found for domain {:?}",
+					domain.to_hash()
+				)),
+			)?;
 			active_assignments.push(job_run_assignment_tx_hash);
 		}
+		Ok(())
 	}
 
 	pub fn update_commitment(&mut self, commitment: CreateCommitment) {
@@ -220,9 +327,22 @@ impl VerificationJobRunner {
 	pub fn create_compute_tree(
 		&mut self, domain: Domain, assignment_id: TxHash,
 	) -> Result<(), VerifierNodeError> {
-		let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).unwrap();
-		let commitment = self.commitments.get(&assignment_id).unwrap();
-		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
+		let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"compute_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let commitment =
+			self.commitments.get(&assignment_id).ok_or(VerifierNodeError::ComputeInternalError(
+				format!("commitment not found for assignment_id {:?}", assignment_id),
+			))?;
+		let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"create_scores not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let scores: Vec<&CreateScores> =
 			commitment.scores_tx_hashes.iter().map(|x| create_scores.get(&x).unwrap()).collect();
 		let score_entries: Vec<f32> =
@@ -241,11 +361,32 @@ impl VerificationJobRunner {
 	pub fn compute_verification(
 		&mut self, domain: Domain, assignment_id: TxHash,
 	) -> Result<bool, VerifierNodeError> {
-		let commitment = self.commitments.get(&assignment_id).unwrap();
-		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
-		let domain_indices = self.indices.get(&domain.to_hash()).unwrap();
-		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
-		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
+		let commitment =
+			self.commitments.get(&assignment_id).ok_or(VerifierNodeError::ComputeInternalError(
+				format!("commitment not found for assignment_id {:?}", assignment_id),
+			))?;
+		let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"create_scores not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let domain_indices =
+			self.indices.get(&domain.to_hash()).ok_or(VerifierNodeError::ComputeInternalError(
+				format!("indices not found for domain {:?}", domain.to_hash()),
+			))?;
+		let lt = self.local_trust.get(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"local_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let seed = self.seed_trust.get(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"seed_trust not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
 		let scores: Vec<&CreateScores> =
 			commitment.scores_tx_hashes.iter().map(|x| create_scores.get(&x).unwrap()).collect();
 		let score_entries: HashMap<u32, f32> = scores
@@ -264,9 +405,24 @@ impl VerificationJobRunner {
 	pub fn get_root_hashes(
 		&self, domain: Domain, assignment_id: TxHash,
 	) -> Result<(Hash, Hash), VerifierNodeError> {
-		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).unwrap();
-		let compute_tree_map = self.compute_tree.get(&domain.to_hash()).unwrap();
-		let compute_tree = compute_tree_map.get(&assignment_id).unwrap();
+		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"lt_master_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let compute_tree_map = self.compute_tree.get(&domain.to_hash()).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"compute_tree not found for domain {:?}",
+				domain.to_hash()
+			)),
+		)?;
+		let compute_tree = compute_tree_map.get(&assignment_id).ok_or(
+			VerifierNodeError::ComputeInternalError(format!(
+				"compute_tree not found for assignment_id {:?}",
+				assignment_id
+			)),
+		)?;
 		let lt_tree_root = lt_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 		let ct_tree_root =
 			compute_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
