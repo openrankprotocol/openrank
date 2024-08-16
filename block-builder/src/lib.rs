@@ -19,6 +19,9 @@ use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+mod error;
+use error::BlockBuilderNodeError;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
 	pub domains: Vec<Domain>,
@@ -26,7 +29,7 @@ pub struct Config {
 
 fn handle_gossipsub_events(
 	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
-) {
+) -> Result<(), BlockBuilderNodeError> {
 	match event {
 		gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } => {
 			for topic in topics {
@@ -34,36 +37,15 @@ fn handle_gossipsub_events(
 					Topic::DomainRequest(domain_id) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = match TxEvent::decode(&mut message.data.as_slice()) {
-								Ok(tx_event) => tx_event,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
-							let tx = match Tx::decode(&mut tx_event.data().as_slice()) {
-								Ok(tx) => tx,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
+							let tx_event = TxEvent::decode(&mut message.data.as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert!(tx.kind() == TxKind::JobRunRequest);
 							// Add Tx to db
-							match db.put(tx.clone()) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to add tx to db: {e:?}");
-									continue;
-								},
-							};
-							match JobRunRequest::decode(&mut tx.body().as_slice()) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to decode request: {e:?}");
-									continue;
-								},
-							};
+							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+							JobRunRequest::decode(&mut tx.body().as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -72,97 +54,48 @@ fn handle_gossipsub_events(
 							let assignment_topic = Topic::DomainAssignent(domain_id.clone());
 							let job_assignment = encode(JobRunAssignment::default_with(tx.hash()));
 							let tx = Tx::default_with(TxKind::JobRunAssignment, job_assignment);
-							match db.put(tx.clone()) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to add tx to db: {e:?}");
-									continue;
-								},
-							};
-							if let Err(e) = broadcast_event(&mut swarm, tx, assignment_topic) {
-								error!("Publish error: {e:?}");
-							}
+							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+							broadcast_event(&mut swarm, tx, assignment_topic)
+								.map_err(|e| BlockBuilderNodeError::P2PError(e.to_string()))?;
 						}
 					},
 					Topic::DomainCommitment(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = match TxEvent::decode(&mut message.data.as_slice()) {
-								Ok(tx_event) => tx_event,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
-							let tx = match Tx::decode(&mut tx_event.data().as_slice()) {
-								Ok(tx) => tx,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
+							let tx_event = TxEvent::decode(&mut message.data.as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::CreateCommitment);
 							// Add Tx to db
-							match db.put(tx.clone()) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to add tx to db: {e:?}");
-									continue;
-								},
-							};
+							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 
-							let commitment =
-								match CreateCommitment::decode(&mut tx.body().as_slice()) {
-									Ok(commitment) => commitment,
-									Err(e) => {
-										error!("Failed to decode commitment: {e:?}");
-										continue;
-									},
-								};
+							let commitment = CreateCommitment::decode(&mut tx.body().as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 
 							let assignment_tx_key = Tx::construct_full_key(
 								TxKind::JobRunAssignment,
 								commitment.job_run_assignment_tx_hash,
 							);
-							let assignment_tx: Tx = match db.get(assignment_tx_key) {
-								Ok(tx) => tx,
-								Err(e) => {
-									error!("Failed to get assignment tx: {e:?}");
-									continue;
-								},
-							};
-							let assignment_body = match JobRunAssignment::decode(
-								&mut assignment_tx.body().as_slice(),
-							) {
-								Ok(assignment_body) => assignment_body,
-								Err(e) => {
-									error!("Failed to decode assignment body: {e:?}");
-									continue;
-								},
-							};
+							let assignment_tx: Tx = db
+								.get(assignment_tx_key)
+								.map_err(|e| BlockBuilderNodeError::DbError(e))?;
+							let assignment_body =
+								JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+									.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							let request_tx_key = Tx::construct_full_key(
 								TxKind::JobRunRequest,
 								assignment_body.job_run_request_tx_hash.clone(),
 							);
-							let request: Tx = match db.get(request_tx_key) {
-								Ok(tx) => tx,
-								Err(e) => {
-									error!("Failed to get request tx: {e:?}");
-									continue;
-								},
-							};
+							let request: Tx = db
+								.get(request_tx_key)
+								.map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							let job_result_key = JobResult::construct_full_key(
 								assignment_body.job_run_request_tx_hash,
 							);
 							if db.get::<JobResult>(job_result_key).is_err() {
 								let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
-								match db.put(result) {
-									Ok(_) => {},
-									Err(e) => {
-										error!("Failed to add result tx to db: {e:?}");
-										continue;
-									},
-								};
+								db.put(result).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							}
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
@@ -173,36 +106,15 @@ fn handle_gossipsub_events(
 					Topic::DomainScores(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = match TxEvent::decode(&mut message.data.as_slice()) {
-								Ok(tx_event) => tx_event,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
-							let tx = match Tx::decode(&mut tx_event.data().as_slice()) {
-								Ok(tx) => tx,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
+							let tx_event = TxEvent::decode(&mut message.data.as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::CreateScores);
 							// Add Tx to db
-							match db.put(tx.clone()) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to add tx to db: {e:?}");
-									continue;
-								},
-							};
-							match CreateScores::decode(&mut tx.body().as_slice()) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to decode scores: {e:?}");
-									continue;
-								},
-							};
+							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+							CreateScores::decode(&mut tx.body().as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -212,76 +124,35 @@ fn handle_gossipsub_events(
 					Topic::DomainVerification(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
-							let tx_event = match TxEvent::decode(&mut message.data.as_slice()) {
-								Ok(tx_event) => tx_event,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
-							let tx = match Tx::decode(&mut tx_event.data().as_slice()) {
-								Ok(tx) => tx,
-								Err(e) => {
-									error!("Failed to decode tx: {e:?}");
-									continue;
-								},
-							};
+							let tx_event = TxEvent::decode(&mut message.data.as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
+								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::JobVerification);
 							// Add Tx to db
-							match db.put(tx.clone()) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to add tx to db: {e:?}");
-									continue;
-								},
-							};
+							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							let job_verification =
-								match JobVerification::decode(&mut tx.body().as_slice()) {
-									Ok(job_verification) => job_verification,
-									Err(e) => {
-										error!("Failed to decode verification: {e:?}");
-										continue;
-									},
-								};
+								JobVerification::decode(&mut tx.body().as_slice())
+									.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 
 							let assignment_tx_key = Tx::construct_full_key(
 								TxKind::JobRunAssignment,
 								job_verification.job_run_assignment_tx_hash,
 							);
-							let assignment_tx: Tx = match db.get(assignment_tx_key) {
-								Ok(tx) => tx,
-								Err(e) => {
-									error!("Failed to get assignment tx: {e:?}");
-									continue;
-								},
-							};
-							let assignment_body = match JobRunAssignment::decode(
-								&mut assignment_tx.body().as_slice(),
-							) {
-								Ok(assignment_body) => assignment_body,
-								Err(e) => {
-									error!("Failed to decode assignment: {e:?}");
-									continue;
-								},
-							};
+							let assignment_tx: Tx = db
+								.get(assignment_tx_key)
+								.map_err(|e| BlockBuilderNodeError::DbError(e))?;
+							let assignment_body =
+								JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+									.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							let job_result_key = JobResult::construct_full_key(
 								assignment_body.job_run_request_tx_hash,
 							);
-							let mut job_result: JobResult = match db.get(job_result_key) {
-								Ok(job_result) => job_result,
-								Err(e) => {
-									error!("Failed to get job result: {e:?}");
-									continue;
-								},
-							};
+							let mut job_result: JobResult = db
+								.get(job_result_key)
+								.map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							job_result.job_verification_tx_hashes.push(tx.hash());
-							match db.put(job_result) {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to add result tx to db: {e:?}");
-									continue;
-								},
-							};
+							db.put(job_result).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -294,6 +165,8 @@ fn handle_gossipsub_events(
 		},
 		_ => {},
 	}
+
+	Ok(())
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
@@ -368,7 +241,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
 					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
-					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect());
+					match handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect()) {
+						Ok(_) => {},
+						Err(e) => error!("{e:?}"),
+					};
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");
