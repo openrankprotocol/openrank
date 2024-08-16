@@ -1,10 +1,13 @@
+use crate::db::DbItem;
 use crate::topics::DomainHash;
-use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
+use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use hex::FromHex;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use std::io::Read;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TxKind {
 	TrustUpdate,
@@ -53,7 +56,7 @@ impl TxKind {
 	}
 }
 
-#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct Tx {
 	nonce: u64,
 	from: Address,
@@ -83,27 +86,60 @@ impl Tx {
 	pub fn body(&self) -> Vec<u8> {
 		self.body.clone()
 	}
+
+	pub fn hash(&self) -> Vec<u8> {
+		let mut hasher = Keccak256::new();
+		hasher.update(&self.nonce.to_be_bytes());
+		hasher.update(encode(&self.from));
+		hasher.update(encode(&self.to));
+		hasher.update(encode(self.kind));
+		hasher.update(&self.body);
+		let result = hasher.finalize();
+		result.to_vec()
+	}
+}
+
+impl DbItem for Tx {
+	fn get_key(&self) -> Vec<u8> {
+		self.hash()
+	}
+
+	fn get_cf() -> String {
+		"tx".to_string()
+	}
 }
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
-pub struct OwnedNamespace(pub [u8; 32]);
+pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 32]);
+
+#[derive(
+	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
+)]
+pub struct Address(#[serde(with = "hex")] pub [u8; 32]);
+
+impl FromHex for Address {
+	type Error = hex::FromHexError;
+
+	fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+		Ok(Address(<[u8; 32]>::from_hex(hex)?))
+	}
+}
 
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
-pub struct Address(pub [u8; 32]);
+pub struct TxHash(#[serde(with = "hex")] [u8; 32]);
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
-pub struct TxHash([u8; 32]);
+#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+pub struct RootHash(#[serde(with = "hex")] [u8; 32]);
 
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
-pub struct RootHash([u8; 32]);
-
-#[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable)]
+#[derive(
+	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
+)]
 pub struct Signature {
 	s: [u8; 32],
 	r: [u8; 32],
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScoreEntry {
 	id: Address,
 	value: f32,
@@ -130,7 +166,7 @@ impl Decodable for ScoreEntry {
 	}
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TrustEntry {
 	from: Address,
 	to: Address,
@@ -242,4 +278,48 @@ pub struct TrustUpdate {
 pub struct SeedUpdate {
 	seed_id: OwnedNamespace,
 	entries: Vec<ScoreEntry>,
+}
+
+#[cfg(test)]
+mod test {
+	use crate::txs::TrustEntry;
+
+	use super::{ScoreEntry, TrustUpdate, Tx, TxKind};
+	use alloy_rlp::{encode, Decodable};
+
+	#[test]
+	fn test_decode_tx_kind() {
+		let res = TxKind::decode(&mut [0].as_slice()).unwrap();
+		assert_eq!(res, TxKind::TrustUpdate);
+		let res = TxKind::decode(&mut [3].as_slice()).unwrap();
+		assert_eq!(res, TxKind::JobRunAssignment);
+		let res = TxKind::decode(&mut [8].as_slice()).unwrap();
+		assert_eq!(res, TxKind::FinalisedBlock);
+	}
+
+	#[test]
+	fn test_tx_to_hash() {
+		let tx = Tx::default_with(TxKind::TrustUpdate, encode(TrustUpdate::default()));
+		let tx_hash = tx.hash();
+		assert_eq!(
+			hex::encode(tx_hash),
+			"77b37e9a80c4d4bb476f67b0a6523e6dc41ca8fc255d583db03d62e1b67b73dc"
+		);
+	}
+
+	#[test]
+	fn test_decode_score_entry() {
+		let se = ScoreEntry::default();
+		let encoded_se = encode(se.clone());
+		let decoded_se = ScoreEntry::decode(&mut encoded_se.as_slice()).unwrap();
+		assert_eq!(se, decoded_se);
+	}
+
+	#[test]
+	fn test_decode_trust_entry() {
+		let te = TrustEntry::default();
+		let encoded_te = encode(te.clone());
+		let decoded_te = TrustEntry::decode(&mut encoded_te.as_slice()).unwrap();
+		assert_eq!(te, decoded_te);
+	}
 }

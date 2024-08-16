@@ -127,11 +127,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 	let (sender, mut receiver) = mpsc::channel(100);
 	let sequencer = Arc::new(Sequencer::new(sender.clone()));
-	let server = Server::builder("tcp://127.0.0.1:60000")
-		.expect("create new server builder")
-		.service(sequencer)
-		.build()
-		.await?;
+	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 	server.start();
 
 	// Kick it off
@@ -140,6 +136,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			sibling = receiver.recv() => {
 				if let Some((data, topic)) = sibling {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+					info!("PUBLSH: {:?}", topic.clone());
 					if let Err(e) =
 					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
 					{
