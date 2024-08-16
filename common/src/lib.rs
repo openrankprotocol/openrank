@@ -1,4 +1,7 @@
+pub mod algos;
 pub mod db;
+pub mod merkle;
+pub mod result;
 pub mod topics;
 pub mod tx_event;
 pub mod txs;
@@ -10,17 +13,11 @@ use libp2p::{
 	swarm::NetworkBehaviour,
 	tcp, yamux, Swarm,
 };
-use serde::{Deserialize, Serialize};
 use std::{error::Error, io, time::Duration};
-use topics::{Domain, Topic};
+use topics::Topic;
 use tracing::info;
 use tx_event::TxEvent;
 use txs::{Tx, TxKind};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-	pub domains: Vec<Domain>,
-}
 
 // We create a custom network behaviour.
 #[derive(NetworkBehaviour)]
@@ -72,11 +69,20 @@ pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
 	Ok(swarm)
 }
 
-pub fn broadcast_event(
+pub fn broadcast_default_event(
 	swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: Topic,
 ) -> Result<MessageId, PublishError> {
-	info!("PUBLSH: {:?}", topic.clone());
+	info!("PUBLISH: {}", topic.clone());
 	let tx = Tx::default_with(kind, data);
+	let tx_event = TxEvent::default_with_data(encode(tx));
+	let topic_wrapper = gossipsub::IdentTopic::new(topic);
+	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))
+}
+
+pub fn broadcast_event(
+	swarm: &mut Swarm<MyBehaviour>, tx: Tx, topic: Topic,
+) -> Result<MessageId, PublishError> {
+	info!("PUBLISH: {}", topic.clone());
 	let tx_event = TxEvent::default_with_data(encode(tx));
 	let topic_wrapper = gossipsub::IdentTopic::new(topic);
 	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))

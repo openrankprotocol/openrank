@@ -13,8 +13,9 @@ target/
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-# RocksDB folders
+# RocksDB folders and other storage files
 /**/*-storage
+/**/*-db.**
 
 # MacOS
 .DS_Store
@@ -103,3 +104,6 @@ fabric.properties
 
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser
+
+# Script for removing local db folders
+flush_db.sh

@@ -1,7 +1,7 @@
 [package]
 name = "openrank-verifier"
 description = "OpenRank - Verifier Node"
-license = "MIT"
+license.workspace = true
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -31,3 +31,4 @@ alloy-rlp = { workspace = true }
 dotenv = { workspace = true }
 toml = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+sha3 = { workspace = true }

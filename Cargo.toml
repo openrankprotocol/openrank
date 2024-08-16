@@ -1,6 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["block-builder", "common", "computer", "da", "sequencer", "verifier"]
+members = [
+    "block-builder",
+    "common",
+    "computer",
+    "da",
+    "openrank-sdk",
+    "sequencer",
+    "verifier",
+]
 
 [workspace.package]
 version = "0.0.1"
@@ -9,6 +17,7 @@ authors = [
     "Filip Lazović <filip@karma3labs.com>",
 ]
 edition = "2021"
+license = "MIT"
 
 [workspace.dependencies]
 libp2p = "0.53.2"
@@ -26,3 +35,4 @@ serde_json = "1.0"
 toml = "0.8"
 rocksdb = "0.22.0"
 sha3 = "0.10.8"
+karyon_jsonrpc = "0.1.5"

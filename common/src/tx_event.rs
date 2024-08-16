@@ -9,18 +9,19 @@ pub struct InclusionProof([u8; 32]);
 
 #[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct TxEvent {
-	blob_id: u64,
+	// Supposed to be block height
+	block_number: u64,
 	proof: InclusionProof,
 	data: Vec<u8>,
 }
 
 impl TxEvent {
-	pub fn new(blob_id: u64, proof: InclusionProof, data: Vec<u8>) -> Self {
-		Self { blob_id, proof, data }
+	pub fn new(block_number: u64, proof: InclusionProof, data: Vec<u8>) -> Self {
+		Self { block_number, proof, data }
 	}
 
 	pub fn default_with_data(data: Vec<u8>) -> Self {
-		Self { blob_id: 0, proof: InclusionProof::default(), data }
+		Self { block_number: 0, proof: InclusionProof::default(), data }
 	}
 
 	pub fn data(&self) -> Vec<u8> {
@@ -31,13 +32,17 @@ impl TxEvent {
 impl DbItem for TxEvent {
 	fn get_key(&self) -> Vec<u8> {
 		let mut hasher = Keccak256::new();
-		hasher.update(&self.blob_id.to_be_bytes());
+		hasher.update(&self.block_number.to_be_bytes());
 		hasher.update(encode(&self.proof));
 		let result = hasher.finalize();
 		result.to_vec()
 	}
 
 	fn get_cf() -> String {
+		"tx_event".to_string()
+	}
+
+	fn get_prefix(&self) -> String {
 		"tx_event".to_string()
 	}
 }

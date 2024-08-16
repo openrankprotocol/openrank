@@ -3,19 +3,26 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	db::{Db, DbItem},
-	topics::Topic,
+	db::{Db, DbError, DbItem},
+	result::JobResult,
+	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
-		CreateCommitment, FinalisedBlock, JobRunAssignment, JobRunRequest, JobVerification,
-		ProposedBlock, Tx, TxKind,
+		CreateCommitment, CreateScores, JobRunAssignment, JobRunRequest, JobVerification, Tx,
+		TxKind,
 	},
-	Config, MyBehaviour, MyBehaviourEvent,
+	MyBehaviour, MyBehaviourEvent,
 };
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+	pub domains: Vec<Domain>,
+}
 
 fn handle_gossipsub_events(
 	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
@@ -28,28 +35,21 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							// Save to local DB
-							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							// Save to local DB
-							db.put(tx.clone()).unwrap();
 							assert!(tx.kind() == TxKind::JobRunRequest);
-							let job_run_request =
-								JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
+							let _ = JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
 							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
-								job_run_request,
 							);
 
 							let assignment_topic = Topic::DomainAssignent(domain_id.clone());
-							let job_assignment = encode(JobRunAssignment::default());
-							if let Err(e) = broadcast_event(
-								&mut swarm,
-								TxKind::JobRunAssignment,
-								job_assignment,
-								assignment_topic,
-							) {
+							let job_assignment = encode(JobRunAssignment::default_with(tx.hash()));
+							let tx = Tx::default_with(TxKind::JobRunAssignment, job_assignment);
+							db.put(tx.clone()).unwrap();
+							if let Err(e) = broadcast_event(&mut swarm, tx, assignment_topic) {
 								error!("Publish error: {e:?}");
 							}
 						}
@@ -58,58 +58,84 @@ fn handle_gossipsub_events(
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							// Save to local DB
-							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							// Save to local DB
+							assert_eq!(tx.kind(), TxKind::CreateCommitment);
+							// Add Tx to db
 							db.put(tx.clone()).unwrap();
+
 							let commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
-							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-								message.topic.as_str(),
-								commitment,
-							);
 
-							let proposed_block_topic = Topic::ProposedBlock;
-							let proposed_block = encode(ProposedBlock::default());
-							if let Err(e) = broadcast_event(
-								&mut swarm,
-								TxKind::ProposedBlock,
-								proposed_block,
-								proposed_block_topic,
-							) {
-								error!("Publish error: {e:?}");
+							let assignment_tx_key = Tx::construct_full_key(
+								TxKind::JobRunAssignment,
+								commitment.job_run_assignment_tx_hash,
+							);
+							let assignment_tx: Tx = db.get(assignment_tx_key).unwrap();
+							let assignment_body =
+								JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+									.unwrap();
+							let request_tx_key = Tx::construct_full_key(
+								TxKind::JobRunRequest,
+								assignment_body.job_run_request_tx_hash.clone(),
+							);
+							let request: Tx = db.get(request_tx_key).unwrap();
+							let job_result_key = JobResult::construct_full_key(
+								assignment_body.job_run_request_tx_hash,
+							);
+							if let Err(DbError::NotFound) = db.get::<JobResult>(job_result_key) {
+								let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
+								db.put(result).unwrap();
 							}
+							info!(
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
+								message.topic.as_str(),
+							);
+						}
+					},
+					Topic::DomainScores(_) => {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+						if message.topic == topic_wrapper.hash() {
+							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
+							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
+							assert_eq!(tx.kind(), TxKind::CreateScores);
+							// Add Tx to db
+							db.put(tx.clone()).unwrap();
+							let _ = CreateScores::decode(&mut tx.body().as_slice()).unwrap();
+							info!(
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
+								message.topic.as_str(),
+							);
 						}
 					},
 					Topic::DomainVerification(_) => {
 						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-							// Save to local DB
-							db.put(tx_event.clone()).unwrap();
 							let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-							// Save to local DB
+							assert_eq!(tx.kind(), TxKind::JobVerification);
+							// Add Tx to db
 							db.put(tx.clone()).unwrap();
 							let job_verification =
 								JobVerification::decode(&mut tx.body().as_slice()).unwrap();
-							info!(
-								"TOPIC: {}, TX: '{:?}' ID: {id} FROM: {peer_id}",
-								message.topic.as_str(),
-								job_verification,
-							);
 
-							let finalised_block_topic = Topic::FinalisedBlock;
-							let finalised_block = encode(FinalisedBlock::default());
-							if let Err(e) = broadcast_event(
-								&mut swarm,
-								TxKind::FinalisedBlock,
-								finalised_block,
-								finalised_block_topic,
-							) {
-								error!("Publish error: {e:?}");
-							}
+							let assignment_tx_key = Tx::construct_full_key(
+								TxKind::JobRunAssignment,
+								job_verification.job_run_assignment_tx_hash,
+							);
+							let assignment_tx: Tx = db.get(assignment_tx_key).unwrap();
+							let assignment_body =
+								JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+									.unwrap();
+							let job_result_key = JobResult::construct_full_key(
+								assignment_body.job_run_request_tx_hash,
+							);
+							let mut job_result: JobResult = db.get(job_result_key).unwrap();
+							job_result.job_verification_tx_hashes.push(tx.hash());
+							db.put(job_result).unwrap();
+							info!(
+								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
+								message.topic.as_str(),
+							);
 						}
 					},
 					_ => {},
@@ -131,11 +157,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
-
-	let db = Db::new(
-		"./local-storage",
-		&[Tx::get_cf().as_str(), TxEvent::get_cf().as_str()],
-	)?;
+	let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
 	let topics_requests: Vec<Topic> = config
 		.domains
@@ -151,6 +173,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|x| x.to_hash())
 		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
 		.collect();
+	let topics_scores: Vec<Topic> = config
+		.domains
+		.clone()
+		.into_iter()
+		.map(|x| x.to_hash())
+		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+		.collect();
 	let topics_verification: Vec<Topic> = config
 		.domains
 		.clone()
@@ -159,7 +188,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		.map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
 		.collect();
 
-	for topic in topics_verification.iter().chain(&topics_commitment).chain(&topics_requests) {
+	for topic in topics_verification
+		.iter()
+		.chain(&topics_commitment)
+		.chain(&topics_scores)
+		.chain(&topics_requests)
+	{
 		// Create a Gossipsub topic
 		let topic = gossipsub::IdentTopic::new(topic.clone());
 		// subscribes to our topic
@@ -183,7 +217,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_verification);
+					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
 					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect());
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {

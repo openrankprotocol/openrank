@@ -1,7 +1,7 @@
 [package]
 name = "openrank-block-builder"
 description = "OpenRank - Block Builder Node"
-license = "MIT"
+license.workspace = true
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -10,6 +10,7 @@ edition.workspace = true
 
 [dependencies]
 openrank-common = { path = "../common", version = "0.0.1" }
+openrank-sequencer = { path = "../sequencer", version = "0.0.1" }
 futures = { workspace = true }
 libp2p = { workspace = true, features = [
     "noise",

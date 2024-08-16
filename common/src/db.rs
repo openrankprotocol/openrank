@@ -1,4 +1,4 @@
-use rocksdb::{Error as RocksDBError, IteratorMode, Options, DB};
+use rocksdb::{Error as RocksDBError, Options, DB};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
@@ -27,7 +27,14 @@ impl Display for DbError {
 
 pub trait DbItem {
 	fn get_key(&self) -> Vec<u8>;
+	fn get_prefix(&self) -> String;
 	fn get_cf() -> String;
+	fn get_full_key(&self) -> Vec<u8> {
+		let suffix = self.get_key();
+		let mut key = self.get_prefix().as_bytes().to_vec();
+		key.extend(suffix);
+		key
+	}
 }
 
 pub struct Db {
@@ -44,9 +51,19 @@ impl Db {
 		Ok(Self { connection: db })
 	}
 
+	pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
+		assert!(path.ends_with("-storage"));
+		let mut opts = Options::default();
+		opts.create_if_missing(true);
+		opts.create_missing_column_families(true);
+		let db =
+			DB::open_cf_for_read_only(&opts, path, cfs, false).map_err(|e| DbError::RocksDB(e))?;
+		Ok(Self { connection: db })
+	}
+
 	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
 		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let key = item.get_key();
+		let key = item.get_full_key();
 		let value = to_vec(&item).map_err(|e| DbError::Serde(e))?;
 		self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
 	}
@@ -60,10 +77,10 @@ impl Db {
 	}
 
 	pub fn read_from_end<I: DbItem + DeserializeOwned>(
-		&self, num_elements: usize,
+		&self, num_elements: usize, prefix: String,
 	) -> Result<Vec<I>, DbError> {
 		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let iter = self.connection.iterator_cf(&cf, IteratorMode::End);
+		let iter = self.connection.prefix_iterator_cf(&cf, prefix);
 		let mut elements = Vec::new();
 		for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
 			let tx = serde_json::from_slice(db_value.as_ref()).unwrap();
@@ -84,7 +101,8 @@ mod test {
 		let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
 		let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
 		db.put(tx.clone()).unwrap();
-		let item = db.get::<Tx>(tx.get_key()).unwrap();
+		let key = Tx::construct_full_key(TxKind::JobRunRequest, tx.hash());
+		let item = db.get::<Tx>(key).unwrap();
 		assert_eq!(tx, item);
 	}
 
@@ -100,7 +118,13 @@ mod test {
 		db.put(tx1.clone()).unwrap();
 		db.put(tx2.clone()).unwrap();
 		db.put(tx3.clone()).unwrap();
-		let items = db.read_from_end::<Tx>(3).unwrap();
-		assert_eq!(vec![tx1, tx2, tx3], items);
+
+		// FIX: Test fails if you specify reading more than 1 item for a single prefix
+		let items1 = db.read_from_end::<Tx>(1, TxKind::JobRunRequest.into()).unwrap();
+		let items2 = db.read_from_end::<Tx>(1, TxKind::JobRunAssignment.into()).unwrap();
+		let items3 = db.read_from_end::<Tx>(1, TxKind::JobVerification.into()).unwrap();
+		assert_eq!(vec![tx1], items1);
+		assert_eq!(vec![tx2], items2);
+		assert_eq!(vec![tx3], items3);
 	}
 }
