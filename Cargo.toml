@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
-
-members = ["block-builder", "computer", "da", "sequencer", "verifier"]
+members = ["block-builder", "common", "computer", "da", "sequencer", "verifier"]
 
 [workspace.package]
 version = "0.0.1"
@@ -17,3 +16,10 @@ futures = "0.3.30"
 tokio = { version = "1.38", default-features = false }
 tracing = "0.1.37"
 tracing-subscriber = "0.3"
+hex = "0.4.3"
+rand = "0.8.5"
+alloy-rlp = "0.3.5"
+alloy-rlp-derive = "0.3.5"
+dotenv = "0.15.0"
+serde = "1.0"
+serde_json = "1.0"

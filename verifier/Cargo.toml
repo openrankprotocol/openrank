@@ -1,11 +1,15 @@
 [package]
-name = "verifier"
-version = "0.1.0"
-edition = "2021"
+name = "openrank-verifier"
+description = "OpenRank - Verifier Node"
+license = "MIT"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+openrank-common = { path = "../common", version = "0.0.1" }
 futures = { workspace = true }
 libp2p = { workspace = true, features = [
     "noise",
@@ -13,7 +17,15 @@ libp2p = { workspace = true, features = [
     "tcp",
     "tokio",
     "yamux",
+    "quic",
+    "gossipsub",
+    "macros",
+    "identify",
 ] }
 tokio = { workspace = true, features = ["full", "macros"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+hex = { workspace = true }
+rand = { workspace = true }
+alloy-rlp = { workspace = true }
+dotenv = { workspace = true }
