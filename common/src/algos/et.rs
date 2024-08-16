@@ -21,10 +21,10 @@ fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
 	}
 
 	for ((from, _), value) in lt {
-		let sum = match sum_map.get(&from) {
-			Some(s) => s,
-			None => return Err(AlgoError::ZeroSum.into()),
-		};
+		let sum = sum_map.get(&from).ok_or(AlgoError::ZeroSum)?;
+		if *sum == 0.0 {
+			return Err(AlgoError::ZeroSum);
+		}
 		*value /= sum;
 	}
 	Ok(())
@@ -33,7 +33,7 @@ fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
 fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
 	let sum: f32 = seed.iter().map(|(_, v)| v).sum();
 	if sum == 0.0 {
-		return Err(AlgoError::ZeroSum.into());
+		return Err(AlgoError::ZeroSum);
 	}
 	for (_, value) in seed {
 		*value /= sum;
