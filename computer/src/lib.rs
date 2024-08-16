@@ -110,7 +110,7 @@ fn handle_gossipsub_events(
 							.iter()
 							.find(|x| &x.to_hash() == domain_id)
 							.ok_or(ComputeNodeError::DomainNotFound(domain_id.clone().to_hex()))?;
-						job_runner.compute(domain.clone());
+						job_runner.compute(domain.clone())?;
 						job_runner.create_compute_tree(domain.clone())?;
 						let create_scores = job_runner.get_create_scores(domain.clone());
 						let (lt_root, compute_root) = job_runner.get_root_hashes(domain.clone())?;

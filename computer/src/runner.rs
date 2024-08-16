@@ -136,17 +136,13 @@ impl ComputeJobRunner {
 		Ok(())
 	}
 
-	pub fn compute(&mut self, domain: Domain) {
+	pub fn compute(&mut self, domain: Domain) -> Result<(), ComputeNodeError> {
 		let lt = self.local_trust.get(&domain.to_hash()).unwrap();
 		let seed = self.seed_trust.get(&domain.to_hash()).unwrap();
-		let res = match positive_run::<20>(lt.clone(), seed.clone()) {
-			Ok(r) => r,
-			Err(e) => {
-				eprintln!("Positive run Error: {:?}", e);
-				todo!("Error handling")
-			},
-		};
+		let res = positive_run::<20>(lt.clone(), seed.clone())
+			.map_err(|e| ComputeNodeError::ComputeAlgoError(e))?;
 		self.compute_results.insert(domain.to_hash(), res);
+		Ok(())
 	}
 
 	pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), ComputeNodeError> {
