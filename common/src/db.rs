@@ -1,8 +1,29 @@
-use rocksdb::{Options, DB};
+use rocksdb::{Error as RocksDBError, Options, DB};
 use serde::{de::DeserializeOwned, Serialize};
-use serde_json::to_vec;
+use serde_json::{to_vec, Error as SerdeError};
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use crate::error::{CommonError, DbError};
+#[derive(Debug)]
+pub enum DbError {
+	RocksDB(RocksDBError),
+	Serde(SerdeError),
+	CfNotFound,
+	NotFound,
+}
+
+impl StdError for DbError {}
+
+impl Display for DbError {
+	fn fmt(&self, f: &mut Formatter) -> FmtResult {
+		match self {
+			Self::RocksDB(e) => write!(f, "{}", e),
+			Self::Serde(e) => write!(f, "{}", e),
+			Self::CfNotFound => write!(f, "CfNotFound"),
+			Self::NotFound => write!(f, "NotFound"),
+		}
+	}
+}
 
 pub trait DbItem {
 	fn get_key(&self) -> Vec<u8>;
@@ -21,7 +42,7 @@ pub struct Db {
 }
 
 impl Db {
-	pub fn new(path: &str, cfs: &[&str]) -> Result<Self, CommonError> {
+	pub fn new(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
 		assert!(path.ends_with("-storage"));
 		let mut opts = Options::default();
 		opts.create_if_missing(true);
@@ -30,7 +51,7 @@ impl Db {
 		Ok(Self { connection: db })
 	}
 
-	pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, CommonError> {
+	pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
 		assert!(path.ends_with("-storage"));
 		let mut opts = Options::default();
 		opts.create_if_missing(true);
@@ -40,7 +61,7 @@ impl Db {
 		Ok(Self { connection: db })
 	}
 
-	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), CommonError> {
+	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
 		let cf =
 			self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound.into())?;
 		let key = item.get_full_key();
@@ -48,7 +69,7 @@ impl Db {
 		self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e).into())
 	}
 
-	pub fn get<I: DbItem + DeserializeOwned>(&self, key: Vec<u8>) -> Result<I, CommonError> {
+	pub fn get<I: DbItem + DeserializeOwned>(&self, key: Vec<u8>) -> Result<I, DbError> {
 		let cf =
 			self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound.into())?;
 		let item_res = self.connection.get_cf(&cf, key).map_err(|e| DbError::RocksDB(e).into())?;
@@ -59,7 +80,7 @@ impl Db {
 
 	pub fn read_from_end<I: DbItem + DeserializeOwned>(
 		&self, num_elements: usize, prefix: String,
-	) -> Result<Vec<I>, CommonError> {
+	) -> Result<Vec<I>, DbError> {
 		let cf =
 			self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound.into())?;
 		let iter = self.connection.prefix_iterator_cf(&cf, prefix);

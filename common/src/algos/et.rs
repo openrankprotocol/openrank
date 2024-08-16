@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::error::{AlgoError, CommonError};
+use super::AlgoError;
 
 const PRE_TRUST_WEIGHT: f32 = 0.5;
 const DELTA: f32 = 0.01;
@@ -13,7 +13,7 @@ fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
 	}
 }
 
-fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), CommonError> {
+fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
 	let mut sum_map: HashMap<u32, f32> = HashMap::new();
 	for ((from, _), value) in lt.iter() {
 		let val = sum_map.get(from).unwrap_or(&0.0);
@@ -30,7 +30,7 @@ fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), CommonError> {
 	Ok(())
 }
 
-fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), CommonError> {
+fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
 	let sum: f32 = seed.iter().map(|(_, v)| v).sum();
 	if sum == 0.0 {
 		return Err(AlgoError::ZeroSum.into());
@@ -43,7 +43,7 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), CommonError> {
 
 pub fn positive_run<const NUM_ITER: usize>(
 	mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
-) -> Result<Vec<(u32, f32)>, CommonError> {
+) -> Result<Vec<(u32, f32)>, AlgoError> {
 	pre_process(&mut lt);
 	normalise_lt(&mut lt)?;
 	normalise_seed(&mut seed)?;
@@ -85,7 +85,7 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
 
 pub fn convergence_check(
 	mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
-) -> Result<bool, CommonError> {
+) -> Result<bool, AlgoError> {
 	normalise_lt(&mut lt)?;
 	let mut next_scores = HashMap::new();
 	for ((from, to), value) in &lt {
