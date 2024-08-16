@@ -9,6 +9,8 @@ use openrank_common::{
 use sha3::Keccak256;
 use std::collections::HashMap;
 
+use crate::error::VerifierNodeError;
+
 pub struct VerificationJobRunner {
 	count: HashMap<DomainHash, u32>,
 	indices: HashMap<DomainHash, HashMap<Address, u32>>,
@@ -67,7 +69,9 @@ impl VerificationJobRunner {
 		}
 	}
 
-	pub fn update_trust(&mut self, domain: Domain, trust_entries: Vec<TrustEntry>) {
+	pub fn update_trust(
+		&mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
+	) -> Result<(), VerifierNodeError> {
 		let domain_indices = self.indices.get_mut(&domain.to_hash()).unwrap();
 		let count = self.count.get_mut(&domain.to_hash()).unwrap();
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).unwrap();
@@ -102,15 +106,19 @@ impl VerificationJobRunner {
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			sub_tree.insert_leaf(to_index, leaf);
 
-			let sub_tree_root = sub_tree.root();
+			let sub_tree_root = sub_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
 			let seed_value = seed.get(&to_index).unwrap_or(&0.0);
 			let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
 			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
 			lt_master_tree.insert_leaf(from_index, leaf);
 		}
+
+		Ok(())
 	}
 
-	pub fn update_seed(&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>) {
+	pub fn update_seed(
+		&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
+	) -> Result<(), VerifierNodeError> {
 		let domain_indices = self.indices.get_mut(&domain.to_hash()).unwrap();
 		let count = self.count.get_mut(&domain.to_hash()).unwrap();
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).unwrap();
@@ -131,13 +139,15 @@ impl VerificationJobRunner {
 				lt_sub_trees.insert(index, default_sub_tree.clone());
 			}
 			let sub_tree = lt_sub_trees.get_mut(&index).unwrap();
-			let sub_tree_root = sub_tree.root();
+			let sub_tree_root = sub_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
 			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
 			lt_master_tree.insert_leaf(index, leaf);
 
 			seed.insert(index, entry.value);
 		}
+
+		Ok(())
 	}
 
 	pub fn check_scores_tx_hashes(&self, domain: Domain, commitment: CreateCommitment) -> bool {
@@ -151,7 +161,9 @@ impl VerificationJobRunner {
 		true
 	}
 
-	pub fn check_finished_jobs(&mut self, domain: Domain) -> Vec<(TxHash, bool)> {
+	pub fn check_finished_jobs(
+		&mut self, domain: Domain,
+	) -> Result<Vec<(TxHash, bool)>, VerifierNodeError> {
 		let assignments = self.active_assignments.get(&domain.clone().to_hash()).unwrap();
 		let mut results = Vec::new();
 		let mut completed = Vec::new();
@@ -162,12 +174,12 @@ impl VerificationJobRunner {
 					let lt_root = commitment.lt_root_hash.clone();
 					let cp_root = commitment.compute_root_hash.clone();
 
-					self.create_compute_tree(domain.clone(), assignment_id.clone());
+					self.create_compute_tree(domain.clone(), assignment_id.clone())?;
 					let (res_lt_root, res_compute_root) =
-						self.get_root_hashes(domain.clone(), assignment_id.clone());
+						self.get_root_hashes(domain.clone(), assignment_id.clone())?;
 					let is_root_equal = lt_root == res_lt_root && cp_root == res_compute_root;
 					let is_converged =
-						self.compute_verification(domain.clone(), assignment_id.clone());
+						self.compute_verification(domain.clone(), assignment_id.clone())?;
 					results.push((assgn_tx, is_root_equal && is_converged));
 					completed.push(assignment_id.clone());
 				}
@@ -179,7 +191,7 @@ impl VerificationJobRunner {
 			self.completed_assignments.get_mut(&domain.clone().to_hash()).unwrap();
 		active_assignments.retain(|x| !completed.contains(x));
 		completed_assignments.extend(completed);
-		results
+		Ok(results)
 	}
 
 	pub fn update_scores(&mut self, domain: Domain, tx_hash: TxHash, create_scores: CreateScores) {
@@ -203,7 +215,9 @@ impl VerificationJobRunner {
 		);
 	}
 
-	pub fn create_compute_tree(&mut self, domain: Domain, assignment_id: TxHash) {
+	pub fn create_compute_tree(
+		&mut self, domain: Domain, assignment_id: TxHash,
+	) -> Result<(), VerifierNodeError> {
 		let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).unwrap();
 		let commitment = self.commitments.get(&assignment_id).unwrap();
 		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
@@ -215,11 +229,16 @@ impl VerificationJobRunner {
 			.iter()
 			.map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
 			.collect();
-		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes);
+		let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
+			.map_err(|e| VerifierNodeError::ComputeError(e))?;
 		compute_tree_map.insert(assignment_id.clone(), compute_tree);
+
+		Ok(())
 	}
 
-	pub fn compute_verification(&mut self, domain: Domain, assignment_id: TxHash) -> bool {
+	pub fn compute_verification(
+		&mut self, domain: Domain, assignment_id: TxHash,
+	) -> Result<bool, VerifierNodeError> {
 		let commitment = self.commitments.get(&assignment_id).unwrap();
 		let create_scores = self.create_scores.get(&domain.to_hash()).unwrap();
 		let domain_indices = self.indices.get(&domain.to_hash()).unwrap();
@@ -236,19 +255,18 @@ impl VerificationJobRunner {
 				(*i, x.value)
 			})
 			.collect();
-		match convergence_check(lt.clone(), seed, &score_entries) {
-			Ok(r) => r,
-			Err(e) => {
-				eprintln!("Convergence check Error: {:?}", e);
-				todo!("Error handling")
-			},
-		}
+		convergence_check(lt.clone(), seed, &score_entries)
+			.map_err(|e| VerifierNodeError::ComputeAlgoError(e))
 	}
 
-	pub fn get_root_hashes(&self, domain: Domain, assignment_id: TxHash) -> (Hash, Hash) {
+	pub fn get_root_hashes(
+		&self, domain: Domain, assignment_id: TxHash,
+	) -> Result<(Hash, Hash), VerifierNodeError> {
 		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).unwrap();
 		let compute_tree_map = self.compute_tree.get(&domain.to_hash()).unwrap();
 		let compute_tree = compute_tree_map.get(&assignment_id).unwrap();
-		(lt_tree.root(), compute_tree.root())
+		let lt_tree_root = lt_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
+		let ct_tree_root = compute_tree.root().map_err(|e| VerifierNodeError::ComputeError(e))?;
+		Ok((lt_tree_root, ct_tree_root))
 	}
 }
