@@ -1,6 +1,8 @@
 use alloy_rlp::encode;
 use clap::{Parser, ValueEnum};
 use csv::StringRecord;
+use dotenv::dotenv;
+use k256::ecdsa::SigningKey;
 use karyon_jsonrpc::Client;
 use openrank_common::{
 	topics::Domain,
@@ -40,7 +42,7 @@ pub struct Config {
 	pub domain: Domain,
 }
 
-async fn update_trust() -> Result<(), Box<dyn Error>> {
+async fn update_trust(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 	let f = File::open("./openrank-sdk/trust-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
@@ -59,9 +61,10 @@ async fn update_trust() -> Result<(), Box<dyn Error>> {
 	for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
 		let data = encode(TrustUpdate::new(owned_namespace.clone(), chunk.to_vec()));
-		let tx = encode(Tx::default_with(TxKind::TrustUpdate, data));
+		let mut tx = Tx::default_with(TxKind::TrustUpdate, data);
+		tx.sign(&sk);
 
-		let result: Value = client.call("Sequencer.trust_update", hex::encode(tx)).await?;
+		let result: Value = client.call("Sequencer.trust_update", hex::encode(encode(tx))).await?;
 		let tx_event: TxEvent = serde_json::from_value(result)?;
 
 		println!("Res: {:?}", tx_event);
@@ -69,7 +72,7 @@ async fn update_trust() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-async fn update_seed() -> Result<(), Box<dyn Error>> {
+async fn update_seed(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 	let f = File::open("./openrank-sdk/seed-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
@@ -87,9 +90,10 @@ async fn update_seed() -> Result<(), Box<dyn Error>> {
 	for chunk in entries.chunks(SEED_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
 		let data = encode(SeedUpdate::new(owned_namespace.clone(), chunk.to_vec()));
-		let tx = encode(Tx::default_with(TxKind::SeedUpdate, data));
+		let mut tx = Tx::default_with(TxKind::SeedUpdate, data);
+		tx.sign(&sk);
 
-		let result: Value = client.call("Sequencer.seed_update", hex::encode(tx)).await?;
+		let result: Value = client.call("Sequencer.seed_update", hex::encode(encode(tx))).await?;
 		let tx_event: TxEvent = serde_json::from_value(result)?;
 
 		println!("Res: {:?}", tx_event);
@@ -97,7 +101,7 @@ async fn update_seed() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-async fn job_run_request() -> Result<(), Box<dyn Error>> {
+async fn job_run_request(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
 
 	// Creates a new client
@@ -105,7 +109,8 @@ async fn job_run_request() -> Result<(), Box<dyn Error>> {
 
 	let domain_id = config.domain.to_hash();
 	let data = encode(JobRunRequest::new(domain_id, u32::MAX));
-	let tx = Tx::default_with(TxKind::JobRunRequest, data);
+	let mut tx = Tx::default_with(TxKind::JobRunRequest, data);
+	tx.sign(&sk);
 	let tx_hash = tx.hash();
 	let hex_encoded_tx_hash = hex::encode(tx_hash.0);
 	println!("JobRunRequest TX_HASH: {}", hex_encoded_tx_hash);
@@ -127,17 +132,21 @@ async fn get_results(arg: String) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dy
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+	dotenv().ok();
 	let cli = Args::parse();
+	let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
+	let secret_key =
+		SigningKey::from_slice(hex::decode(secret_key_hex).unwrap().as_slice()).unwrap();
 
 	match cli.method {
 		Method::TrustUpdate => {
-			update_trust().await?;
+			update_trust(secret_key).await?;
 		},
 		Method::SeedUpdate => {
-			update_seed().await?;
+			update_seed(secret_key).await?;
 		},
 		Method::JobRunRequest => {
-			job_run_request().await?;
+			job_run_request(secret_key).await?;
 		},
 		Method::GetResults => {
 			let arg = cli.arg.unwrap();

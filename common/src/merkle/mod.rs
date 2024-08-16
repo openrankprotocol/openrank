@@ -11,7 +11,7 @@ pub mod incremental;
 #[derive(
 	Debug, Clone, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
-pub struct Hash(#[serde(with = "hex")] [u8; 32]);
+pub struct Hash(#[serde(with = "hex")] pub [u8; 32]);
 
 impl Hash {
 	pub fn to_hex(self) -> String {

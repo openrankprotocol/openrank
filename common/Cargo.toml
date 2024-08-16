@@ -27,6 +27,7 @@ hex = { workspace = true, features = ["serde"] }
 tracing = { workspace = true }
 rocksdb = { workspace = true, features = ["multi-threaded-cf"] }
 sha3 = { workspace = true }
+k256 = { workspace = true }
 
 [dev-dependencies]
 rand = "0.8.5"

@@ -1,8 +1,12 @@
+use crate::merkle::hash_leaf;
 use crate::topics::DomainHash;
 use crate::{db::DbItem, merkle::Hash};
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
+use k256::ecdsa::{
+	signature::Verifier, RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey,
+};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use std::fmt::Display;
@@ -125,6 +129,34 @@ impl Tx {
 		prefix.extend(tx_hash.0);
 		prefix
 	}
+
+	pub fn sign(&mut self, sk: &SigningKey) {
+		let (sig, rec) = sk.sign_prehash_recoverable(self.hash().as_bytes()).unwrap();
+		let s: [u8; 32] = sig.s().to_bytes().into();
+		let r: [u8; 32] = sig.s().to_bytes().into();
+		self.signature = Signature::new(s, r, rec.to_byte());
+	}
+
+	pub fn verify(&self, address: Address) -> bool {
+		let mut bytes = Vec::new();
+		bytes.extend(self.signature.s);
+		bytes.extend(self.signature.r);
+
+		let sig = EcdsaSignature::try_from(bytes.as_slice()).unwrap();
+		let rec_id = RecoveryId::from_byte(self.signature.r_id).unwrap();
+		let verifying_key =
+			VerifyingKey::recover_from_msg(self.hash().as_bytes(), &sig, rec_id).unwrap();
+		let vk_bytes = verifying_key.to_sec1_bytes();
+
+		let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+		let mut address_bytes = [0u8; 20];
+		address_bytes.copy_from_slice(&hash.0[..20]);
+
+		assert_eq!(Address(address_bytes), address);
+
+		let res = verifying_key.verify(self.hash().as_bytes(), &sig);
+		res.is_ok()
+	}
 }
 
 impl DbItem for Tx {
@@ -212,6 +244,10 @@ impl TxHash {
 		Self(inner)
 	}
 
+	pub fn as_bytes(&self) -> &[u8] {
+		self.0.as_slice()
+	}
+
 	pub fn to_hex(self) -> String {
 		hex::encode(self.0)
 	}
@@ -221,8 +257,15 @@ impl TxHash {
 	Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
 pub struct Signature {
-	s: [u8; 32],
-	r: [u8; 32],
+	pub s: [u8; 32],
+	pub r: [u8; 32],
+	r_id: u8,
+}
+
+impl Signature {
+	pub fn new(s: [u8; 32], r: [u8; 32], r_id: u8) -> Self {
+		Self { s, r, r_id }
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
