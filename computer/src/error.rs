@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use openrank_common::algos::AlgoError;
 use openrank_common::db::DbError;
 use openrank_common::merkle::MerkleError;
+use openrank_common::topics::DomainHash;
 
 #[derive(Debug)]
 pub enum ComputeNodeError {
@@ -13,7 +14,7 @@ pub enum ComputeNodeError {
 	DbError(DbError),
 	DomainNotFound(String),
 	P2PError(String),
-	ComputeInternalError(String),
+	ComputeInternalError(JobRunnerError),
 }
 
 impl StdError for ComputeNodeError {}
@@ -28,6 +29,63 @@ impl Display for ComputeNodeError {
 			Self::DomainNotFound(domain) => write!(f, "Domain not found: {}", domain),
 			Self::P2PError(err) => write!(f, "p2p error: {}", err),
 			Self::ComputeInternalError(err) => write!(f, "internal error: {}", err),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub enum JobRunnerError {
+	IndicesNotFound(DomainHash),
+	CountNotFound(DomainHash),
+	LocalTrustSubTreesNotFound(DomainHash),
+	LocalTrustMasterTreeNotFound(DomainHash),
+	LocalTrustNotFound(DomainHash),
+	SeedTrustNotFound(DomainHash),
+	ComputeResultsNotFound(DomainHash),
+	IndexToAddressNotFound(u32),
+	ComputeTreeNotFound(DomainHash),
+	LTSubTreesNotFound(u32),
+}
+
+impl Display for JobRunnerError {
+	fn fmt(&self, f: &mut Formatter) -> FmtResult {
+		match self {
+			Self::IndicesNotFound(domain) => {
+				write!(f, "indices not found for domain: {:?}", domain)
+			},
+			Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
+			Self::LocalTrustSubTreesNotFound(domain) => {
+				write!(
+					f,
+					"local_trust_sub_trees not found for domain: {:?}",
+					domain
+				)
+			},
+			Self::LocalTrustMasterTreeNotFound(domain) => {
+				write!(
+					f,
+					"local_trust_master_tree not found for domain: {:?}",
+					domain
+				)
+			},
+			Self::LocalTrustNotFound(domain) => {
+				write!(f, "local_trust not found for domain: {:?}", domain)
+			},
+			Self::SeedTrustNotFound(domain) => {
+				write!(f, "seed_trust not found for domain: {:?}", domain)
+			},
+			Self::ComputeResultsNotFound(domain) => {
+				write!(f, "compute_results not found for domain: {:?}", domain)
+			},
+			Self::IndexToAddressNotFound(index) => {
+				write!(f, "index_to_address not found for index: {}", index)
+			},
+			Self::ComputeTreeNotFound(domain) => {
+				write!(f, "compute_tree not found for domain: {:?}", domain)
+			},
+			Self::LTSubTreesNotFound(index) => {
+				write!(f, "lt_sub_trees not found for index: {}", index)
+			},
 		}
 	}
 }
