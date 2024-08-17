@@ -9,7 +9,7 @@ use openrank_common::{
 use sha3::Keccak256;
 use std::collections::HashMap;
 
-use crate::error::VerifierNodeError;
+use crate::error::{JobRunnerError, VerifierNodeError};
 
 pub struct VerificationJobRunner {
 	count: HashMap<DomainHash, u32>,
@@ -73,39 +73,33 @@ impl VerificationJobRunner {
 		&mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
 	) -> Result<(), VerifierNodeError> {
 		let domain_indices = self.indices.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"indices not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::IndicesNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let count = self.count.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"count not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::CountNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"lt_sub_trees not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"lt_master_tree not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustMasterTreeNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let lt = self.local_trust.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"local_trust not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let seed = self.seed_trust.get(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"seed_trust not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::SeedTrustNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
@@ -133,9 +127,8 @@ impl VerificationJobRunner {
 				lt_sub_trees.insert(from_index, default_sub_tree.clone());
 			}
 			let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
-				VerifierNodeError::ComputeInternalError(format!(
-					"lt_sub_trees not found for index {:?}",
-					from_index
+				VerifierNodeError::ComputeInternalError(JobRunnerError::LTSubTreesNotFound(
+					from_index,
 				)),
 			)?;
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
@@ -156,33 +149,28 @@ impl VerificationJobRunner {
 		&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
 	) -> Result<(), VerifierNodeError> {
 		let domain_indices = self.indices.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"indices not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::IndicesNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let count = self.count.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"count not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::CountNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"lt_sub_trees not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"lt_master_tree not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustMasterTreeNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let seed = self.seed_trust.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"seed_trust not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::SeedTrustNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
@@ -199,10 +187,9 @@ impl VerificationJobRunner {
 			if !lt_sub_trees.contains_key(&index) {
 				lt_sub_trees.insert(index, default_sub_tree.clone());
 			}
-			let sub_tree =
-				lt_sub_trees.get_mut(&index).ok_or(VerifierNodeError::ComputeInternalError(
-					format!("lt_sub_trees not found for index {:?}", index),
-				))?;
+			let sub_tree = lt_sub_trees.get_mut(&index).ok_or(
+				VerifierNodeError::ComputeInternalError(JobRunnerError::LTSubTreesNotFound(index)),
+			)?;
 			let sub_tree_root =
 				sub_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
@@ -219,9 +206,8 @@ impl VerificationJobRunner {
 		&self, domain: Domain, commitment: CreateCommitment,
 	) -> Result<bool, VerifierNodeError> {
 		let create_scores_txs = self.create_scores.get(&domain.clone().to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"create_scores not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		for score_tx in commitment.scores_tx_hashes {
@@ -237,9 +223,8 @@ impl VerificationJobRunner {
 		&mut self, domain: Domain,
 	) -> Result<Vec<(TxHash, bool)>, VerifierNodeError> {
 		let assignments = self.active_assignments.get(&domain.clone().to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"active_assignments not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::ActiveAssignmentsNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let mut results = Vec::new();
@@ -265,18 +250,16 @@ impl VerificationJobRunner {
 			}
 		}
 		let active_assignments = self.active_assignments.get_mut(&domain.clone().to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"active_assignments not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::ActiveAssignmentsNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let completed_assignments = self
 			.completed_assignments
 			.get_mut(&domain.clone().to_hash())
-			.ok_or(VerifierNodeError::ComputeInternalError(format!(
-			"completed_assignments not found for domain {:?}",
-			domain.to_hash()
-		)))?;
+			.ok_or(VerifierNodeError::ComputeInternalError(
+			JobRunnerError::CompletedAssignmentsNotFound(domain.to_hash()),
+		))?;
 		active_assignments.retain(|x| !completed.contains(x));
 		completed_assignments.extend(completed);
 		Ok(results)
@@ -286,9 +269,8 @@ impl VerificationJobRunner {
 		&mut self, domain: Domain, tx_hash: TxHash, create_scores: CreateScores,
 	) -> Result<(), VerifierNodeError> {
 		let score_values = self.create_scores.get_mut(&domain.clone().to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"create_scores not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		score_values.insert(tx_hash, create_scores);
@@ -301,15 +283,13 @@ impl VerificationJobRunner {
 		let completed_assignments = self
 			.completed_assignments
 			.get(&domain.clone().to_hash())
-			.ok_or(VerifierNodeError::ComputeInternalError(format!(
-				"completed_assignments not found for domain {:?}",
-				domain.to_hash()
-			)))?;
+			.ok_or(VerifierNodeError::ComputeInternalError(
+				JobRunnerError::CompletedAssignmentsNotFound(domain.to_hash()),
+			))?;
 		if !completed_assignments.contains(&job_run_assignment_tx_hash) {
 			let active_assignments = self.active_assignments.get_mut(&domain.to_hash()).ok_or(
-				VerifierNodeError::ComputeInternalError(format!(
-					"active_assignments not found for domain {:?}",
-					domain.to_hash()
+				VerifierNodeError::ComputeInternalError(JobRunnerError::ActiveAssignmentsNotFound(
+					domain.to_hash(),
 				)),
 			)?;
 			active_assignments.push(job_run_assignment_tx_hash);
@@ -328,19 +308,17 @@ impl VerificationJobRunner {
 		&mut self, domain: Domain, assignment_id: TxHash,
 	) -> Result<(), VerifierNodeError> {
 		let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"compute_tree not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::ComputeTreeNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let commitment =
 			self.commitments.get(&assignment_id).ok_or(VerifierNodeError::ComputeInternalError(
-				format!("commitment not found for assignment_id {:?}", assignment_id),
+				JobRunnerError::CommitmentNotFound(assignment_id.clone()),
 			))?;
 		let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"create_scores not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let scores: Vec<&CreateScores> =
@@ -363,28 +341,25 @@ impl VerificationJobRunner {
 	) -> Result<bool, VerifierNodeError> {
 		let commitment =
 			self.commitments.get(&assignment_id).ok_or(VerifierNodeError::ComputeInternalError(
-				format!("commitment not found for assignment_id {:?}", assignment_id),
+				JobRunnerError::CommitmentNotFound(assignment_id.clone()),
 			))?;
 		let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"create_scores not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let domain_indices =
 			self.indices.get(&domain.to_hash()).ok_or(VerifierNodeError::ComputeInternalError(
-				format!("indices not found for domain {:?}", domain.to_hash()),
+				JobRunnerError::IndicesNotFound(domain.to_hash()),
 			))?;
 		let lt = self.local_trust.get(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"local_trust not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let seed = self.seed_trust.get(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"seed_trust not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::SeedTrustNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let scores: Vec<&CreateScores> =
@@ -406,23 +381,19 @@ impl VerificationJobRunner {
 		&self, domain: Domain, assignment_id: TxHash,
 	) -> Result<(Hash, Hash), VerifierNodeError> {
 		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"lt_master_tree not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustMasterTreeNotFound(
+				domain.to_hash(),
 			)),
 		)?;
 		let compute_tree_map = self.compute_tree.get(&domain.to_hash()).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"compute_tree not found for domain {:?}",
-				domain.to_hash()
+			VerifierNodeError::ComputeInternalError(JobRunnerError::ComputeTreeNotFound(
+				domain.to_hash(),
 			)),
 		)?;
-		let compute_tree = compute_tree_map.get(&assignment_id).ok_or(
-			VerifierNodeError::ComputeInternalError(format!(
-				"compute_tree not found for assignment_id {:?}",
-				assignment_id
-			)),
-		)?;
+		let compute_tree =
+			compute_tree_map.get(&assignment_id).ok_or(VerifierNodeError::ComputeInternalError(
+				JobRunnerError::ComputeeTreeNotFound(assignment_id.clone()),
+			))?;
 		let lt_tree_root = lt_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 		let ct_tree_root =
 			compute_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
