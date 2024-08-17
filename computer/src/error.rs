@@ -37,14 +37,13 @@ impl Display for ComputeNodeError {
 pub enum JobRunnerError {
 	IndicesNotFound(DomainHash),
 	CountNotFound(DomainHash),
-	LocalTrustSubTreesNotFound(DomainHash),
+	LocalTrustSubTreesNotFound(LocalTrustSubTreesError),
 	LocalTrustMasterTreeNotFound(DomainHash),
 	LocalTrustNotFound(DomainHash),
 	SeedTrustNotFound(DomainHash),
 	ComputeResultsNotFound(DomainHash),
 	IndexToAddressNotFound(u32),
 	ComputeTreeNotFound(DomainHash),
-	LTSubTreesNotFound(u32),
 }
 
 impl Display for JobRunnerError {
@@ -54,12 +53,17 @@ impl Display for JobRunnerError {
 				write!(f, "indices not found for domain: {:?}", domain)
 			},
 			Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
-			Self::LocalTrustSubTreesNotFound(domain) => {
-				write!(
-					f,
-					"local_trust_sub_trees not found for domain: {:?}",
-					domain
-				)
+			Self::LocalTrustSubTreesNotFound(err) => match err {
+				LocalTrustSubTreesError::NotFoundWithDomain(domain) => {
+					write!(
+						f,
+						"local_trust_sub_trees not found for domain: {:?}",
+						domain
+					)
+				},
+				LocalTrustSubTreesError::NotFoundWithIndex(index) => {
+					write!(f, "local_trust_sub_trees not found for index: {}", index)
+				},
 			},
 			Self::LocalTrustMasterTreeNotFound(domain) => {
 				write!(
@@ -83,9 +87,12 @@ impl Display for JobRunnerError {
 			Self::ComputeTreeNotFound(domain) => {
 				write!(f, "compute_tree not found for domain: {:?}", domain)
 			},
-			Self::LTSubTreesNotFound(index) => {
-				write!(f, "lt_sub_trees not found for index: {}", index)
-			},
 		}
 	}
+}
+
+#[derive(Debug)]
+pub enum LocalTrustSubTreesError {
+	NotFoundWithDomain(DomainHash),
+	NotFoundWithIndex(u32),
 }

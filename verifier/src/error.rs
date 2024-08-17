@@ -38,17 +38,15 @@ impl Display for VerifierNodeError {
 pub enum JobRunnerError {
 	IndicesNotFound(DomainHash),
 	CountNotFound(DomainHash),
-	LocalTrustSubTreesNotFound(DomainHash),
+	LocalTrustSubTreesNotFound(LocalTrustSubTreesError),
 	LocalTrustMasterTreeNotFound(DomainHash),
 	LocalTrustNotFound(DomainHash),
 	SeedTrustNotFound(DomainHash),
-	ComputeTreeNotFound(DomainHash),
-	LTSubTreesNotFound(u32),
+	ComputeTreeNotFound(ComputeTreesError),
 	CreateScoresNotFound(DomainHash),
 	ActiveAssignmentsNotFound(DomainHash),
 	CompletedAssignmentsNotFound(DomainHash),
 	CommitmentNotFound(TxHash),
-	ComputeeTreeNotFound(TxHash),
 }
 
 impl Display for JobRunnerError {
@@ -58,12 +56,17 @@ impl Display for JobRunnerError {
 				write!(f, "indices not found for domain: {:?}", domain)
 			},
 			Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
-			Self::LocalTrustSubTreesNotFound(domain) => {
-				write!(
-					f,
-					"local_trust_sub_trees not found for domain: {:?}",
-					domain
-				)
+			Self::LocalTrustSubTreesNotFound(err) => match err {
+				LocalTrustSubTreesError::NotFoundWithDomain(domain) => {
+					write!(
+						f,
+						"local_trust_sub_trees not found for domain: {:?}",
+						domain
+					)
+				},
+				LocalTrustSubTreesError::NotFoundWithIndex(index) => {
+					write!(f, "local_trust_sub_trees not found for index: {}", index)
+				},
 			},
 			Self::LocalTrustMasterTreeNotFound(domain) => {
 				write!(
@@ -78,11 +81,13 @@ impl Display for JobRunnerError {
 			Self::SeedTrustNotFound(domain) => {
 				write!(f, "seed_trust not found for domain: {:?}", domain)
 			},
-			Self::ComputeTreeNotFound(domain) => {
-				write!(f, "compute_tree not found for domain: {:?}", domain)
-			},
-			Self::LTSubTreesNotFound(index) => {
-				write!(f, "lt_sub_trees not found for index: {}", index)
+			Self::ComputeTreeNotFound(err) => match err {
+				ComputeTreesError::NotFoundWithDomain(domain) => {
+					write!(f, "compute_tree not found for domain: {:?}", domain)
+				},
+				ComputeTreesError::NotFoundWithTxHash(tx_hash) => {
+					write!(f, "compute_tree not found for tx_hash: {:?}", tx_hash)
+				},
 			},
 			Self::CreateScoresNotFound(domain) => {
 				write!(f, "create_scores not found for domain: {:?}", domain)
@@ -104,13 +109,18 @@ impl Display for JobRunnerError {
 					assigment_id
 				)
 			},
-			Self::ComputeeTreeNotFound(assigment_id) => {
-				write!(
-					f,
-					"computee_tree not found for assignment_id: {:?}",
-					assigment_id
-				)
-			},
 		}
 	}
+}
+
+#[derive(Debug)]
+pub enum LocalTrustSubTreesError {
+	NotFoundWithDomain(DomainHash),
+	NotFoundWithIndex(u32),
+}
+
+#[derive(Debug)]
+pub enum ComputeTreesError {
+	NotFoundWithDomain(DomainHash),
+	NotFoundWithTxHash(TxHash),
 }

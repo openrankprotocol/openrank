@@ -9,7 +9,7 @@ use openrank_common::{
 use sha3::Keccak256;
 use std::collections::HashMap;
 
-use crate::error::{JobRunnerError, VerifierNodeError};
+use crate::error::{ComputeTreesError, JobRunnerError, LocalTrustSubTreesError, VerifierNodeError};
 
 pub struct VerificationJobRunner {
 	count: HashMap<DomainHash, u32>,
@@ -84,7 +84,7 @@ impl VerificationJobRunner {
 		)?;
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
-				domain.to_hash(),
+				LocalTrustSubTreesError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
@@ -127,9 +127,11 @@ impl VerificationJobRunner {
 				lt_sub_trees.insert(from_index, default_sub_tree.clone());
 			}
 			let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
-				VerifierNodeError::ComputeInternalError(JobRunnerError::LTSubTreesNotFound(
-					from_index,
-				)),
+				VerifierNodeError::ComputeInternalError(
+					JobRunnerError::LocalTrustSubTreesNotFound(
+						LocalTrustSubTreesError::NotFoundWithIndex(from_index),
+					),
+				),
 			)?;
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			sub_tree.insert_leaf(to_index, leaf);
@@ -160,7 +162,7 @@ impl VerificationJobRunner {
 		)?;
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
-				domain.to_hash(),
+				LocalTrustSubTreesError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
@@ -187,9 +189,12 @@ impl VerificationJobRunner {
 			if !lt_sub_trees.contains_key(&index) {
 				lt_sub_trees.insert(index, default_sub_tree.clone());
 			}
-			let sub_tree = lt_sub_trees.get_mut(&index).ok_or(
-				VerifierNodeError::ComputeInternalError(JobRunnerError::LTSubTreesNotFound(index)),
-			)?;
+			let sub_tree =
+				lt_sub_trees.get_mut(&index).ok_or(VerifierNodeError::ComputeInternalError(
+					JobRunnerError::LocalTrustSubTreesNotFound(
+						LocalTrustSubTreesError::NotFoundWithIndex(index),
+					),
+				))?;
 			let sub_tree_root =
 				sub_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
@@ -309,7 +314,7 @@ impl VerificationJobRunner {
 	) -> Result<(), VerifierNodeError> {
 		let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::ComputeTreeNotFound(
-				domain.to_hash(),
+				ComputeTreesError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		let commitment =
@@ -387,13 +392,14 @@ impl VerificationJobRunner {
 		)?;
 		let compute_tree_map = self.compute_tree.get(&domain.to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::ComputeTreeNotFound(
-				domain.to_hash(),
+				ComputeTreesError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
-		let compute_tree =
-			compute_tree_map.get(&assignment_id).ok_or(VerifierNodeError::ComputeInternalError(
-				JobRunnerError::ComputeeTreeNotFound(assignment_id.clone()),
-			))?;
+		let compute_tree = compute_tree_map.get(&assignment_id).ok_or(
+			VerifierNodeError::ComputeInternalError(JobRunnerError::ComputeTreeNotFound(
+				ComputeTreesError::NotFoundWithTxHash(assignment_id.clone()),
+			)),
+		)?;
 		let lt_tree_root = lt_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;
 		let ct_tree_root =
 			compute_tree.root().map_err(|e| VerifierNodeError::ComputeMerkleError(e))?;

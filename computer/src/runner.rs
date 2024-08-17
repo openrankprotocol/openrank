@@ -9,7 +9,7 @@ use openrank_common::{
 use sha3::Keccak256;
 use std::collections::HashMap;
 
-use crate::error::{ComputeNodeError, JobRunnerError};
+use crate::error::{ComputeNodeError, JobRunnerError, LocalTrustSubTreesError};
 
 pub struct ComputeJobRunner {
 	count: HashMap<DomainHash, u32>,
@@ -68,7 +68,7 @@ impl ComputeJobRunner {
 		)?;
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
 			ComputeNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
-				domain.to_hash(),
+				LocalTrustSubTreesError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
@@ -110,10 +110,11 @@ impl ComputeJobRunner {
 			if !lt_sub_trees.contains_key(&from_index) {
 				lt_sub_trees.insert(from_index, default_sub_tree.clone());
 			}
-			let sub_tree =
-				lt_sub_trees.get_mut(&from_index).ok_or(ComputeNodeError::ComputeInternalError(
-					JobRunnerError::LTSubTreesNotFound(from_index),
-				))?;
+			let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
+				ComputeNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
+					LocalTrustSubTreesError::NotFoundWithIndex(from_index),
+				)),
+			)?;
 			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
 			sub_tree.insert_leaf(to_index, leaf);
 
@@ -141,7 +142,7 @@ impl ComputeJobRunner {
 		)?;
 		let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
 			ComputeNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
-				domain.to_hash(),
+				LocalTrustSubTreesError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
@@ -169,7 +170,9 @@ impl ComputeJobRunner {
 				lt_sub_trees.insert(index, default_sub_tree.clone());
 			}
 			let sub_tree = lt_sub_trees.get_mut(&index).ok_or(
-				ComputeNodeError::ComputeInternalError(JobRunnerError::LTSubTreesNotFound(index)),
+				ComputeNodeError::ComputeInternalError(JobRunnerError::LocalTrustSubTreesNotFound(
+					LocalTrustSubTreesError::NotFoundWithIndex(index),
+				)),
 			)?;
 			let sub_tree_root =
 				sub_tree.root().map_err(|e| ComputeNodeError::ComputeMerkleError(e))?;
