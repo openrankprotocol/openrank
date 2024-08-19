@@ -54,7 +54,8 @@ fn handle_gossipsub_events(
 									VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
 								)?;
 							job_runner
-								.update_trust(domain.clone(), trust_update.entries.clone())?;
+								.update_trust(domain.clone(), trust_update.entries.clone())
+								.map_err(Into::into)?;
 							// println!(
 							// 	"message.id: {:?}, message.sequence_number: {:?}",
 							// 	id, message.sequence_number
@@ -83,7 +84,9 @@ fn handle_gossipsub_events(
 								domains.iter().find(|x| &x.trust_namespace() == namespace).ok_or(
 									VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
 								)?;
-							job_runner.update_seed(domain.clone(), seed_update.entries.clone())?;
+							job_runner
+								.update_seed(domain.clone(), seed_update.entries.clone())
+								.map_err(Into::into)?;
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -106,8 +109,12 @@ fn handle_gossipsub_events(
 							let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
 								VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
 							)?;
-							let _ = job_runner.update_assigment(domain.clone(), tx.hash())?;
-							let res = job_runner.check_finished_jobs(domain.clone())?;
+							let _ = job_runner
+								.update_assigment(domain.clone(), tx.hash())
+								.map_err(Into::into)?;
+							let res = job_runner
+								.check_finished_jobs(domain.clone())
+								.map_err(Into::into)?;
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
@@ -144,12 +151,12 @@ fn handle_gossipsub_events(
 							let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
 								VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
 							)?;
-							let _ = job_runner.update_scores(
-								domain.clone(),
-								tx.hash(),
-								create_scores.clone(),
-							)?;
-							let res = job_runner.check_finished_jobs(domain.clone())?;
+							let _ = job_runner
+								.update_scores(domain.clone(), tx.hash(), create_scores.clone())
+								.map_err(Into::into)?;
+							let res = job_runner
+								.check_finished_jobs(domain.clone())
+								.map_err(Into::into)?;
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);
@@ -188,7 +195,9 @@ fn handle_gossipsub_events(
 								VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
 							)?;
 							job_runner.update_commitment(create_commitment.clone());
-							let res = job_runner.check_finished_jobs(domain.clone())?;
+							let res = job_runner
+								.check_finished_jobs(domain.clone())
+								.map_err(Into::into)?;
 							for (tx_hash, verification_res) in res {
 								let verification_res =
 									JobVerification::new(tx_hash, verification_res);

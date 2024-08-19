@@ -51,7 +51,9 @@ fn handle_gossipsub_events(
 							.iter()
 							.find(|x| &x.trust_namespace() == namespace)
 							.ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
-						job_runner.update_trust(domain.clone(), trust_update.entries.clone())?;
+						job_runner
+							.update_trust(domain.clone(), trust_update.entries.clone())
+							.map_err(Into::into)?;
 						// println!(
 						// 	"message.id: {:?}, message.sequence_number: {:?}",
 						// 	id, message.sequence_number
@@ -80,7 +82,9 @@ fn handle_gossipsub_events(
 							.iter()
 							.find(|x| &x.trust_namespace() == namespace)
 							.ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
-						job_runner.update_seed(domain.clone(), seed_update.entries.clone())?;
+						job_runner
+							.update_seed(domain.clone(), seed_update.entries.clone())
+							.map_err(Into::into)?;
 						info!(
 							"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 							message.topic.as_str(),
@@ -110,10 +114,11 @@ fn handle_gossipsub_events(
 							.iter()
 							.find(|x| &x.to_hash() == domain_id)
 							.ok_or(ComputeNodeError::DomainNotFound(domain_id.clone().to_hex()))?;
-						job_runner.compute(domain.clone())?;
-						job_runner.create_compute_tree(domain.clone())?;
+						job_runner.compute(domain.clone()).map_err(Into::into)?;
+						job_runner.create_compute_tree(domain.clone()).map_err(Into::into)?;
 						let create_scores = job_runner.get_create_scores(domain.clone());
-						let (lt_root, compute_root) = job_runner.get_root_hashes(domain.clone())?;
+						let (lt_root, compute_root) =
+							job_runner.get_root_hashes(domain.clone()).map_err(Into::into)?;
 						// println!("root after compute: {}", lt_root.clone().to_hex());
 
 						let create_scores_tx: Vec<Tx> = create_scores
