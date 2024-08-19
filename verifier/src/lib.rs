@@ -106,7 +106,7 @@ fn handle_gossipsub_events(
 							let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
 								VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
 							)?;
-							job_runner.update_assigment(domain.clone(), tx.hash());
+							let _ = job_runner.update_assigment(domain.clone(), tx.hash())?;
 							let res = job_runner.check_finished_jobs(domain.clone())?;
 							for (tx_hash, verification_res) in res {
 								let verification_res =
@@ -144,11 +144,11 @@ fn handle_gossipsub_events(
 							let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
 								VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
 							)?;
-							job_runner.update_scores(
+							let _ = job_runner.update_scores(
 								domain.clone(),
 								tx.hash(),
 								create_scores.clone(),
-							);
+							)?;
 							let res = job_runner.check_finished_jobs(domain.clone())?;
 							for (tx_hash, verification_res) in res {
 								let verification_res =
