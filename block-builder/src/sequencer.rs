@@ -1,34 +1,27 @@
 use alloy_rlp::{encode, Decodable};
-use futures::StreamExt;
-use karyon_jsonrpc::{rpc_impl, RPCError, Server};
-use libp2p::{gossipsub, mdns, swarm::SwarmEvent};
+use karyon_jsonrpc::{rpc_impl, RPCError};
 use openrank_common::{
-	build_node,
 	db::{Db, DbItem},
 	result::JobResult,
 	topics::Topic,
 	tx_event::TxEvent,
 	txs::{
-		CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry, SeedUpdate,
-		TrustUpdate, Tx, TxHash, TxKind,
+		Address, CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry,
+		SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
 	},
-	MyBehaviourEvent,
 };
 use serde_json::Value;
-use std::{error::Error, sync::Arc};
-use tokio::{
-	select,
-	sync::mpsc::{self, Sender},
-};
-use tracing::{error, info};
+use tokio::sync::mpsc::Sender;
+use tracing::error;
 
 pub struct Sequencer {
 	sender: Sender<(Vec<u8>, Topic)>,
+	whitelisted_users: Vec<Address>,
 }
 
 impl Sequencer {
-	pub fn new(sender: Sender<(Vec<u8>, Topic)>) -> Self {
-		Self { sender }
+	pub fn new(sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>) -> Self {
+		Self { sender, whitelisted_users }
 	}
 }
 
@@ -44,6 +37,10 @@ impl Sequencer {
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 		if tx.kind() != TxKind::TrustUpdate {
 			return Err(RPCError::InvalidRequest("Invalid tx kind"));
+		}
+		let (res, address) = tx.verify();
+		if !res || !self.whitelisted_users.contains(&address) {
+			return Err(RPCError::InvalidRequest("Invalid tx signature"));
 		}
 		let body: TrustUpdate = TrustUpdate::decode(&mut tx.body().as_slice())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
@@ -69,6 +66,10 @@ impl Sequencer {
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 		if tx.kind() != TxKind::SeedUpdate {
 			return Err(RPCError::InvalidRequest("Invalid tx kind"));
+		}
+		let (res, address) = tx.verify();
+		if !res || !self.whitelisted_users.contains(&address) {
+			return Err(RPCError::InvalidRequest("Invalid tx signature"));
 		}
 		let body = SeedUpdate::decode(&mut tx.body().as_slice())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
@@ -98,6 +99,10 @@ impl Sequencer {
 		})?;
 		if tx.kind() != TxKind::JobRunRequest {
 			return Err(RPCError::InvalidRequest("Invalid tx kind"));
+		}
+		let (res, address) = tx.verify();
+		if !res || !self.whitelisted_users.contains(&address) {
+			return Err(RPCError::InvalidRequest("Invalid tx signature"));
 		}
 		let body = JobRunRequest::decode(&mut tx.body().as_slice())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
@@ -165,54 +170,5 @@ impl Sequencer {
 			verification_results.into_iter().map(|x| x.verification_result).collect();
 
 		Ok(serde_json::to_value((verification_results_bools, score_entries)).unwrap())
-	}
-}
-
-pub async fn run() -> Result<(), Box<dyn Error>> {
-	let mut swarm = build_node().await?;
-	info!("PEER_ID: {:?}", swarm.local_peer_id());
-
-	// Listen on all interfaces and whatever port the OS assigns
-	swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
-	swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
-
-	let (sender, mut receiver) = mpsc::channel(100);
-	let sequencer = Arc::new(Sequencer::new(sender.clone()));
-	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
-	server.start();
-
-	// Kick it off
-	loop {
-		select! {
-			sibling = receiver.recv() => {
-				if let Some((data, topic)) = sibling {
-					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-					info!("PUBLISH: {:?}", topic.clone());
-					if let Err(e) =
-					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
-					{
-					   error!("Publish error: {e:?}");
-					}
-				}
-			}
-			event = swarm.select_next_some() => match event {
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-					for (peer_id, _multiaddr) in list {
-						info!("mDNS discovered a new peer: {peer_id}");
-						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-					}
-				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-					for (peer_id, _multiaddr) in list {
-						info!("mDNS discover peer has expired: {peer_id}");
-						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-					}
-				},
-				SwarmEvent::NewListenAddr { address, .. } => {
-					info!("Local node is listening on {address}");
-				},
-				e => info!("{:?}", e),
-			}
-		}
 	}
 }

@@ -1079,9 +1079,7 @@ checksum = "56ce8c6da7551ec6c462cbaf3bfbc75131ebbfa1c944aeaa9dab51ca1c5f0c3b"
 
 [[package]]
 name = "ecdsa"
-version = "0.16.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee27f32b5c5292967d2d4a9d7f1e0b0aed2c15daded5a60300e4abb9d8020bca"
+version = "0.16.8"
 dependencies = [
  "der",
  "digest",
@@ -1875,9 +1873,7 @@ dependencies = [
 
 [[package]]
 name = "k256"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "956ff9b67e26e1a6a866cb758f12c6f8746208489e3e4a4b5580802f2f0a587b"
+version = "0.13.1"
 dependencies = [
  "cfg-if",
  "ecdsa",
@@ -2792,11 +2788,12 @@ dependencies = [
  "futures",
  "hex",
  "k256",
+ "karyon_jsonrpc",
  "libp2p",
  "openrank-common",
- "openrank-sequencer",
  "rand",
  "serde",
+ "serde_json",
  "tokio",
  "toml",
  "tracing",
@@ -2855,28 +2852,11 @@ dependencies = [
  "k256",
  "karyon_jsonrpc",
  "openrank-common",
- "serde",
- "serde_json",
- "tokio",
- "toml",
-]
-
-[[package]]
-name = "openrank-sequencer"
-version = "0.0.1"
-dependencies = [
- "alloy-rlp",
- "futures",
- "hex",
- "karyon_jsonrpc",
- "libp2p",
- "openrank-common",
  "rand",
  "serde",
  "serde_json",
  "tokio",
- "tracing",
- "tracing-subscriber",
+ "toml",
 ]
 
 [[package]]
@@ -3339,8 +3319,6 @@ dependencies = [
 [[package]]
 name = "rfc6979"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8dd2a808d456c4a54e300a23e9f5a67e122c3024119acbfd73e3bf664491cb2"
 dependencies = [
  "hmac",
  "subtle",

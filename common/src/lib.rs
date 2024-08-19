@@ -7,17 +7,20 @@ pub mod tx_event;
 pub mod txs;
 
 use alloy_rlp::encode;
+use k256::ecdsa::SigningKey;
 use libp2p::{
 	gossipsub::{self, MessageId, PublishError},
 	mdns, noise,
 	swarm::NetworkBehaviour,
 	tcp, yamux, Swarm,
 };
+use merkle::hash_leaf;
+use sha3::Keccak256;
 use std::{error::Error, io, time::Duration};
 use topics::Topic;
 use tracing::info;
 use tx_event::TxEvent;
-use txs::{Tx, TxKind};
+use txs::{Address, Tx, TxKind};
 
 // We create a custom network behaviour.
 #[derive(NetworkBehaviour)]
@@ -86,4 +89,15 @@ pub fn broadcast_event(
 	let tx_event = TxEvent::default_with_data(encode(tx));
 	let topic_wrapper = gossipsub::IdentTopic::new(topic);
 	swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))
+}
+
+pub fn address_from_sk(sk: &SigningKey) -> Address {
+	let vk = sk.verifying_key();
+	let vk_bytes = vk.to_sec1_bytes();
+
+	let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+	let mut address_bytes = [0u8; 20];
+	address_bytes.copy_from_slice(&hash.0[..20]);
+
+	Address(address_bytes)
 }

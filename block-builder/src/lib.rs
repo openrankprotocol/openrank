@@ -2,6 +2,7 @@ use alloy_rlp::{encode, Decodable};
 use dotenv::dotenv;
 use futures::StreamExt;
 use k256::ecdsa::SigningKey;
+use karyon_jsonrpc::Server;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
@@ -15,16 +16,20 @@ use openrank_common::{
 	},
 	MyBehaviour, MyBehaviourEvent,
 };
+use sequencer::Sequencer;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
-use tokio::select;
+use std::{error::Error, sync::Arc};
+use tokio::{select, sync::mpsc};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+mod sequencer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Whitelist {
 	pub computer: Vec<Address>,
 	pub verifier: Vec<Address>,
+	pub users: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,7 +40,7 @@ pub struct Config {
 
 fn handle_gossipsub_events(
 	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
-	sk: &SigningKey,
+	sk: &SigningKey, whitelist: &Whitelist,
 ) {
 	if let gossipsub::Event::Message { message_id, message, propagation_source } = event {
 		for topic in topics {
@@ -46,7 +51,8 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert!(tx.kind() == TxKind::JobRunRequest);
-						let (res, _) = tx.verify();
+						let (res, address) = tx.verify();
+						assert!(whitelist.users.contains(&address));
 						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
@@ -57,8 +63,11 @@ fn handle_gossipsub_events(
 						);
 
 						let assignment_topic = Topic::DomainAssignent(domain_id.clone());
-						let job_assignment = encode(JobRunAssignment::default_with(tx.hash()));
-						let mut tx = Tx::default_with(TxKind::JobRunAssignment, job_assignment);
+						let computer = whitelist.computer[0].clone();
+						let verifier = whitelist.verifier[0].clone();
+						let job_assignment = JobRunAssignment::new(tx.hash(), computer, verifier);
+						let mut tx =
+							Tx::default_with(TxKind::JobRunAssignment, encode(job_assignment));
 						tx.sign(sk);
 						db.put(tx.clone()).unwrap();
 						if let Err(e) = broadcast_event(&mut swarm, tx, assignment_topic) {
@@ -72,7 +81,8 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert_eq!(tx.kind(), TxKind::CreateCommitment);
-						let (res, _) = tx.verify();
+						let (res, address) = tx.verify();
+						assert!(whitelist.computer.contains(&address));
 						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
@@ -110,7 +120,8 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert_eq!(tx.kind(), TxKind::CreateScores);
-						let (res, _) = tx.verify();
+						let (res, address) = tx.verify();
+						assert!(whitelist.computer.contains(&address));
 						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
@@ -127,7 +138,8 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert_eq!(tx.kind(), TxKind::JobVerification);
-						let (res, _) = tx.verify();
+						let (res, address) = tx.verify();
+						assert!(whitelist.verifier.contains(&address));
 						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
@@ -174,6 +186,15 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+
+	let (sender, mut receiver) = mpsc::channel(100);
+	let sequencer = Arc::new(Sequencer::new(
+		sender.clone(),
+		config.whitelist.users.clone(),
+	));
+	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
+	server.start();
+
 	let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
 	let topics_requests: Vec<Topic> = config
@@ -220,6 +241,17 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	// Kick it off
 	loop {
 		select! {
+			sibling = receiver.recv() => {
+				if let Some((data, topic)) = sibling {
+					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+					info!("PUBLISH: {:?}", topic.clone());
+					if let Err(e) =
+					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
+					{
+					   error!("Publish error: {e:?}");
+					}
+				}
+			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
 					for (peer_id, _multiaddr) in list {
@@ -235,7 +267,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
 					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
-					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect(), &secret_key);
+					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect(), &secret_key, &config.whitelist);
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

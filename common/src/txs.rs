@@ -160,13 +160,13 @@ impl Tx {
 
 	pub fn verify(&self) -> (bool, Address) {
 		let mut bytes = Vec::new();
-		bytes.extend(self.signature.s);
 		bytes.extend(self.signature.r);
+		bytes.extend(self.signature.s);
+		let message = self.hash().to_bytes();
 
 		let sig = EcdsaSignature::try_from(bytes.as_slice()).unwrap();
 		let rec_id = RecoveryId::from_byte(self.signature.r_id).unwrap();
-		let verifying_key =
-			VerifyingKey::recover_from_msg(self.hash().as_bytes(), &sig, rec_id).unwrap();
+		let verifying_key = VerifyingKey::recover_from_msg(&message, &sig, rec_id).unwrap();
 		let vk_bytes = verifying_key.to_sec1_bytes();
 
 		let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
@@ -174,7 +174,7 @@ impl Tx {
 		address_bytes.copy_from_slice(&hash.0[..20]);
 		let address = Address(address_bytes);
 
-		let res = verifying_key.verify(self.hash().as_bytes(), &sig);
+		let res = verifying_key.verify(&message, &sig);
 		(res.is_ok(), address)
 	}
 }
@@ -272,6 +272,10 @@ impl TxHash {
 
 	pub fn as_bytes(&self) -> &[u8] {
 		self.0.as_slice()
+	}
+
+	pub fn to_bytes(&self) -> Vec<u8> {
+		self.0.to_vec()
 	}
 
 	pub fn to_hex(self) -> String {
@@ -416,8 +420,8 @@ impl JobRunRequest {
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct JobRunAssignment {
 	pub job_run_request_tx_hash: TxHash,
-	assigned_compute_node: Address,
-	assigned_verifier_node: Address,
+	pub assigned_compute_node: Address,
+	pub assigned_verifier_node: Address,
 }
 
 impl JobRunAssignment {
@@ -427,6 +431,13 @@ impl JobRunAssignment {
 			assigned_compute_node: Address::default(),
 			assigned_verifier_node: Address::default(),
 		}
+	}
+
+	pub fn new(
+		job_run_request_tx_hash: TxHash, assigned_compute_node: Address,
+		assigned_verifier_node: Address,
+	) -> Self {
+		Self { job_run_request_tx_hash, assigned_compute_node, assigned_verifier_node }
 	}
 }
 

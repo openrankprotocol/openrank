@@ -2,9 +2,10 @@ use alloy_rlp::encode;
 use clap::{Parser, ValueEnum};
 use csv::StringRecord;
 use dotenv::dotenv;
-use k256::ecdsa::SigningKey;
+use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
 use karyon_jsonrpc::Client;
 use openrank_common::{
+	address_from_sk,
 	topics::Domain,
 	tx_event::TxEvent,
 	txs::{
@@ -12,6 +13,7 @@ use openrank_common::{
 		Tx, TxKind,
 	},
 };
+use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::error::Error;
@@ -26,6 +28,8 @@ enum Method {
 	SeedUpdate,
 	JobRunRequest,
 	GetResults,
+	GenerateKeypair,
+	ShowAddress,
 }
 
 /// Simple program to greet a person
@@ -43,7 +47,7 @@ pub struct Config {
 }
 
 async fn update_trust(sk: SigningKey) -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/trust-db.csv")?;
+	let f = File::open("./trust-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {
@@ -73,7 +77,7 @@ async fn update_trust(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 }
 
 async fn update_seed(sk: SigningKey) -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/seed-db.csv")?;
+	let f = File::open("./seed-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {
@@ -130,6 +134,12 @@ async fn get_results(arg: String) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dy
 	Ok(scores)
 }
 
+fn generate_keypair<R: CryptoRngCore>(rng: &mut R) -> (SigningKey, Address) {
+	let sk = SigningKey::random(rng);
+	let addr = address_from_sk(&sk);
+	(sk, addr)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	dotenv().ok();
@@ -156,6 +166,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			for res in results.chunks(100).next().unwrap() {
 				println!("{}: {}", res.id, res.value);
 			}
+		},
+		Method::GenerateKeypair => {
+			let rng = &mut thread_rng();
+			let (sk, address) = generate_keypair(rng);
+			let sk_bytes = sk.to_bytes();
+			println!("SIGNING_KEY: {}", hex::encode(sk_bytes));
+			println!("ADDRESS:     {}", address.to_hex());
+		},
+		Method::ShowAddress => {
+			let addr = address_from_sk(&secret_key);
+			println!("ADDRESS: {}", addr.to_hex());
 		},
 	}
 	Ok(())

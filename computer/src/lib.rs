@@ -4,7 +4,7 @@ use futures::StreamExt;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-	broadcast_event, build_node,
+	address_from_sk, broadcast_event, build_node,
 	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
@@ -25,6 +25,7 @@ mod runner;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Whitelist {
 	block_builder: Vec<Address>,
+	verifier: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,10 +37,9 @@ pub struct Config {
 fn handle_gossipsub_events(
 	swarm: &mut Swarm<MyBehaviour>, job_runner: &mut ComputeJobRunner, db: &Db,
 	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>, sk: &SigningKey,
+	whitelist: &Whitelist,
 ) {
-	if let gossipsub::Event::Message { propagation_source: peer_id, message_id: id, message } =
-		event
-	{
+	if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
 		for topic in topics {
 			match topic {
 				Topic::NamespaceTrustUpdate(namespace) => {
@@ -58,7 +58,7 @@ fn handle_gossipsub_events(
 							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 						job_runner.update_trust(domain.clone(), trust_update.entries.clone());
 						info!(
-							"TOPIC: {}, ID: {id}, FROM: {peer_id}",
+							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
 							message.topic.as_str(),
 						);
 					}
@@ -73,14 +73,13 @@ fn handle_gossipsub_events(
 						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
-						// println!("tx_hash: {}", tx.hash().to_hex());
 						let seed_update = SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
 						assert!(*namespace == seed_update.seed_id);
 						let domain =
 							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
 						job_runner.update_seed(domain.clone(), seed_update.entries.clone());
 						info!(
-							"TOPIC: {}, ID: {id}, FROM: {peer_id}",
+							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
 							message.topic.as_str(),
 						);
 					}
@@ -91,17 +90,19 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert!(tx.kind() == TxKind::JobRunAssignment);
-						let (res, _) = tx.verify();
+						let (res, address) = tx.verify();
+						assert!(whitelist.block_builder.contains(&address));
 						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
 						// Not checking if we are assigned for the job, for now
-						let _ = JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
-						info!(
-							"TOPIC: {}, ID: {id}, FROM: {peer_id}, SOURCE: {:?}",
-							message.topic.as_str(),
-							message.source,
-						);
+						let job_run_assignment =
+							JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
+						let computer_address = address_from_sk(sk);
+						assert_eq!(computer_address, job_run_assignment.assigned_compute_node);
+						assert!(whitelist
+							.verifier
+							.contains(&job_run_assignment.assigned_verifier_node));
 
 						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 						job_runner.compute(domain.clone());
@@ -133,6 +134,11 @@ fn handle_gossipsub_events(
 							broadcast_event(swarm, scores, create_scores_topic.clone()).unwrap();
 						}
 						broadcast_event(swarm, create_commitment_tx, commitment_topic).unwrap();
+
+						info!(
+							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
+							message.topic.as_str(),
+						);
 					}
 				},
 				_ => {},
@@ -220,7 +226,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 						event,
 						iter_chain.clone().collect(),
 						config.domains.clone(),
-						&secret_key
+						&secret_key,
+						&config.whitelist
 					);
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
