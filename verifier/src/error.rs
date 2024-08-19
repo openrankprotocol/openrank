@@ -5,7 +5,7 @@ use openrank_common::algos::AlgoError;
 use openrank_common::db::DbError;
 use openrank_common::merkle::MerkleError;
 use openrank_common::topics::DomainHash;
-use openrank_common::txs::TxHash;
+use openrank_common::txs::{Address, TxHash};
 
 #[derive(Debug)]
 pub enum VerifierNodeError {
@@ -43,10 +43,11 @@ pub enum JobRunnerError {
 	LocalTrustNotFound(DomainHash),
 	SeedTrustNotFound(DomainHash),
 	ComputeTreeNotFound(ComputeTreesError),
-	CreateScoresNotFound(DomainHash),
+	CreateScoresNotFound(CreateScoresError),
 	ActiveAssignmentsNotFound(DomainHash),
 	CompletedAssignmentsNotFound(DomainHash),
 	CommitmentNotFound(TxHash),
+	DomainIndiceNotFound(Address),
 }
 
 impl Display for JobRunnerError {
@@ -89,8 +90,13 @@ impl Display for JobRunnerError {
 					write!(f, "compute_tree not found for tx_hash: {:?}", tx_hash)
 				},
 			},
-			Self::CreateScoresNotFound(domain) => {
-				write!(f, "create_scores not found for domain: {:?}", domain)
+			Self::CreateScoresNotFound(err) => match err {
+				CreateScoresError::NotFoundWithDomain(domain) => {
+					write!(f, "create_scores not found for domain: {:?}", domain)
+				},
+				CreateScoresError::NotFoundWithTxHash(tx_hash) => {
+					write!(f, "create_scores not found for tx_hash: {:?}", tx_hash)
+				},
 			},
 			Self::ActiveAssignmentsNotFound(domain) => {
 				write!(f, "active_assignments not found for domain: {:?}", domain)
@@ -109,6 +115,9 @@ impl Display for JobRunnerError {
 					assigment_id
 				)
 			},
+			Self::DomainIndiceNotFound(address) => {
+				write!(f, "domain_indice not found for address: {:?}", address)
+			},
 		}
 	}
 }
@@ -121,6 +130,12 @@ pub enum LocalTrustSubTreesError {
 
 #[derive(Debug)]
 pub enum ComputeTreesError {
+	NotFoundWithDomain(DomainHash),
+	NotFoundWithTxHash(TxHash),
+}
+
+#[derive(Debug)]
+pub enum CreateScoresError {
 	NotFoundWithDomain(DomainHash),
 	NotFoundWithTxHash(TxHash),
 }

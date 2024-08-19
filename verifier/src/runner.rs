@@ -9,7 +9,10 @@ use openrank_common::{
 use sha3::Keccak256;
 use std::collections::HashMap;
 
-use crate::error::{ComputeTreesError, JobRunnerError, LocalTrustSubTreesError, VerifierNodeError};
+use crate::error::{
+	ComputeTreesError, CreateScoresError, JobRunnerError, LocalTrustSubTreesError,
+	VerifierNodeError,
+};
 
 pub struct VerificationJobRunner {
 	count: HashMap<DomainHash, u32>,
@@ -212,7 +215,7 @@ impl VerificationJobRunner {
 	) -> Result<bool, VerifierNodeError> {
 		let create_scores_txs = self.create_scores.get(&domain.clone().to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
-				domain.to_hash(),
+				CreateScoresError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		for score_tx in commitment.scores_tx_hashes {
@@ -275,7 +278,7 @@ impl VerificationJobRunner {
 	) -> Result<(), VerifierNodeError> {
 		let score_values = self.create_scores.get_mut(&domain.clone().to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
-				domain.to_hash(),
+				CreateScoresError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		score_values.insert(tx_hash, create_scores);
@@ -323,11 +326,20 @@ impl VerificationJobRunner {
 			))?;
 		let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
-				domain.to_hash(),
+				CreateScoresError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
-		let scores: Vec<&CreateScores> =
-			commitment.scores_tx_hashes.iter().map(|x| create_scores.get(&x).unwrap()).collect();
+		let scores: Vec<&CreateScores> = {
+			let mut scores = Vec::new();
+			for tx_hash in commitment.scores_tx_hashes.iter() {
+				scores.push(create_scores.get(&tx_hash).ok_or(
+					VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
+						CreateScoresError::NotFoundWithTxHash(tx_hash.clone()),
+					)),
+				)?)
+			}
+			scores
+		};
 		let score_entries: Vec<f32> =
 			scores.iter().map(|cs| cs.entries.clone()).flatten().map(|x| x.value).collect();
 		let score_hashes: Vec<Hash> = score_entries
@@ -350,7 +362,7 @@ impl VerificationJobRunner {
 			))?;
 		let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
 			VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
-				domain.to_hash(),
+				CreateScoresError::NotFoundWithDomain(domain.to_hash()),
 			)),
 		)?;
 		let domain_indices =
@@ -367,17 +379,32 @@ impl VerificationJobRunner {
 				domain.to_hash(),
 			)),
 		)?;
-		let scores: Vec<&CreateScores> =
-			commitment.scores_tx_hashes.iter().map(|x| create_scores.get(&x).unwrap()).collect();
-		let score_entries: HashMap<u32, f32> = scores
-			.iter()
-			.map(|cs| cs.entries.clone())
-			.flatten()
-			.map(|x| {
-				let i = domain_indices.get(&x.id).unwrap();
-				(*i, x.value)
-			})
-			.collect();
+		let scores: Vec<&CreateScores> = {
+			let mut scores = Vec::new();
+			for tx_hash in commitment.scores_tx_hashes.iter() {
+				scores.push(create_scores.get(&tx_hash).ok_or(
+					VerifierNodeError::ComputeInternalError(JobRunnerError::CreateScoresNotFound(
+						CreateScoresError::NotFoundWithTxHash(tx_hash.clone()),
+					)),
+				)?)
+			}
+			scores
+		};
+		let score_entries: HashMap<u32, f32> = {
+			let score_entries_vec: Vec<ScoreEntry> =
+				scores.iter().map(|cs| cs.entries.clone()).flatten().collect();
+
+			let mut score_entries_map: HashMap<u32, f32> = HashMap::new();
+			for entry in score_entries_vec {
+				let i = domain_indices.get(&entry.id).ok_or(
+					VerifierNodeError::ComputeInternalError(JobRunnerError::DomainIndiceNotFound(
+						entry.id.clone(),
+					)),
+				)?;
+				score_entries_map.insert(*i, entry.value);
+			}
+			score_entries_map
+		};
 		convergence_check(lt.clone(), seed, &score_entries)
 			.map_err(|e| VerifierNodeError::ComputeAlgoError(e))
 	}
