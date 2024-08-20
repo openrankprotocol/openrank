@@ -11,13 +11,13 @@ OpenRank is a decentralized platform for allowing the users build & use the repu
 
 The OpenRank project consists of several components:
 
-- **Sequencer** : Handles the sequencing of events and data publication to the network. (Located in `sequencer/src/lib.rs`)
-- **Block Builder** : Builds and publishes blocks to the network. (Located in `block-builder/Dockerfile`)
-- **Computer** : Performs computations and generates results. (Located in `computer/Dockerfile`)
-- **Verifier** : Responsible for verifying the integrity of data and ensuring the correctness of computations. (Located in `verifier/src/lib.rs`)
-- **Common** : Includes algorithm & data structure needed for the project.  
-- **DA(Data Access)** : DA wrapper for openrank codebase
-- **Openrank-SDK** : Handles the build & run of RPC client for OpenRank
+- **Sequencer** : Handles the sequencing of events and data publication to the network. (Located in `./sequencer`)
+- **Block Builder** : Builds and publishes blocks to the network. (Located in `./block-builder`)
+- **Computer** : Performs computations and generates results. (Located in `./computer`)
+- **Verifier** : Responsible for verifying the integrity of data and ensuring the correctness of computations. (Located in `./verifier`)
+- **Common** : Includes algorithm & data structure needed for the project.  (Located in `./common`)
+- **DA(Data Access)** : DA wrapper for openrank codebase (Located in `./da`)
+- **Openrank-SDK** : Handles the build & run of RPC client for OpenRank (Located in `./openrank-sdk`)
 
 ## Getting Started
 
