@@ -8,10 +8,7 @@ use openrank_common::{
 	address_from_sk,
 	topics::Domain,
 	tx_event::TxEvent,
-	txs::{
-		Address, JobRunRequest, OwnedNamespace, ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate,
-		Tx, TxKind,
-	},
+	txs::{Address, JobRunRequest, ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate, Tx, TxKind},
 };
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
@@ -47,6 +44,8 @@ pub struct Config {
 }
 
 async fn update_trust(sk: SigningKey) -> Result<(), Box<dyn Error>> {
+	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+
 	let f = File::open("./trust-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
@@ -63,8 +62,10 @@ async fn update_trust(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
 
 	for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
-		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
-		let data = encode(TrustUpdate::new(owned_namespace.clone(), chunk.to_vec()));
+		let data = encode(TrustUpdate::new(
+			config.domain.trust_namespace(),
+			chunk.to_vec(),
+		));
 		let mut tx = Tx::default_with(TxKind::TrustUpdate, data);
 		tx.sign(&sk);
 
@@ -77,6 +78,8 @@ async fn update_trust(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 }
 
 async fn update_seed(sk: SigningKey) -> Result<(), Box<dyn Error>> {
+	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+
 	let f = File::open("./seed-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
@@ -92,8 +95,10 @@ async fn update_seed(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
 
 	for chunk in entries.chunks(SEED_CHUNK_SIZE) {
-		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
-		let data = encode(SeedUpdate::new(owned_namespace.clone(), chunk.to_vec()));
+		let data = encode(SeedUpdate::new(
+			config.domain.seed_namespace(),
+			chunk.to_vec(),
+		));
 		let mut tx = Tx::default_with(TxKind::SeedUpdate, data);
 		tx.sign(&sk);
 

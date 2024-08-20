@@ -1127,6 +1127,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6043086bf7973472e0c7dff2142ea0b680d30e18d9cc40f267efbf222bd47"
 dependencies = [
  "base16ct",
+ "base64ct",
  "crypto-bigint",
  "digest",
  "ff",
@@ -1135,6 +1136,8 @@ dependencies = [
  "pkcs8",
  "rand_core",
  "sec1",
+ "serde_json",
+ "serdect",
  "subtle",
  "zeroize",
 ]
@@ -1526,6 +1529,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
+
+[[package]]
 name = "hex_fmt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1878,7 +1887,9 @@ dependencies = [
  "cfg-if",
  "ecdsa",
  "elliptic-curve",
+ "hex-literal",
  "once_cell",
+ "serdect",
  "sha2",
  "signature",
 ]
@@ -2791,6 +2802,7 @@ dependencies = [
  "karyon_jsonrpc",
  "libp2p",
  "openrank-common",
+ "openrank-sequencer",
  "rand",
  "serde",
  "serde_json",
@@ -2857,6 +2869,25 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml",
+]
+
+[[package]]
+name = "openrank-sequencer"
+version = "0.0.1"
+dependencies = [
+ "alloy-rlp",
+ "futures",
+ "hex",
+ "karyon_jsonrpc",
+ "libp2p",
+ "openrank-common",
+ "rand",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3513,6 +3544,7 @@ dependencies = [
  "der",
  "generic-array",
  "pkcs8",
+ "serdect",
  "subtle",
  "zeroize",
 ]
@@ -3560,6 +3592,16 @@ version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79e674e01f999af37c49f70a6ede167a8a60b2503e56c5599532a65baa5969a0"
 dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "serdect"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a84f14a19e9a014bb9f4512488d9829a68e04ecabffb0f9904cd1ace94598177"
+dependencies = [
+ "base16ct",
  "serde",
 ]
 

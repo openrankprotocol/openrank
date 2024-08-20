@@ -91,14 +91,19 @@ fn handle_gossipsub_events(
 						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
 						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
 						assert_eq!(tx.kind(), TxKind::JobRunAssignment);
-						let verifier_address = address_from_sk(sk);
 						let (res, address) = tx.verify();
-						assert_eq!(verifier_address, address);
+						assert!(whitelist.block_builder.contains(&address));
 						assert!(res);
 						// Add Tx to db
 						db.put(tx.clone()).unwrap();
 						// Not checking if this node is assigned for the job
-						let _ = JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
+						let job_run_assignment =
+							JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
+						let verifier_address = address_from_sk(sk);
+						assert_eq!(verifier_address, job_run_assignment.assigned_verifier_node);
+						assert!(whitelist
+							.computer
+							.contains(&job_run_assignment.assigned_compute_node));
 						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
 						job_runner.update_assigment(domain.clone(), tx.hash());
 						let res = job_runner.check_finished_jobs(domain.clone());

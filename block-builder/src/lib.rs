@@ -2,7 +2,6 @@ use alloy_rlp::{encode, Decodable};
 use dotenv::dotenv;
 use futures::StreamExt;
 use k256::ecdsa::SigningKey;
-use karyon_jsonrpc::Server;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
@@ -16,14 +15,11 @@ use openrank_common::{
 	},
 	MyBehaviour, MyBehaviourEvent,
 };
-use sequencer::Sequencer;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, sync::Arc};
-use tokio::{select, sync::mpsc};
+use std::error::Error;
+use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-
-mod sequencer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Whitelist {
@@ -186,15 +182,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
 	let config: Config = toml::from_str(include_str!("../config.toml"))?;
-
-	let (sender, mut receiver) = mpsc::channel(100);
-	let sequencer = Arc::new(Sequencer::new(
-		sender.clone(),
-		config.whitelist.users.clone(),
-	));
-	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
-	server.start();
-
 	let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
 	let topics_requests: Vec<Topic> = config
@@ -241,17 +228,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	// Kick it off
 	loop {
 		select! {
-			sibling = receiver.recv() => {
-				if let Some((data, topic)) = sibling {
-					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-					info!("PUBLISH: {:?}", topic.clone());
-					if let Err(e) =
-					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
-					{
-					   error!("Publish error: {e:?}");
-					}
-				}
-			}
 			event = swarm.select_next_some() => match event {
 				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
 					for (peer_id, _multiaddr) in list {

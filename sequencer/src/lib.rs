@@ -1,6 +1,9 @@
 use alloy_rlp::{encode, Decodable};
-use karyon_jsonrpc::{rpc_impl, RPCError};
+use futures::StreamExt;
+use karyon_jsonrpc::{rpc_impl, RPCError, Server};
+use libp2p::{gossipsub, mdns, swarm::SwarmEvent};
 use openrank_common::{
+	build_node,
 	db::{Db, DbItem},
 	result::JobResult,
 	topics::Topic,
@@ -9,10 +12,24 @@ use openrank_common::{
 		Address, CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry,
 		SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
 	},
+	MyBehaviourEvent,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::mpsc::Sender;
-use tracing::error;
+use std::{error::Error, sync::Arc};
+use tokio::select;
+use tokio::sync::mpsc::{self, Sender};
+use tracing::{error, info};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Whitelist {
+	pub users: Vec<Address>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+	pub whitelist: Whitelist,
+}
 
 pub struct Sequencer {
 	sender: Sender<(Vec<u8>, Topic)>,
@@ -170,5 +187,55 @@ impl Sequencer {
 			verification_results.into_iter().map(|x| x.verification_result).collect();
 
 		Ok(serde_json::to_value((verification_results_bools, score_entries)).unwrap())
+	}
+}
+
+pub async fn run() -> Result<(), Box<dyn Error>> {
+	let config: Config = toml::from_str(include_str!("../config.toml"))?;
+	let mut swarm = build_node().await?;
+	info!("PEER_ID: {:?}", swarm.local_peer_id());
+
+	// Listen on all interfaces and whatever port the OS assigns
+	swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
+	swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
+
+	let (sender, mut receiver) = mpsc::channel(100);
+	let sequencer = Arc::new(Sequencer::new(sender.clone(), config.whitelist.users));
+	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
+	server.start();
+
+	// Kick it off
+	loop {
+		select! {
+			sibling = receiver.recv() => {
+				if let Some((data, topic)) = sibling {
+					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+					info!("PUBLISH: {:?}", topic.clone());
+					if let Err(e) =
+					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
+					{
+					   error!("Publish error: {e:?}");
+					}
+				}
+			}
+			event = swarm.select_next_some() => match event {
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+					for (peer_id, _multiaddr) in list {
+						info!("mDNS discovered a new peer: {peer_id}");
+						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+					}
+				},
+				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+					for (peer_id, _multiaddr) in list {
+						info!("mDNS discover peer has expired: {peer_id}");
+						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+					}
+				},
+				SwarmEvent::NewListenAddr { address, .. } => {
+					info!("Local node is listening on {address}");
+				},
+				e => info!("{:?}", e),
+			}
+		}
 	}
 }

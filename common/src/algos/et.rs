@@ -65,13 +65,9 @@ pub fn positive_run<const NUM_ITER: usize>(
 
 pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>) -> bool {
 	let mut is_converged = true;
-	let mut count = 0;
 	for (i, v) in scores {
 		let next_score = next_scores.get(i).unwrap_or(&0.0);
 		let curr_converged = (next_score - v).abs() < DELTA;
-		if !curr_converged {
-			count += 1;
-		}
 		is_converged &= curr_converged;
 	}
 	is_converged
