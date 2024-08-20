@@ -15,16 +15,17 @@ The OpenRank project consists of several components:
 - **Block Builder** : Builds and publishes blocks to the network. (Located in `block-builder/Dockerfile`)
 - **Computer** : Performs computations and generates results. (Located in `computer/Dockerfile`)
 - **Verifier** : Responsible for verifying the integrity of data and ensuring the correctness of computations. (Located in `verifier/src/lib.rs`)
-- **Common** : Includes algorithm & data structure needed for whole project.  
+- **Common** : Includes algorithm & data structure needed for the project.  
 - **DA(Data Access)** : DA wrapper for openrank codebase
-- **openrank-sdk** : TODO
+- **Openrank-SDK** : Handles the build & run of RPC client for OpenRank
 
 ## Getting Started
 
 To get started with the OpenRank project, follow these steps:
 
 1. Clone the repository: `git clone https://github.com/openrankprotocol/openrank.git`
-2. TODO
+2. Run the `init.sh`: `./init.sh`
+3. Build the docker image: `./generate-docker-compose.sh`
 
 ## Dependencies
 
