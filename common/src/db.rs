@@ -83,7 +83,7 @@ impl Db {
 		let iter = self.connection.prefix_iterator_cf(&cf, prefix);
 		let mut elements = Vec::new();
 		for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
-			let tx = serde_json::from_slice(db_value.as_ref()).unwrap();
+			let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
 			elements.push(tx);
 		}
 		Ok(elements)

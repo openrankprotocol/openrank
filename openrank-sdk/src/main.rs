@@ -140,11 +140,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			job_run_request().await?;
 		},
 		Method::GetResults => {
-			let arg = cli.arg.unwrap();
+			let arg = match cli.arg {
+				Some(arg) => arg,
+				None => {
+					eprintln!("Missing argument");
+					std::process::exit(1);
+				},
+			};
 			let (votes, mut results) = get_results(arg).await?;
 			println!("votes: {:?}", votes);
 			results.reverse();
-			for res in results.chunks(100).next().unwrap() {
+			for res in results {
 				println!("{}: {}", res.id, res.value);
 			}
 		},

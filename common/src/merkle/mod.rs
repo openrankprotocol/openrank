@@ -1,6 +1,8 @@
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
 use rand::Rng;
@@ -69,4 +71,21 @@ pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
 	let mut bytes: [u8; 32] = [0; 32];
 	bytes.copy_from_slice(&hash);
 	Hash(bytes)
+}
+
+#[derive(Debug)]
+pub enum MerkleError {
+	RootNotFound,
+	NodesNotFound,
+}
+
+impl StdError for MerkleError {}
+
+impl Display for MerkleError {
+	fn fmt(&self, f: &mut Formatter) -> FmtResult {
+		match self {
+			Self::RootNotFound => write!(f, "RootNotFound"),
+			Self::NodesNotFound => write!(f, "NodesNotFound"),
+		}
+	}
 }

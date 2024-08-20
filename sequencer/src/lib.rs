@@ -15,7 +15,7 @@ use openrank_common::{
 	MyBehaviourEvent,
 };
 use serde_json::Value;
-use std::{error::Error, sync::Arc};
+use std::{cmp::Ordering, error::Error, sync::Arc};
 use tokio::{
 	select,
 	sync::mpsc::{self, Sender},
@@ -35,7 +35,10 @@ impl Sequencer {
 #[rpc_impl]
 impl Sequencer {
 	async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
-		let tx_bytes = hex::decode(tx.as_str().unwrap()).map_err(|e| {
+		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
+			"Failed to parse TX data as string".to_string(),
+		))?;
+		let tx_bytes = hex::decode(tx_str).map_err(|e| {
 			error!("{}", e);
 			RPCError::ParseError("Failed to parse TX data".to_string())
 		})?;
@@ -62,8 +65,13 @@ impl Sequencer {
 	}
 
 	async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
-		let tx_bytes = hex::decode(tx.as_str().unwrap())
-			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
+		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
+			"Failed to parse TX data as string".to_string(),
+		))?;
+		let tx_bytes = hex::decode(tx_str).map_err(|e| {
+			error!("{}", e);
+			RPCError::ParseError("Failed to parse TX data".to_string())
+		})?;
 
 		let tx = Tx::decode(&mut tx_bytes.as_slice())
 			.map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
@@ -87,7 +95,10 @@ impl Sequencer {
 	}
 
 	async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
-		let tx_bytes = hex::decode(tx.as_str().unwrap()).map_err(|e| {
+		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
+			"Failed to parse TX data as string".to_string(),
+		))?;
+		let tx_bytes = hex::decode(tx_str).map_err(|e| {
 			error!("{}", e);
 			RPCError::ParseError("Failed to parse TX data".to_string())
 		})?;
@@ -116,7 +127,10 @@ impl Sequencer {
 	}
 
 	async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
-		let tx_hash_bytes = hex::decode(job_run_tx_hash.as_str().unwrap()).map_err(|e| {
+		let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
+			"Failed to parse TX hash data as string".to_string(),
+		))?;
+		let tx_hash_bytes = hex::decode(tx_hash_str).map_err(|e| {
 			error!("{}", e);
 			RPCError::ParseError("Failed to parse TX data".to_string())
 		})?;
@@ -128,43 +142,91 @@ impl Sequencer {
 			})?;
 
 		let key = JobResult::construct_full_key(tx_hash);
-		let result = db.get::<JobResult>(key).unwrap();
+		let result = db.get::<JobResult>(key).map_err(|e| {
+			error!("{}", e);
+			RPCError::InternalError
+		})?;
 		let key =
 			Tx::construct_full_key(TxKind::CreateCommitment, result.create_commitment_tx_hash);
-		let tx = db.get::<Tx>(key).unwrap();
-		let commitment = CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
-		let create_scores_tx: Vec<Tx> = commitment
-			.scores_tx_hashes
-			.into_iter()
-			.map(|x| {
-				let key = Tx::construct_full_key(TxKind::CreateScores, x);
-				db.get::<Tx>(key).unwrap()
-			})
-			.collect();
-		let create_scores: Vec<CreateScores> = create_scores_tx
-			.into_iter()
-			.map(|tx| CreateScores::decode(&mut tx.body().as_slice()).unwrap())
-			.collect();
+		let tx = db.get::<Tx>(key).map_err(|e| {
+			error!("{}", e);
+			RPCError::InternalError
+		})?;
+		let commitment = CreateCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
+			error!("{}", e);
+			RPCError::InternalError
+		})?;
+		let create_scores_tx: Vec<Tx> = {
+			let mut create_scores_tx = Vec::new();
+			for tx_hash in commitment.scores_tx_hashes.into_iter() {
+				let key = Tx::construct_full_key(TxKind::CreateScores, tx_hash);
+				let tx = db.get::<Tx>(key).map_err(|e| {
+					error!("{}", e);
+					RPCError::InternalError
+				})?;
+				create_scores_tx.push(tx);
+			}
+			create_scores_tx
+		};
+		let create_scores: Vec<CreateScores> = {
+			let mut create_scores = Vec::new();
+			for tx in create_scores_tx.into_iter() {
+				create_scores.push(CreateScores::decode(&mut tx.body().as_slice()).map_err(
+					|e| {
+						error!("{}", e);
+						RPCError::InternalError
+					},
+				)?);
+			}
+			create_scores
+		};
 		let mut score_entries: Vec<ScoreEntry> =
 			create_scores.into_iter().map(|x| x.entries).flatten().collect();
-		score_entries.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
+		score_entries.sort_by(|a, b| match a.value.partial_cmp(&b.value) {
+			Some(ordering) => ordering,
+			None => {
+				if a.value.is_nan() && b.value.is_nan() {
+					Ordering::Equal
+				} else if a.value.is_nan() {
+					Ordering::Greater
+				} else {
+					Ordering::Less
+				}
+			},
+		});
 
-		let verificarion_results_tx: Vec<Tx> = result
-			.job_verification_tx_hashes
-			.iter()
-			.map(|x| {
-				let key = Tx::construct_full_key(TxKind::JobVerification, x.clone());
-				db.get::<Tx>(key).unwrap()
-			})
-			.collect();
-		let verification_results: Vec<JobVerification> = verificarion_results_tx
-			.into_iter()
-			.map(|tx| JobVerification::decode(&mut tx.body().as_slice()).unwrap())
-			.collect();
+		let verificarion_results_tx: Vec<Tx> = {
+			let mut verification_resutls_tx = Vec::new();
+			for tx_hash in result.job_verification_tx_hashes.iter() {
+				let key = Tx::construct_full_key(TxKind::JobVerification, tx_hash.clone());
+				let tx = db.get::<Tx>(key).map_err(|e| {
+					error!("{}", e);
+					RPCError::InternalError
+				})?;
+				verification_resutls_tx.push(tx);
+			}
+			verification_resutls_tx
+		};
+		let verification_results: Vec<JobVerification> = {
+			let mut verification_results = Vec::new();
+			for tx in verificarion_results_tx.into_iter() {
+				let result = JobVerification::decode(&mut tx.body().as_slice()).map_err(|e| {
+					error!("{}", e);
+					RPCError::InternalError
+				})?;
+				verification_results.push(result);
+			}
+			verification_results
+		};
 		let verification_results_bools: Vec<bool> =
 			verification_results.into_iter().map(|x| x.verification_result).collect();
 
-		Ok(serde_json::to_value((verification_results_bools, score_entries)).unwrap())
+		let result =
+			serde_json::to_value((verification_results_bools, score_entries)).map_err(|e| {
+				error!("{}", e);
+				RPCError::InternalError
+			})?;
+		Ok(result)
 	}
 }
 

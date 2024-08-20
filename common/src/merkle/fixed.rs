@@ -1,4 +1,4 @@
-use super::{hash_two, Hash};
+use super::{hash_two, Hash, MerkleError};
 use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
@@ -20,12 +20,12 @@ impl<H> DenseMerkleTree<H>
 where
 	H: Digest,
 {
-	pub fn root(&self) -> Hash {
-		self.nodes.get(&self.num_levels).unwrap()[0].clone()
+	pub fn root(&self) -> Result<Hash, MerkleError> {
+		self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(MerkleError::RootNotFound)
 	}
 
 	/// Build a MerkleTree from given leaf nodes and height
-	pub fn new(mut leaves: Vec<Hash>) -> Self {
+	pub fn new(mut leaves: Vec<Hash>) -> Result<Self, MerkleError> {
 		let next_power_of_two = leaves.len().next_power_of_two();
 		if leaves.len() < next_power_of_two {
 			let diff = next_power_of_two - leaves.len();
@@ -44,7 +44,7 @@ where
 		tree.insert(0u8, leaves);
 
 		for i in 0..num_levels as u8 {
-			let nodes = tree.get(&i).unwrap();
+			let nodes = tree.get(&i).ok_or(MerkleError::NodesNotFound)?;
 			let next: Vec<Hash> = nodes
 				.chunks(2)
 				.map(|chunk| {
@@ -58,7 +58,7 @@ where
 			tree.insert(i + 1, next);
 		}
 
-		Self { nodes: tree, num_levels, _h: PhantomData }
+		Ok(Self { nodes: tree, num_levels, _h: PhantomData })
 	}
 }
 
@@ -92,8 +92,8 @@ mod test {
 			Hash::default(),
 			Hash::default(),
 		];
-		let merkle = DenseMerkleTree::<Keccak256>::new(leaves);
-		let root = merkle.root();
+		let merkle = DenseMerkleTree::<Keccak256>::new(leaves).unwrap();
+		let root = merkle.root().unwrap();
 
 		assert_eq!(
 			root.to_hex(),
