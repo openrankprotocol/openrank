@@ -1,4 +1,4 @@
-use rocksdb::{Error as RocksDBError, Options, DB};
+use rocksdb::{DBIterator, Error as RocksDBError, IteratorMode, Options, DB};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
@@ -87,6 +87,11 @@ impl Db {
 			elements.push(tx);
 		}
 		Ok(elements)
+	}
+
+	pub fn read_from_start_iter<I: DbItem + DeserializeOwned>(&self) -> DBIterator {
+		// Start from the beginning of the DB
+		self.connection.iterator(IteratorMode::Start)
 	}
 }
 
