@@ -1,9 +1,9 @@
-use alloy_rlp::{encode, Decodable, Encodable};
+use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	db::{Db, DbItem},
+	db::{Db, DbError, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{CreateCommitment, JobRunAssignment, SeedUpdate, TrustUpdate, Tx, TxHash, TxKind},
@@ -197,6 +197,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 		swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
 	}
 
+	node_recovery(&mut job_runner, &db, &config)?;
+
 	// Listen on all interfaces and whatever port the OS assigns
 	swarm.listen_on("/ip4/0.0.0.0/udp/10000/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/10000".parse()?)?;
@@ -232,4 +234,59 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 			}
 		}
 	}
+}
+
+/// Recover JobRunner state from DB.
+///
+/// - Load all the TXs from the DB
+/// - Just take TrustUpdate and SeedUpdate transactions
+/// - Update JobRunner using functions update_trust, update_seed
+fn node_recovery(
+	job_runner: &mut ComputeJobRunner, db: &Db, config: &Config,
+) -> Result<(), ComputeNodeError> {
+	let db_iter = db.read_from_start_iter::<Tx>();
+	for maybe_entry in db_iter {
+		let (_, value) = maybe_entry.map_err(|e| ComputeNodeError::DbError(DbError::RocksDB(e)))?;
+		let tx: Tx = serde_json::from_slice(&value)
+			.map_err(|e| ComputeNodeError::DbError(DbError::Serde(e)))?;
+		match tx.kind() {
+			TxKind::TrustUpdate => job_runner_update_trust_update(job_runner, &config.domains, tx)?,
+			TxKind::SeedUpdate => job_runner_update_seed_update(job_runner, &config.domains, tx)?,
+			_ => (),
+		}
+	}
+	Ok(())
+}
+
+fn job_runner_update_trust_update(
+	job_runner: &mut ComputeJobRunner, domains: &Vec<Domain>, tx: Tx,
+) -> Result<(), ComputeNodeError> {
+	let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
+		.map_err(|e| ComputeNodeError::SerdeError(e))?;
+	let namespace = trust_update.trust_id;
+	let domain = domains
+		.iter()
+		.find(|x| &x.trust_namespace() == &namespace)
+		.ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
+	job_runner
+		.update_trust(domain.clone(), trust_update.entries.clone())
+		.map_err(|e| ComputeNodeError::ComputeInternalError(e))?;
+
+	Ok(())
+}
+
+fn job_runner_update_seed_update(
+	job_runner: &mut ComputeJobRunner, domains: &Vec<Domain>, tx: Tx,
+) -> Result<(), ComputeNodeError> {
+	let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
+		.map_err(|e| ComputeNodeError::SerdeError(e))?;
+	let namespace = seed_update.seed_id;
+	let domain = domains
+		.iter()
+		.find(|x| &x.seed_namespace() == &namespace)
+		.ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
+	job_runner
+		.update_seed(domain.clone(), seed_update.entries.clone())
+		.map_err(|e| ComputeNodeError::ComputeInternalError(e))?;
+	Ok(())
 }
