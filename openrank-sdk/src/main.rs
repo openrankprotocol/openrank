@@ -67,7 +67,7 @@ async fn update_trust(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 			chunk.to_vec(),
 		));
 		let mut tx = Tx::default_with(TxKind::TrustUpdate, data);
-		tx.sign(&sk);
+		tx.sign(&sk)?;
 
 		let result: Value = client.call("Sequencer.trust_update", hex::encode(encode(tx))).await?;
 		let tx_event: TxEvent = serde_json::from_value(result)?;
@@ -100,7 +100,7 @@ async fn update_seed(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 			chunk.to_vec(),
 		));
 		let mut tx = Tx::default_with(TxKind::SeedUpdate, data);
-		tx.sign(&sk);
+		tx.sign(&sk)?;
 
 		let result: Value = client.call("Sequencer.seed_update", hex::encode(encode(tx))).await?;
 		let tx_event: TxEvent = serde_json::from_value(result)?;
@@ -119,7 +119,7 @@ async fn job_run_request(sk: SigningKey) -> Result<(), Box<dyn Error>> {
 	let domain_id = config.domain.to_hash();
 	let data = encode(JobRunRequest::new(domain_id, u32::MAX));
 	let mut tx = Tx::default_with(TxKind::JobRunRequest, data);
-	tx.sign(&sk);
+	tx.sign(&sk)?;
 	let tx_hash = tx.hash();
 	let hex_encoded_tx_hash = hex::encode(tx_hash.0);
 	println!("JobRunRequest TX_HASH: {}", hex_encoded_tx_hash);
@@ -150,8 +150,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	dotenv().ok();
 	let cli = Args::parse();
 	let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
-	let secret_key =
-		SigningKey::from_slice(hex::decode(secret_key_hex).unwrap().as_slice()).unwrap();
+	let secret_key_bytes = hex::decode(secret_key_hex)?;
+	let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
 	match cli.method {
 		Method::TrustUpdate => {
@@ -164,12 +164,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			job_run_request(secret_key).await?;
 		},
 		Method::GetResults => {
-			let arg = cli.arg.unwrap();
+			let arg = match cli.arg {
+				Some(arg) => arg,
+				None => {
+					eprintln!("Missing argument");
+					std::process::exit(1);
+				},
+			};
 			let (votes, mut results) = get_results(arg).await?;
 			println!("votes: {:?}", votes);
 			results.reverse();
-			for res in results.chunks(100).next().unwrap() {
-				println!("{}: {}", res.id, res.value);
+			let chunk = results.chunks(100).next();
+			if let Some(scores) = chunk {
+				for res in scores {
+					println!("{}: {}", res.id, res.value);
+				}
 			}
 		},
 		Method::GenerateKeypair => {

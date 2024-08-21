@@ -1,7 +1,7 @@
 use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
-use super::{hash_two, next_index, num_to_bits_vec, Hash};
+use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
 
 #[derive(Clone, Debug)]
 /// MerkleTree structure
@@ -23,8 +23,8 @@ impl<H> DenseIncrementalMerkleTree<H>
 where
 	H: Digest,
 {
-	pub fn root(&self) -> Hash {
-		self.nodes.get(&(self.num_levels, 0)).unwrap().clone()
+	pub fn root(&self) -> Result<Hash, MerkleError> {
+		self.nodes.get(&(self.num_levels, 0)).map(|h| h.clone()).ok_or(MerkleError::RootNotFound)
 	}
 
 	/// Build a MerkleTree from given leaf nodes and height
@@ -110,7 +110,7 @@ mod test {
 		];
 		let mut merkle = DenseIncrementalMerkleTree::<Keccak256>::new(32);
 		merkle.insert_batch(0, leaves);
-		let root = merkle.root();
+		let root = merkle.root().unwrap();
 
 		assert_eq!(
 			root.to_hex(),

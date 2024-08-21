@@ -21,6 +21,9 @@ use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+mod error;
+use error::BlockBuilderNodeError;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Whitelist {
 	pub computer: Vec<Address>,
@@ -36,27 +39,29 @@ pub struct Config {
 
 fn handle_gossipsub_events(
 	mut swarm: &mut Swarm<MyBehaviour>, db: &Db, event: gossipsub::Event, topics: Vec<&Topic>,
-	sk: &SigningKey, whitelist: &Whitelist,
-) {
+	whitelist: Whitelist, sk: &SigningKey,
+) -> Result<(), BlockBuilderNodeError> {
 	if let gossipsub::Event::Message { message_id, message, propagation_source } = event {
 		for topic in topics {
 			match topic {
 				Topic::DomainRequest(domain_id) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert!(tx.kind() == TxKind::JobRunRequest);
-						let (res, address) = tx.verify();
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::JobRunRequest {
+							return Err(BlockBuilderNodeError::InvalidTxKind);
+						}
+						let address =
+							tx.verify().map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
 						assert!(whitelist.users.contains(&address));
-						assert!(res);
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let _ = JobRunRequest::decode(&mut tx.body().as_slice()).unwrap();
-						info!(
-							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-							message.topic.as_str(),
-						);
+						db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+						let job_run_request = JobRunRequest::decode(&mut tx.body().as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						assert_eq!(&job_run_request.domain_id, domain_id);
 
 						let assignment_topic = Topic::DomainAssignent(domain_id.clone());
 						let computer = whitelist.computer[0].clone();
@@ -64,45 +69,57 @@ fn handle_gossipsub_events(
 						let job_assignment = JobRunAssignment::new(tx.hash(), computer, verifier);
 						let mut tx =
 							Tx::default_with(TxKind::JobRunAssignment, encode(job_assignment));
-						tx.sign(sk);
-						db.put(tx.clone()).unwrap();
-						if let Err(e) = broadcast_event(&mut swarm, tx, assignment_topic) {
-							error!("Publish error: {e:?}");
-						}
+						tx.sign(sk).map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
+						db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+						broadcast_event(&mut swarm, tx, assignment_topic)
+							.map_err(|e| BlockBuilderNodeError::P2PError(e.to_string()))?;
+						info!(
+							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
+							message.topic.as_str(),
+						);
 					}
 				},
 				Topic::DomainCommitment(_) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert_eq!(tx.kind(), TxKind::CreateCommitment);
-						let (res, address) = tx.verify();
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::CreateCommitment {
+							return Err(BlockBuilderNodeError::InvalidTxKind);
+						}
+						let address =
+							tx.verify().map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
 						assert!(whitelist.computer.contains(&address));
-						assert!(res);
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
+						db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 
-						let commitment =
-							CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
+						let commitment = CreateCommitment::decode(&mut tx.body().as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
 
 						let assignment_tx_key = Tx::construct_full_key(
 							TxKind::JobRunAssignment,
 							commitment.job_run_assignment_tx_hash,
 						);
-						let assignment_tx: Tx = db.get(assignment_tx_key).unwrap();
+						let assignment_tx: Tx = db
+							.get(assignment_tx_key)
+							.map_err(|e| BlockBuilderNodeError::DbError(e))?;
 						let assignment_body =
-							JobRunAssignment::decode(&mut assignment_tx.body().as_slice()).unwrap();
+							JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+								.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
 						let request_tx_key = Tx::construct_full_key(
 							TxKind::JobRunRequest,
 							assignment_body.job_run_request_tx_hash.clone(),
 						);
-						let request: Tx = db.get(request_tx_key).unwrap();
+						let request: Tx = db
+							.get(request_tx_key)
+							.map_err(|e| BlockBuilderNodeError::DbError(e))?;
 						let job_result_key =
 							JobResult::construct_full_key(assignment_body.job_run_request_tx_hash);
 						if let Err(DbError::NotFound) = db.get::<JobResult>(job_result_key) {
 							let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
-							db.put(result).unwrap();
+							db.put(result).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 						}
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -113,15 +130,20 @@ fn handle_gossipsub_events(
 				Topic::DomainScores(_) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert_eq!(tx.kind(), TxKind::CreateScores);
-						let (res, address) = tx.verify();
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::CreateScores {
+							return Err(BlockBuilderNodeError::InvalidTxKind);
+						}
+						let address =
+							tx.verify().map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
 						assert!(whitelist.computer.contains(&address));
-						assert!(res);
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let _ = CreateScores::decode(&mut tx.body().as_slice()).unwrap();
+						db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+						CreateScores::decode(&mut tx.body().as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
 							message.topic.as_str(),
@@ -131,29 +153,39 @@ fn handle_gossipsub_events(
 				Topic::DomainVerification(_) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert_eq!(tx.kind(), TxKind::JobVerification);
-						let (res, address) = tx.verify();
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::JobVerification {
+							return Err(BlockBuilderNodeError::InvalidTxKind);
+						}
+						let address =
+							tx.verify().map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
 						assert!(whitelist.verifier.contains(&address));
-						assert!(res);
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
+						db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 						let job_verification =
-							JobVerification::decode(&mut tx.body().as_slice()).unwrap();
+							JobVerification::decode(&mut tx.body().as_slice())
+								.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
 
 						let assignment_tx_key = Tx::construct_full_key(
 							TxKind::JobRunAssignment,
 							job_verification.job_run_assignment_tx_hash,
 						);
-						let assignment_tx: Tx = db.get(assignment_tx_key).unwrap();
+						let assignment_tx: Tx = db
+							.get(assignment_tx_key)
+							.map_err(|e| BlockBuilderNodeError::DbError(e))?;
 						let assignment_body =
-							JobRunAssignment::decode(&mut assignment_tx.body().as_slice()).unwrap();
+							JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+								.map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
 						let job_result_key =
 							JobResult::construct_full_key(assignment_body.job_run_request_tx_hash);
-						let mut job_result: JobResult = db.get(job_result_key).unwrap();
+						let mut job_result: JobResult = db
+							.get(job_result_key)
+							.map_err(|e| BlockBuilderNodeError::DbError(e))?;
 						job_result.job_verification_tx_hashes.push(tx.hash());
-						db.put(job_result).unwrap();
+						db.put(job_result).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
 							message.topic.as_str(),
@@ -164,6 +196,8 @@ fn handle_gossipsub_events(
 			}
 		}
 	}
+
+	Ok(())
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
@@ -171,8 +205,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
 	let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
-	let secret_key =
-		SigningKey::from_slice(hex::decode(secret_key_hex).unwrap().as_slice()).unwrap();
+	let secret_key_bytes = hex::decode(secret_key_hex)?;
+	let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -243,7 +277,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
 					let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
-					handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect(), &secret_key, &config.whitelist);
+					let res = handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect(), config.whitelist.clone(), &secret_key);
+					if let Err(e) = res {
+						error!("{e:?}");
+					}
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

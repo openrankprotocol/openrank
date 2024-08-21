@@ -18,10 +18,12 @@ use runner::VerificationJobRunner;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+mod error;
 mod runner;
+use error::VerifierNodeError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Whitelist {
@@ -38,26 +40,35 @@ pub struct Config {
 fn handle_gossipsub_events(
 	swarm: &mut Swarm<MyBehaviour>, job_runner: &mut VerificationJobRunner, db: &Db,
 	event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>, sk: &SigningKey,
-	whitelist: &Whitelist,
-) {
+	whitelist: Whitelist,
+) -> Result<(), VerifierNodeError> {
 	if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
 		for topic in topics {
 			match topic {
 				Topic::NamespaceTrustUpdate(namespace) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert!(tx.kind() == TxKind::TrustUpdate);
-						let res = tx.verify_against(namespace.owner());
-						assert!(res);
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::TrustUpdate {
+							return Err(VerifierNodeError::InvalidTxKind);
+						}
+						tx.verify_against(namespace.owner())
+							.map_err(|e| VerifierNodeError::SignatureError(e))?;
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let trust_update = TrustUpdate::decode(&mut tx.body().as_slice()).unwrap();
+						db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
+						let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
 						assert!(*namespace == trust_update.trust_id);
 						let domain =
-							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
-						job_runner.update_trust(domain.clone(), trust_update.entries.clone());
+							domains.iter().find(|x| &x.trust_namespace() == namespace).ok_or(
+								VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
+							)?;
+						job_runner
+							.update_trust(domain.clone(), trust_update.entries.clone())
+							.map_err(Into::into)?;
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
 							message.topic.as_str(),
@@ -67,18 +78,27 @@ fn handle_gossipsub_events(
 				Topic::NamespaceSeedUpdate(namespace) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert!(tx.kind() == TxKind::SeedUpdate);
-						let res = tx.verify_against(namespace.owner());
-						assert!(res);
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::SeedUpdate {
+							return Err(VerifierNodeError::InvalidTxKind);
+						}
+						tx.verify_against(namespace.owner())
+							.map_err(|e| VerifierNodeError::SignatureError(e))?;
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let seed_update = SeedUpdate::decode(&mut tx.body().as_slice()).unwrap();
+						db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
+						let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
 						assert!(*namespace == seed_update.seed_id);
 						let domain =
-							domains.iter().find(|x| &x.trust_namespace() == namespace).unwrap();
-						job_runner.update_seed(domain.clone(), seed_update.entries.clone());
+							domains.iter().find(|x| &x.trust_namespace() == namespace).ok_or(
+								VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
+							)?;
+						job_runner
+							.update_seed(domain.clone(), seed_update.entries.clone())
+							.map_err(Into::into)?;
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
 							message.topic.as_str(),
@@ -88,36 +108,47 @@ fn handle_gossipsub_events(
 				Topic::DomainAssignent(domain_id) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert_eq!(tx.kind(), TxKind::JobRunAssignment);
-						let (res, address) = tx.verify();
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::JobRunAssignment {
+							return Err(VerifierNodeError::InvalidTxKind);
+						}
+						let address =
+							tx.verify().map_err(|e| VerifierNodeError::SignatureError(e))?;
 						assert!(whitelist.block_builder.contains(&address));
-						assert!(res);
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
+						db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
 						// Not checking if this node is assigned for the job
 						let job_run_assignment =
-							JobRunAssignment::decode(&mut tx.body().as_slice()).unwrap();
-						let verifier_address = address_from_sk(sk);
-						assert_eq!(verifier_address, job_run_assignment.assigned_verifier_node);
+							JobRunAssignment::decode(&mut tx.body().as_slice())
+								.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						let computer_address = address_from_sk(sk);
+						assert_eq!(computer_address, job_run_assignment.assigned_verifier_node);
 						assert!(whitelist
 							.computer
 							.contains(&job_run_assignment.assigned_compute_node));
-						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
-						job_runner.update_assigment(domain.clone(), tx.hash());
-						let res = job_runner.check_finished_jobs(domain.clone());
+
+						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
+							VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
+						)?;
+						job_runner
+							.update_assigment(domain.clone(), tx.hash())
+							.map_err(Into::into)?;
+						let res =
+							job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
 						for (tx_hash, verification_res) in res {
 							let verification_res = JobVerification::new(tx_hash, verification_res);
 							let mut tx =
 								Tx::default_with(TxKind::JobVerification, encode(verification_res));
-							tx.sign(sk);
+							tx.sign(sk).map_err(|e| VerifierNodeError::SignatureError(e))?;
 							broadcast_event(
 								swarm,
 								tx,
 								Topic::DomainVerification(domain_id.clone()),
 							)
-							.unwrap();
+							.map_err(|e| VerifierNodeError::P2PError(e.to_string()))?;
 						}
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -128,30 +159,40 @@ fn handle_gossipsub_events(
 				Topic::DomainScores(domain_id) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert_eq!(tx.kind(), TxKind::CreateScores);
-						let (res, address) = tx.verify();
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::CreateScores {
+							return Err(VerifierNodeError::InvalidTxKind);
+						}
+						let address =
+							tx.verify().map_err(|e| VerifierNodeError::SignatureError(e))?;
 						assert!(whitelist.computer.contains(&address));
-						assert!(res);
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let create_scores =
-							CreateScores::decode(&mut tx.body().as_slice()).unwrap();
-						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
-						job_runner.update_scores(domain.clone(), tx.hash(), create_scores.clone());
-						let res = job_runner.check_finished_jobs(domain.clone());
+						db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
+						let create_scores = CreateScores::decode(&mut tx.body().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+
+						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
+							VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
+						)?;
+						let _ = job_runner
+							.update_scores(domain.clone(), tx.hash(), create_scores.clone())
+							.map_err(Into::into)?;
+						let res =
+							job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
 						for (tx_hash, verification_res) in res {
 							let verification_res = JobVerification::new(tx_hash, verification_res);
 							let mut tx =
 								Tx::default_with(TxKind::JobVerification, encode(verification_res));
-							tx.sign(sk);
+							tx.sign(sk).map_err(|e| VerifierNodeError::SignatureError(e))?;
 							broadcast_event(
 								swarm,
 								tx,
 								Topic::DomainVerification(domain_id.clone()),
 							)
-							.unwrap();
+							.map_err(|e| VerifierNodeError::P2PError(e.to_string()))?;
 						}
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -162,30 +203,38 @@ fn handle_gossipsub_events(
 				Topic::DomainCommitment(domain_id) => {
 					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
 					if message.topic == topic_wrapper.hash() {
-						let tx_event = TxEvent::decode(&mut message.data.as_slice()).unwrap();
-						let tx = Tx::decode(&mut tx_event.data().as_slice()).unwrap();
-						assert_eq!(tx.kind(), TxKind::CreateCommitment);
-						let (res, address) = tx.verify();
+						let tx_event = TxEvent::decode(&mut message.data.as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						let tx = Tx::decode(&mut tx_event.data().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+						if tx.kind() != TxKind::CreateCommitment {
+							return Err(VerifierNodeError::InvalidTxKind);
+						}
+						let address =
+							tx.verify().map_err(|e| VerifierNodeError::SignatureError(e))?;
 						assert!(whitelist.computer.contains(&address));
-						assert!(res);
 						// Add Tx to db
-						db.put(tx.clone()).unwrap();
-						let create_commitment =
-							CreateCommitment::decode(&mut tx.body().as_slice()).unwrap();
-						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).unwrap();
+						db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
+						let create_commitment = CreateCommitment::decode(&mut tx.body().as_slice())
+							.map_err(|e| VerifierNodeError::DecodeError(e))?;
+
+						let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
+							VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
+						)?;
 						job_runner.update_commitment(create_commitment.clone());
-						let res = job_runner.check_finished_jobs(domain.clone());
+						let res =
+							job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
 						for (tx_hash, verification_res) in res {
 							let verification_res = JobVerification::new(tx_hash, verification_res);
 							let mut tx =
 								Tx::default_with(TxKind::JobVerification, encode(verification_res));
-							tx.sign(sk);
+							tx.sign(sk).map_err(|e| VerifierNodeError::SignatureError(e))?;
 							broadcast_event(
 								swarm,
 								tx,
 								Topic::DomainVerification(domain_id.clone()),
 							)
-							.unwrap();
+							.map_err(|e| VerifierNodeError::P2PError(e.to_string()))?;
 						}
 						info!(
 							"TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -197,6 +246,8 @@ fn handle_gossipsub_events(
 			}
 		}
 	}
+
+	Ok(())
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
@@ -204,8 +255,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
 	let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
-	let secret_key =
-		SigningKey::from_slice(hex::decode(secret_key_hex).unwrap().as_slice()).unwrap();
+	let secret_key_bytes = hex::decode(secret_key_hex)?;
+	let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
 	let mut swarm = build_node().await?;
 	info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -286,7 +337,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 					}
 				},
 				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					handle_gossipsub_events(
+					let res = handle_gossipsub_events(
 						&mut swarm,
 						&mut job_runner,
 						&db,
@@ -294,8 +345,15 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 						iter_chain.clone().collect(),
 						config.domains.clone(),
 						&secret_key,
-						&config.whitelist,
+						config.whitelist.clone(),
 					);
+					match res {
+						Ok(_) => {},
+						Err(e) => {
+							error!("Failed to handle gossipsub event: {e:?}");
+							continue;
+						},
+					}
 				},
 				SwarmEvent::NewListenAddr { address, .. } => {
 					info!("Local node is listening on {address}");

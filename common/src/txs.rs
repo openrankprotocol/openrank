@@ -5,7 +5,9 @@ use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result 
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
-use k256::ecdsa::{RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey};
+use k256::ecdsa::{
+	Error as EcdsaError, RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey,
+};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use std::fmt::Display;
@@ -129,52 +131,54 @@ impl Tx {
 		prefix
 	}
 
-	pub fn sign(&mut self, sk: &SigningKey) {
-		let (sig, rec) = sk.sign_prehash_recoverable(self.hash().as_bytes()).unwrap();
+	pub fn sign(&mut self, sk: &SigningKey) -> Result<(), EcdsaError> {
+		let (sig, rec) = sk.sign_prehash_recoverable(self.hash().as_bytes())?;
 		let s: [u8; 32] = sig.s().to_bytes().into();
 		let r: [u8; 32] = sig.r().to_bytes().into();
 		self.signature = Signature::new(s, r, rec.to_byte());
+		Ok(())
 	}
 
-	pub fn verify_against(&self, address: Address) -> bool {
+	pub fn verify_against(&self, address: Address) -> Result<(), EcdsaError> {
 		let mut bytes = Vec::new();
 		bytes.extend(self.signature.r);
 		bytes.extend(self.signature.s);
 		let message = self.hash().to_bytes();
 
-		let sig = EcdsaSignature::try_from(bytes.as_slice()).unwrap();
-		let rec_id = RecoveryId::from_byte(self.signature.r_id).unwrap();
-		let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id).unwrap();
+		let sig = EcdsaSignature::try_from(bytes.as_slice())?;
+		let rec_id = RecoveryId::from_byte(self.signature.r_id).ok_or(EcdsaError::new())?;
+		let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id)?;
 		let vk_bytes = verifying_key.to_sec1_bytes();
 
 		let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
 		let mut address_bytes = [0u8; 20];
 		address_bytes.copy_from_slice(&hash.0[..20]);
 
-		assert_eq!(Address(address_bytes), address);
+		if Address(address_bytes) != address {
+			return Err(EcdsaError::new());
+		}
 
-		let res = verifying_key.verify_prehash(&message, &sig);
-		res.is_ok()
+		verifying_key.verify_prehash(&message, &sig)
 	}
 
-	pub fn verify(&self) -> (bool, Address) {
+	pub fn verify(&self) -> Result<Address, EcdsaError> {
 		let mut bytes = Vec::new();
 		bytes.extend(self.signature.r);
 		bytes.extend(self.signature.s);
 		let message = self.hash().to_bytes();
 
-		let sig = EcdsaSignature::try_from(bytes.as_slice()).unwrap();
-		let rec_id = RecoveryId::from_byte(self.signature.r_id).unwrap();
-		let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id).unwrap();
-		let vk_bytes = verifying_key.to_sec1_bytes();
+		let sig = EcdsaSignature::try_from(bytes.as_slice())?;
+		let rec_id = RecoveryId::from_byte(self.signature.r_id).ok_or(EcdsaError::new())?;
+		let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id)?;
+		verifying_key.verify_prehash(&message, &sig)?;
 
+		let vk_bytes = verifying_key.to_sec1_bytes();
 		let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
 		let mut address_bytes = [0u8; 20];
 		address_bytes.copy_from_slice(&hash.0[..20]);
 		let address = Address(address_bytes);
 
-		let res = verifying_key.verify_prehash(&message, &sig);
-		(res.is_ok(), address)
+		Ok(address)
 	}
 }
 
