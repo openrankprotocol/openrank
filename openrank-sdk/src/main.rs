@@ -150,8 +150,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			let (votes, mut results) = get_results(arg).await?;
 			println!("votes: {:?}", votes);
 			results.reverse();
-			for res in results {
-				println!("{}: {}", res.id, res.value);
+			let chunk = results.chunks(100).next();
+			if let Some(scores) = chunk {
+				for res in scores {
+					println!("{}: {}", res.id, res.value);
+				}
 			}
 		},
 	}

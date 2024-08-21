@@ -56,10 +56,6 @@ fn handle_gossipsub_events(
 							job_runner
 								.update_trust(domain.clone(), trust_update.entries.clone())
 								.map_err(Into::into)?;
-							// println!(
-							// 	"message.id: {:?}, message.sequence_number: {:?}",
-							// 	id, message.sequence_number
-							// );
 							info!(
 								"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 								message.topic.as_str(),
@@ -76,7 +72,6 @@ fn handle_gossipsub_events(
 							assert!(tx.kind() == TxKind::SeedUpdate);
 							// Add Tx to db
 							db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
-							// println!("tx_hash: {}", tx.hash().to_hex());
 							let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
 							assert!(*namespace == seed_update.seed_id);

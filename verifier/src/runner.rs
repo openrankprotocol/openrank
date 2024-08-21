@@ -23,7 +23,6 @@ pub struct VerificationJobRunner {
 	create_scores: HashMap<DomainHash, HashMap<TxHash, CreateScores>>,
 	compute_tree: HashMap<DomainHash, HashMap<TxHash, DenseMerkleTree<Keccak256>>>,
 	active_assignments: HashMap<DomainHash, Vec<TxHash>>,
-	completed_assignments: HashMap<DomainHash, Vec<TxHash>>,
 	commitments: HashMap<TxHash, CreateCommitment>,
 }
 
@@ -39,7 +38,6 @@ impl VerificationJobRunner {
 		let mut create_scores = HashMap::new();
 		let mut compute_tree = HashMap::new();
 		let mut active_assignments = HashMap::new();
-		let mut completed_assignments = HashMap::new();
 		for domain in domains {
 			count.insert(domain.clone(), 0);
 			indices.insert(domain.clone(), HashMap::new());
@@ -54,7 +52,6 @@ impl VerificationJobRunner {
 			create_scores.insert(domain.clone(), HashMap::new());
 			compute_tree.insert(domain.clone(), HashMap::new());
 			active_assignments.insert(domain.clone(), Vec::new());
-			completed_assignments.insert(domain, Vec::new());
 		}
 		Self {
 			count,
@@ -66,7 +63,6 @@ impl VerificationJobRunner {
 			create_scores,
 			compute_tree,
 			active_assignments,
-			completed_assignments,
 			commitments: HashMap::new(),
 		}
 	}
@@ -235,12 +231,7 @@ impl VerificationJobRunner {
 			.active_assignments
 			.get_mut(&domain.clone().to_hash())
 			.ok_or(JobRunnerError::ActiveAssignmentsNotFound(domain.to_hash()))?;
-		let completed_assignments =
-			self.completed_assignments.get_mut(&domain.clone().to_hash()).ok_or(
-				JobRunnerError::CompletedAssignmentsNotFound(domain.to_hash()),
-			)?;
 		active_assignments.retain(|x| !completed.contains(x));
-		completed_assignments.extend(completed);
 		Ok(results)
 	}
 
@@ -257,15 +248,11 @@ impl VerificationJobRunner {
 	pub fn update_assigment(
 		&mut self, domain: Domain, job_run_assignment_tx_hash: TxHash,
 	) -> Result<(), JobRunnerError> {
-		let completed_assignments =
-			self.completed_assignments.get(&domain.clone().to_hash()).ok_or(
-				JobRunnerError::CompletedAssignmentsNotFound(domain.to_hash()),
-			)?;
-		if !completed_assignments.contains(&job_run_assignment_tx_hash) {
-			let active_assignments = self
-				.active_assignments
-				.get_mut(&domain.to_hash())
-				.ok_or(JobRunnerError::ActiveAssignmentsNotFound(domain.to_hash()))?;
+		let active_assignments = self
+			.active_assignments
+			.get_mut(&domain.to_hash())
+			.ok_or(JobRunnerError::ActiveAssignmentsNotFound(domain.to_hash()))?;
+		if !active_assignments.contains(&job_run_assignment_tx_hash) {
 			active_assignments.push(job_run_assignment_tx_hash);
 		}
 		Ok(())
@@ -401,7 +388,6 @@ pub enum JobRunnerError {
 	CreateScoresNotFoundWithTxHash(TxHash),
 
 	ActiveAssignmentsNotFound(DomainHash),
-	CompletedAssignmentsNotFound(DomainHash),
 	CommitmentNotFound(TxHash),
 	DomainIndiceNotFound(Address),
 
@@ -456,13 +442,6 @@ impl Display for JobRunnerError {
 
 			Self::ActiveAssignmentsNotFound(domain) => {
 				write!(f, "active_assignments not found for domain: {:?}", domain)
-			},
-			Self::CompletedAssignmentsNotFound(domain) => {
-				write!(
-					f,
-					"completed_assignments not found for domain: {:?}",
-					domain
-				)
 			},
 			Self::CommitmentNotFound(assigment_id) => {
 				write!(
