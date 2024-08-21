@@ -1,4 +1,4 @@
-use alloy_rlp::{encode, Decodable};
+use alloy_rlp::{encode, Decodable, Encodable};
 use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
@@ -54,10 +54,6 @@ fn handle_gossipsub_events(
 						job_runner
 							.update_trust(domain.clone(), trust_update.entries.clone())
 							.map_err(Into::into)?;
-						// println!(
-						// 	"message.id: {:?}, message.sequence_number: {:?}",
-						// 	id, message.sequence_number
-						// );
 						info!(
 							"TOPIC: {}, ID: {id}, FROM: {peer_id}",
 							message.topic.as_str(),
@@ -74,7 +70,6 @@ fn handle_gossipsub_events(
 						assert!(tx.kind() == TxKind::SeedUpdate);
 						// Add Tx to db
 						db.put(tx.clone()).map_err(|e| ComputeNodeError::DbError(e))?;
-						// println!("tx_hash: {}", tx.hash().to_hex());
 						let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
 							.map_err(|e| ComputeNodeError::SerdeError(e))?;
 						assert!(*namespace == seed_update.seed_id);
@@ -104,11 +99,6 @@ fn handle_gossipsub_events(
 						// Not checking if we are assigned for the job, for now
 						JobRunAssignment::decode(&mut tx.body().as_slice())
 							.map_err(|e| ComputeNodeError::SerdeError(e))?;
-						info!(
-							"TOPIC: {}, ID: {id}, FROM: {peer_id}, SOURCE: {:?}",
-							message.topic.as_str(),
-							message.source,
-						);
 
 						let domain = domains
 							.iter()
@@ -116,10 +106,10 @@ fn handle_gossipsub_events(
 							.ok_or(ComputeNodeError::DomainNotFound(domain_id.clone().to_hex()))?;
 						job_runner.compute(domain.clone()).map_err(Into::into)?;
 						job_runner.create_compute_tree(domain.clone()).map_err(Into::into)?;
-						let create_scores = job_runner.get_create_scores(domain.clone());
+						let create_scores =
+							job_runner.get_create_scores(domain.clone()).map_err(Into::into)?;
 						let (lt_root, compute_root) =
 							job_runner.get_root_hashes(domain.clone()).map_err(Into::into)?;
-						// println!("root after compute: {}", lt_root.clone().to_hex());
 
 						let create_scores_tx: Vec<Tx> = create_scores
 							.iter()
@@ -144,6 +134,11 @@ fn handle_gossipsub_events(
 						}
 						broadcast_event(swarm, create_commitment_tx, commitment_topic)
 							.map_err(|e| ComputeNodeError::P2PError(e.to_string()))?;
+						info!(
+							"TOPIC: {}, ID: {id}, FROM: {peer_id}, SOURCE: {:?}",
+							message.topic.as_str(),
+							message.source,
+						);
 					}
 				},
 				_ => {},
