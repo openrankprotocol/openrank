@@ -3,7 +3,7 @@ use futures::StreamExt;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	broadcast_event, build_node,
-	db::{Db, DbError, DbItem},
+	db::{Db, DbItem},
 	topics::{Domain, Topic},
 	tx_event::TxEvent,
 	txs::{
@@ -336,18 +336,17 @@ fn node_recovery(
 ) -> Result<(), VerifierNodeError> {
 	// collect all trust update and seed update txs
 	let mut txs = Vec::new();
-	let db_iter = db.read_from_start_iter::<Tx>();
-	for maybe_entry in db_iter {
-		let (_, value) =
-			maybe_entry.map_err(|e| VerifierNodeError::DbError(DbError::RocksDB(e)))?;
-		let tx: Tx = serde_json::from_slice(&value)
-			.map_err(|e| VerifierNodeError::DbError(DbError::Serde(e)))?;
-		match tx.kind() {
-			TxKind::TrustUpdate => txs.push(tx),
-			TxKind::SeedUpdate => txs.push(tx),
-			_ => (),
-		}
-	}
+	let mut trust_update_txs: Vec<Tx> = db
+		.read_from_end(TxKind::TrustUpdate.into(), None)
+		.map_err(|e| VerifierNodeError::DbError(e))?;
+	txs.append(&mut trust_update_txs);
+	drop(trust_update_txs);
+
+	let mut seed_update_txs: Vec<Tx> = db
+		.read_from_end(TxKind::SeedUpdate.into(), None)
+		.map_err(|e| VerifierNodeError::DbError(e))?;
+	txs.append(&mut seed_update_txs);
+	drop(seed_update_txs);
 
 	// sort txs by sequence_number
 	txs.sort_unstable_by_key(|tx| tx.sequence_number());
