@@ -82,6 +82,7 @@ pub struct Tx {
 	kind: TxKind,
 	body: Vec<u8>,
 	signature: Signature,
+	sequence_number: u64,
 }
 
 impl Tx {
@@ -93,6 +94,7 @@ impl Tx {
 			kind,
 			body,
 			signature: Signature::default(),
+			sequence_number: 0,
 		}
 	}
 
@@ -124,6 +126,10 @@ impl Tx {
 		let mut prefix = kind_string.as_bytes().to_vec();
 		prefix.extend(tx_hash.0);
 		prefix
+	}
+
+	pub fn set_sequence_number(&mut self, sequence_number: u64) {
+		self.sequence_number = sequence_number
 	}
 }
 
