@@ -407,16 +407,16 @@ impl CreateScores {
     }
 }
 
-// JOB_ID = hash(domain_id, da_block_height, from)
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
 pub struct JobRunRequest {
     pub domain_id: DomainHash,
     pub block_height: u32,
+    pub job_id: Hash,
 }
 
 impl JobRunRequest {
-    pub fn new(domain_id: DomainHash, block_height: u32) -> Self {
-        Self { domain_id, block_height }
+    pub fn new(domain_id: DomainHash, block_height: u32, job_id: Hash) -> Self {
+        Self { domain_id, block_height, job_id }
     }
 }
 
