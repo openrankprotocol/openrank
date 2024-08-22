@@ -50,7 +50,7 @@ fn handle_gossipsub_events(
                     if message.topic == topic_wrapper.hash() {
                         let tx_event = TxEvent::decode(&mut message.data.as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
-                        let tx = Tx::decode(&mut tx_event.data().as_slice())
+                        let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         if tx.kind() != TxKind::TrustUpdate {
                             return Err(VerifierNodeError::InvalidTxKind);
@@ -58,6 +58,7 @@ fn handle_gossipsub_events(
                         tx.verify_against(namespace.owner())
                             .map_err(|e| VerifierNodeError::SignatureError(e))?;
                         // Add Tx to db
+                        tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                         db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
                         let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
