@@ -39,11 +39,10 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
-							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert!(tx.kind() == TxKind::JobRunRequest);
 							// Add Tx to db
-							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							JobRunRequest::decode(&mut tx.body().as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
@@ -65,11 +64,10 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
-							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::CreateCommitment);
 							// Add Tx to db
-							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 
 							let commitment = CreateCommitment::decode(&mut tx.body().as_slice())
@@ -110,11 +108,10 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
-							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::CreateScores);
 							// Add Tx to db
-							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							CreateScores::decode(&mut tx.body().as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
@@ -129,11 +126,10 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
-							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
+							let tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| BlockBuilderNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::JobVerification);
 							// Add Tx to db
-							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
 							let job_verification =
 								JobVerification::decode(&mut tx.body().as_slice())
