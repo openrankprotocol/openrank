@@ -6,13 +6,15 @@ use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
 use karyon_jsonrpc::Client;
 use openrank_common::{
     address_from_sk,
+    merkle::hash_leaf,
     topics::Domain,
     tx_event::TxEvent,
     txs::{Address, JobRunRequest, ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate, Tx, TxKind},
 };
-use rand::thread_rng;
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha3::Keccak256;
 use std::error::Error;
 use std::fs::File;
 
@@ -116,8 +118,10 @@ async fn job_run_request(sk: SigningKey) -> Result<(), Box<dyn Error>> {
     // Creates a new client
     let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
 
+    let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
-    let data = encode(JobRunRequest::new(domain_id, u32::MAX));
+    let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
+    let data = encode(JobRunRequest::new(domain_id, 0, hash));
     let mut tx = Tx::default_with(TxKind::JobRunRequest, data);
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
