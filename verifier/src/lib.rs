@@ -41,10 +41,11 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
-							let tx = Tx::decode(&mut tx_event.data().as_slice())
+							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
 							assert!(tx.kind() == TxKind::TrustUpdate);
 							// Add Tx to db
+							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
 							let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
@@ -67,10 +68,11 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
-							let tx = Tx::decode(&mut tx_event.data().as_slice())
+							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
 							assert!(tx.kind() == TxKind::SeedUpdate);
 							// Add Tx to db
+							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
 							let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
@@ -93,10 +95,11 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
-							let tx = Tx::decode(&mut tx_event.data().as_slice())
+							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::JobRunAssignment);
 							// Add Tx to db
+							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
 							// Not checking if this node is assigned for the job
 							JobRunAssignment::decode(&mut tx.body().as_slice())
@@ -135,10 +138,11 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
-							let tx = Tx::decode(&mut tx_event.data().as_slice())
+							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::CreateScores);
 							// Add Tx to db
+							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
 							let create_scores = CreateScores::decode(&mut tx.body().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
@@ -177,10 +181,11 @@ fn handle_gossipsub_events(
 						if message.topic == topic_wrapper.hash() {
 							let tx_event = TxEvent::decode(&mut message.data.as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
-							let tx = Tx::decode(&mut tx_event.data().as_slice())
+							let mut tx = Tx::decode(&mut tx_event.data().as_slice())
 								.map_err(|e| VerifierNodeError::SerdeError(e))?;
 							assert_eq!(tx.kind(), TxKind::CreateCommitment);
 							// Add Tx to db
+							tx.set_sequence_number(message.sequence_number.unwrap_or_default());
 							db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
 							let create_commitment =
 								CreateCommitment::decode(&mut tx.body().as_slice())
