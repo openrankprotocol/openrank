@@ -244,17 +244,32 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 fn node_recovery(
 	job_runner: &mut ComputeJobRunner, db: &Db, config: &Config,
 ) -> Result<(), ComputeNodeError> {
+	// collect all trust update and seed update txs
+	let mut txs = Vec::new();
 	let db_iter = db.read_from_start_iter::<Tx>();
 	for maybe_entry in db_iter {
 		let (_, value) = maybe_entry.map_err(|e| ComputeNodeError::DbError(DbError::RocksDB(e)))?;
 		let tx: Tx = serde_json::from_slice(&value)
 			.map_err(|e| ComputeNodeError::DbError(DbError::Serde(e)))?;
 		match tx.kind() {
+			TxKind::TrustUpdate => txs.push(tx),
+			TxKind::SeedUpdate => txs.push(tx),
+			_ => (),
+		}
+	}
+
+	// sort txs by sequence_number
+	txs.sort_unstable_by_key(|tx| tx.sequence_number());
+
+	// update job runner
+	for tx in txs {
+		match tx.kind() {
 			TxKind::TrustUpdate => job_runner_update_trust_update(job_runner, &config.domains, tx)?,
 			TxKind::SeedUpdate => job_runner_update_seed_update(job_runner, &config.domains, tx)?,
 			_ => (),
 		}
 	}
+
 	Ok(())
 }
 
