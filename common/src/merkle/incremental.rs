@@ -43,7 +43,7 @@ where
 		Self { nodes: default.clone(), default, num_levels, _h: PhantomData }
 	}
 
-	/// Insert a single leaf to tree.	
+	/// Insert a single leaf to tree.
 	pub fn insert_leaf(&mut self, index: u32, leaf: Hash) {
 		let max_size = 2u32.pow(self.num_levels as u32) - 1;
 		assert!(index < max_size);

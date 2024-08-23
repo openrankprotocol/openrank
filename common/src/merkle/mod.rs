@@ -28,6 +28,7 @@ impl Hash {
 	}
 }
 
+/// Converts given index to the next index.
 fn next_index(i: u32) -> u32 {
 	if i % 2 == 1 {
 		(i - 1) / 2
@@ -54,6 +55,7 @@ pub fn num_to_bits_vec(num: u32) -> Vec<bool> {
 	sliced_bits
 }
 
+/// Computes the hash from two hashes.
 pub fn hash_two<H: Digest>(left: Hash, right: Hash) -> Hash {
 	let mut hasher = H::new();
 	hasher.update(left.0);
@@ -64,6 +66,7 @@ pub fn hash_two<H: Digest>(left: Hash, right: Hash) -> Hash {
 	Hash(bytes)
 }
 
+/// Hashes the given data(`Vec<u8>`).
 pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
 	let mut hasher = H::new();
 	hasher.update(preimage);
@@ -74,8 +77,11 @@ pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
 }
 
 #[derive(Debug)]
+/// An error type for the merkle tree.
 pub enum MerkleError {
+	/// The root of the merkle tree is not found.
 	RootNotFound,
+	/// The nodes are not found in the merkle tree.
 	NodesNotFound,
 }
 
