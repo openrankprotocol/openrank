@@ -23,11 +23,12 @@ impl<H> DenseIncrementalMerkleTree<H>
 where
 	H: Digest,
 {
+	/// Get the root of the tree
 	pub fn root(&self) -> Result<Hash, MerkleError> {
 		self.nodes.get(&(self.num_levels, 0)).map(|h| h.clone()).ok_or(MerkleError::RootNotFound)
 	}
 
-	/// Build a MerkleTree from given leaf nodes and height
+	/// Build a MerkleTree from given height(num_levels)
 	pub fn new(num_levels: u8) -> Self {
 		let mut default: HashMap<(u8, u32), Hash> = HashMap::new();
 		default.insert((0, 0), Hash::default());
@@ -42,6 +43,7 @@ where
 		Self { nodes: default.clone(), default, num_levels, _h: PhantomData }
 	}
 
+	/// Insert a single leaf to tree.	
 	pub fn insert_leaf(&mut self, index: u32, leaf: Hash) {
 		let max_size = 2u32.pow(self.num_levels as u32) - 1;
 		assert!(index < max_size);
@@ -70,6 +72,7 @@ where
 		}
 	}
 
+	/// Insert multiple leaves to tree.
 	pub fn insert_batch(&mut self, mut index: u32, leaves: Vec<Hash>) {
 		for leaf in leaves {
 			self.insert_leaf(index, leaf);
