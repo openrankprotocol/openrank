@@ -5,7 +5,8 @@ An implementation of reputation computer network
 
 ## Introduction
 
-OpenRank is a decentralized platform for allowing the users build & use the reputation system. The project utilizes a peer-to-peer network, built using the libp2p library, to enable communication and data sharing between nodes.
+OpenRank is a decentralized platform for allowing the users build & use the reputation system. The project utilizes a peer-to-peer network, built using the libp2p library, to enable communication and data sharing between nodes.  
+Visit our [site](https://openrank.com/) and read our [documentation](https://docs.openrank.com/) to learn more about the OpenRank protocol.
 
 ## Components
 
