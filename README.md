@@ -32,9 +32,7 @@ To get started with the OpenRank project, follow these steps:
 
 The OpenRank project relies on the following dependencies:
 
-- libp2p
-- tokio
-- Rust
+- libp2p, tokio, Rust, RocksDB
 
 ## License
 
