@@ -22,11 +22,18 @@ The OpenRank project consists of several components:
 
 ## Getting Started
 
-To get started with the OpenRank project, follow these steps:
+### Environment Setup
+- Rust
+- Git
+- Docker
 
+1. Install `rustup` via `./init.sh`
+2. Install `git` via `https://git-scm.com/downloads`
+3. Make sure [Docker](https://docker.com) is installed.
+
+### Compiling
 1. Clone the repository: `git clone https://github.com/openrankprotocol/openrank.git`
-2. Install `rustup` via `./init.sh`
-3. Build the docker image: `./generate-docker-compose.sh`
+2. Build the docker image: `./generate-docker-compose.sh`
 
 ## Dependencies
 
