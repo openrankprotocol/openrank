@@ -24,11 +24,12 @@ use tracing::{error, info};
 
 pub struct Sequencer {
 	sender: Sender<(Vec<u8>, Topic)>,
+	db: Db,
 }
 
 impl Sequencer {
-	pub fn new(sender: Sender<(Vec<u8>, Topic)>) -> Self {
-		Self { sender }
+	pub fn new(sender: Sender<(Vec<u8>, Topic)>, db: Db) -> Self {
+		Self { sender, db }
 	}
 }
 
@@ -135,20 +136,15 @@ impl Sequencer {
 			RPCError::ParseError("Failed to parse TX data".to_string())
 		})?;
 		let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-		let db = Db::new_read_only("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])
-			.map_err(|e| {
-				error!("{}", e);
-				RPCError::InternalError
-			})?;
 
 		let key = JobResult::construct_full_key(tx_hash);
-		let result = db.get::<JobResult>(key).map_err(|e| {
+		let result = self.db.get::<JobResult>(key).map_err(|e| {
 			error!("{}", e);
 			RPCError::InternalError
 		})?;
 		let key =
 			Tx::construct_full_key(TxKind::CreateCommitment, result.create_commitment_tx_hash);
-		let tx = db.get::<Tx>(key).map_err(|e| {
+		let tx = self.db.get::<Tx>(key).map_err(|e| {
 			error!("{}", e);
 			RPCError::InternalError
 		})?;
@@ -160,7 +156,7 @@ impl Sequencer {
 			let mut create_scores_tx = Vec::new();
 			for tx_hash in commitment.scores_tx_hashes.into_iter() {
 				let key = Tx::construct_full_key(TxKind::CreateScores, tx_hash);
-				let tx = db.get::<Tx>(key).map_err(|e| {
+				let tx = self.db.get::<Tx>(key).map_err(|e| {
 					error!("{}", e);
 					RPCError::InternalError
 				})?;
@@ -199,7 +195,7 @@ impl Sequencer {
 			let mut verification_resutls_tx = Vec::new();
 			for tx_hash in result.job_verification_tx_hashes.iter() {
 				let key = Tx::construct_full_key(TxKind::JobVerification, tx_hash.clone());
-				let tx = db.get::<Tx>(key).map_err(|e| {
+				let tx = self.db.get::<Tx>(key).map_err(|e| {
 					error!("{}", e);
 					RPCError::InternalError
 				})?;
@@ -238,8 +234,14 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 	swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
 	swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
 
+	let db = Db::new_secondary(
+		"./local-storage",
+		"./local-secondary-storage",
+		&[&Tx::get_cf(), &JobResult::get_cf()],
+	)?;
+
 	let (sender, mut receiver) = mpsc::channel(100);
-	let sequencer = Arc::new(Sequencer::new(sender.clone()));
+	let sequencer = Arc::new(Sequencer::new(sender.clone(), db));
 	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 	server.start();
 

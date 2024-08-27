@@ -62,6 +62,19 @@ impl Db {
 		Ok(Self { connection: db })
 	}
 
+	pub fn new_secondary(
+		primary_path: &str, secondary_path: &str, cfs: &[&str],
+	) -> Result<Self, DbError> {
+		assert!(primary_path.ends_with("-storage"));
+		assert!(secondary_path.ends_with("-storage"));
+		let mut opts = Options::default();
+		opts.create_if_missing(true);
+		opts.create_missing_column_families(true);
+		let db = DB::open_cf_as_secondary(&opts, primary_path, secondary_path, cfs)
+			.map_err(|e| DbError::RocksDB(e))?;
+		Ok(Self { connection: db })
+	}
+
 	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
 		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
 		let key = item.get_full_key();
