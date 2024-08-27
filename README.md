@@ -35,12 +35,6 @@ The OpenRank project consists of several components:
 1. Clone the repository: `git clone https://github.com/openrankprotocol/openrank.git`
 2. Build the docker image: `./generate-docker-compose.sh`
 
-## Dependencies
-
-The OpenRank project relies on the following dependencies:
-
-- libp2p, tokio, Rust, RocksDB
-
 ## License
 
 The OpenRank project is licensed under MIT License.
