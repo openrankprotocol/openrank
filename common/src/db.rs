@@ -54,11 +54,8 @@ impl Db {
 
 	pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
 		assert!(path.ends_with("-storage"));
-		let mut opts = Options::default();
-		opts.create_if_missing(true);
-		opts.create_missing_column_families(true);
-		let db =
-			DB::open_cf_for_read_only(&opts, path, cfs, false).map_err(|e| DbError::RocksDB(e))?;
+		let db = DB::open_cf_for_read_only(&Options::default(), path, cfs, false)
+			.map_err(|e| DbError::RocksDB(e))?;
 		Ok(Self { connection: db })
 	}
 
@@ -67,10 +64,7 @@ impl Db {
 	) -> Result<Self, DbError> {
 		assert!(primary_path.ends_with("-storage"));
 		assert!(secondary_path.ends_with("-storage"));
-		let mut opts = Options::default();
-		opts.create_if_missing(true);
-		opts.create_missing_column_families(true);
-		let db = DB::open_cf_as_secondary(&opts, primary_path, secondary_path, cfs)
+		let db = DB::open_cf_as_secondary(&Options::default(), primary_path, secondary_path, cfs)
 			.map_err(|e| DbError::RocksDB(e))?;
 		Ok(Self { connection: db })
 	}

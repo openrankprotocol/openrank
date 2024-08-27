@@ -41,7 +41,7 @@ pub struct Config {
 }
 
 async fn update_trust() -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/trust-db.csv")?;
+	let f = File::open("./trust-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {
@@ -70,7 +70,7 @@ async fn update_trust() -> Result<(), Box<dyn Error>> {
 }
 
 async fn update_seed() -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/seed-db.csv")?;
+	let f = File::open("./seed-db.csv")?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {

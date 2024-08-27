@@ -1,7 +1,7 @@
 use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use karyon_jsonrpc::{rpc_impl, RPCError, Server};
-use libp2p::{gossipsub, mdns, swarm::SwarmEvent};
+use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
 	build_node,
 	db::{Db, DbItem},
@@ -12,13 +12,13 @@ use openrank_common::{
 		CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry, SeedUpdate,
 		TrustUpdate, Tx, TxHash, TxKind,
 	},
-	MyBehaviourEvent,
+	MyBehaviour, MyBehaviourEvent,
 };
 use serde_json::Value;
 use std::{cmp::Ordering, error::Error, sync::Arc};
 use tokio::{
 	select,
-	sync::mpsc::{self, Sender},
+	sync::mpsc::{self, Receiver, Sender},
 };
 use tracing::{error, info};
 
@@ -226,56 +226,67 @@ impl Sequencer {
 	}
 }
 
-pub async fn run() -> Result<(), Box<dyn Error>> {
-	let mut swarm = build_node().await?;
-	info!("PEER_ID: {:?}", swarm.local_peer_id());
+pub struct SequencerNode {
+	swarm: Swarm<MyBehaviour>,
+	server: Arc<Server>,
+	receiver: Receiver<(Vec<u8>, Topic)>,
+}
 
-	// Listen on all interfaces and whatever port the OS assigns
-	swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
-	swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
+impl SequencerNode {
+	pub async fn init() -> Result<Self, Box<dyn Error>> {
+		let swarm = build_node().await?;
+		info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-	let db = Db::new_secondary(
-		"./local-storage",
-		"./local-secondary-storage",
-		&[&Tx::get_cf(), &JobResult::get_cf()],
-	)?;
+		let db = Db::new_secondary(
+			"./local-storage",
+			"./local-secondary-storage",
+			&[&Tx::get_cf(), &JobResult::get_cf()],
+		)?;
+		let (sender, receiver) = mpsc::channel(100);
+		let sequencer = Arc::new(Sequencer::new(sender.clone(), db));
+		let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 
-	let (sender, mut receiver) = mpsc::channel(100);
-	let sequencer = Arc::new(Sequencer::new(sender.clone(), db));
-	let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
-	server.start();
+		Ok(Self { swarm, server, receiver })
+	}
 
-	// Kick it off
-	loop {
-		select! {
-			sibling = receiver.recv() => {
-				if let Some((data, topic)) = sibling {
-					let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-					info!("PUBLISH: {:?}", topic.clone());
-					if let Err(e) =
-					   swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
-					{
-					   error!("Publish error: {e:?}");
+	pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+		// Listen on all interfaces and whatever port the OS assigns
+		self.swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
+		self.swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
+		self.server.start();
+
+		// Kick it off
+		loop {
+			select! {
+				sibling = self.receiver.recv() => {
+					if let Some((data, topic)) = sibling {
+						let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+						info!("PUBLISH: {:?}", topic.clone());
+						if let Err(e) =
+						   self.swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
+						{
+						   error!("Publish error: {e:?}");
+						}
 					}
 				}
-			}
-			event = swarm.select_next_some() => match event {
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-					for (peer_id, _multiaddr) in list {
-						info!("mDNS discovered a new peer: {peer_id}");
-						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-					}
-				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-					for (peer_id, _multiaddr) in list {
-						info!("mDNS discover peer has expired: {peer_id}");
-						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-					}
-				},
-				SwarmEvent::NewListenAddr { address, .. } => {
-					info!("Local node is listening on {address}");
-				},
-				e => info!("{:?}", e),
+				event = self.swarm.select_next_some() => match event {
+					SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+						for (peer_id, _multiaddr) in list {
+							info!("mDNS discovered a new peer: {peer_id}");
+							self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+						}
+					},
+					SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+						for (peer_id, _multiaddr) in list {
+							info!("mDNS discover peer has expired: {peer_id}");
+							self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+						}
+					},
+					SwarmEvent::NewListenAddr { address, .. } => {
+						info!("Local node is listening on {address}");
+					},
+					e => info!("{:?}", e),
+				}
 			}
 		}
 	}

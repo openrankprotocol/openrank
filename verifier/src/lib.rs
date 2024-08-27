@@ -225,171 +225,191 @@ fn handle_gossipsub_events(
 	Ok(())
 }
 
-pub async fn run() -> Result<(), Box<dyn Error>> {
-	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+pub struct VerifierNode {
+	swarm: Swarm<MyBehaviour>,
+	config: Config,
+	db: Db,
+	job_runner: VerificationJobRunner,
+}
 
-	let mut swarm = build_node().await?;
-	info!("PEER_ID: {:?}", swarm.local_peer_id());
+impl VerifierNode {
+	pub async fn init() -> Result<Self, Box<dyn Error>> {
+		tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
-	let config: Config = toml::from_str(include_str!("../config.toml"))?;
-	let db = Db::new("./local-storage", &[&Tx::get_cf()])?;
-	let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
-	let mut job_runner = VerificationJobRunner::new(domain_hashes);
+		let swarm = build_node().await?;
+		info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-	let topics_trust_update: Vec<Topic> = config
-		.domains
-		.clone()
-		.into_iter()
-		.map(|x| x.trust_namespace())
-		.map(|namespace| Topic::NamespaceTrustUpdate(namespace.clone()))
-		.collect();
-	let topics_seed_update: Vec<Topic> = config
-		.domains
-		.clone()
-		.into_iter()
-		.map(|x| x.seed_namespace())
-		.map(|namespace| Topic::NamespaceSeedUpdate(namespace.clone()))
-		.collect();
-	let topics_assignment: Vec<Topic> = config
-		.domains
-		.clone()
-		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
-		.collect();
-	let topics_scores: Vec<Topic> = config
-		.domains
-		.clone()
-		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
-		.collect();
-	let topics_commitment: Vec<Topic> = config
-		.domains
-		.clone()
-		.into_iter()
-		.map(|x| x.to_hash())
-		.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
-		.collect();
+		let config: Config = toml::from_str(include_str!("../config.toml"))?;
+		let db = Db::new("./local-storage", &[&Tx::get_cf()])?;
+		let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
+		let job_runner = VerificationJobRunner::new(domain_hashes);
 
-	let iter_chain = topics_assignment
-		.iter()
-		.chain(&topics_trust_update)
-		.chain(&topics_seed_update)
-		.chain(&topics_scores)
-		.chain(&topics_commitment)
-		.chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]);
-	for topic in iter_chain.clone() {
-		// Create a Gossipsub topic
-		let topic = gossipsub::IdentTopic::new(topic.clone());
-		// subscribes to our topic
-		swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+		Ok(Self { swarm, config, db, job_runner })
 	}
 
-	node_recovery(&mut job_runner, &db, &config)?;
+	/// Recover JobRunner state from DB.
+	///
+	/// - Load all the TXs from the DB
+	/// - Just take TrustUpdate and SeedUpdate transactions
+	/// - Update JobRunner using functions update_trust, update_seed
+	pub fn node_recovery(&mut self) -> Result<(), VerifierNodeError> {
+		// collect all trust update and seed update txs
+		let mut txs = Vec::new();
+		let mut trust_update_txs: Vec<Tx> = self
+			.db
+			.read_from_end(TxKind::TrustUpdate.into(), None)
+			.map_err(|e| VerifierNodeError::DbError(e))?;
+		txs.append(&mut trust_update_txs);
+		drop(trust_update_txs);
 
-	// Listen on all interfaces and whatever port the OS assigns
-	swarm.listen_on("/ip4/0.0.0.0/udp/11001/quic-v1".parse()?)?;
-	swarm.listen_on("/ip4/0.0.0.0/tcp/11001".parse()?)?;
+		let mut seed_update_txs: Vec<Tx> = self
+			.db
+			.read_from_end(TxKind::SeedUpdate.into(), None)
+			.map_err(|e| VerifierNodeError::DbError(e))?;
+		txs.append(&mut seed_update_txs);
+		drop(seed_update_txs);
 
-	// Kick it off
-	loop {
-		select! {
-			event = swarm.select_next_some() => match event {
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-					for (peer_id, _multiaddr) in list {
-						info!("mDNS discovered a new peer: {peer_id}");
-						swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-					}
+		// sort txs by sequence_number
+		txs.sort_unstable_by_key(|tx| tx.sequence_number());
+
+		// update job runner
+		for tx in txs {
+			match tx.kind() {
+				TxKind::TrustUpdate => {
+					let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
+						.map_err(|e| VerifierNodeError::SerdeError(e))?;
+					let namespace = trust_update.trust_id;
+					let domain = self
+						.config
+						.domains
+						.iter()
+						.find(|x| &x.trust_namespace() == &namespace)
+						.ok_or(VerifierNodeError::DomainNotFound(
+							namespace.clone().to_hex(),
+						))?;
+					self.job_runner
+						.update_trust(domain.clone(), trust_update.entries.clone())
+						.map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
 				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-					for (peer_id, _multiaddr) in list {
-						info!("mDNS discover peer has expired: {peer_id}");
-						swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-					}
+				TxKind::SeedUpdate => {
+					let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
+						.map_err(|e| VerifierNodeError::SerdeError(e))?;
+					let namespace = seed_update.seed_id;
+					let domain = self
+						.config
+						.domains
+						.iter()
+						.find(|x| &x.seed_namespace() == &namespace)
+						.ok_or(VerifierNodeError::DomainNotFound(
+							namespace.clone().to_hex(),
+						))?;
+					self.job_runner
+						.update_seed(domain.clone(), seed_update.entries.clone())
+						.map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
 				},
-				SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-					match handle_gossipsub_events(&mut swarm, &mut job_runner, &db, event, iter_chain.clone().collect(), config.domains.clone()) {
-						Ok(_) => {},
-						Err(e) => {
+				_ => (),
+			}
+		}
+
+		Ok(())
+	}
+
+	pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+		let topics_trust_update: Vec<Topic> = self
+			.config
+			.domains
+			.clone()
+			.into_iter()
+			.map(|x| x.trust_namespace())
+			.map(|namespace| Topic::NamespaceTrustUpdate(namespace.clone()))
+			.collect();
+		let topics_seed_update: Vec<Topic> = self
+			.config
+			.domains
+			.clone()
+			.into_iter()
+			.map(|x| x.seed_namespace())
+			.map(|namespace| Topic::NamespaceSeedUpdate(namespace.clone()))
+			.collect();
+		let topics_assignment: Vec<Topic> = self
+			.config
+			.domains
+			.clone()
+			.into_iter()
+			.map(|x| x.to_hash())
+			.map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+			.collect();
+		let topics_scores: Vec<Topic> = self
+			.config
+			.domains
+			.clone()
+			.into_iter()
+			.map(|x| x.to_hash())
+			.map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+			.collect();
+		let topics_commitment: Vec<Topic> = self
+			.config
+			.domains
+			.clone()
+			.into_iter()
+			.map(|x| x.to_hash())
+			.map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
+			.collect();
+
+		let iter_chain = topics_assignment
+			.iter()
+			.chain(&topics_trust_update)
+			.chain(&topics_seed_update)
+			.chain(&topics_scores)
+			.chain(&topics_commitment)
+			.chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]);
+		for topic in iter_chain.clone() {
+			// Create a Gossipsub topic
+			let topic = gossipsub::IdentTopic::new(topic.clone());
+			// subscribes to our topic
+			self.swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+		}
+
+		// Listen on all interfaces and whatever port the OS assigns
+		self.swarm.listen_on("/ip4/0.0.0.0/udp/11001/quic-v1".parse()?)?;
+		self.swarm.listen_on("/ip4/0.0.0.0/tcp/11001".parse()?)?;
+
+		// Kick it off
+		loop {
+			select! {
+				event = self.swarm.select_next_some() => match event {
+					SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+						for (peer_id, _multiaddr) in list {
+							info!("mDNS discovered a new peer: {peer_id}");
+							self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+						}
+					},
+					SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+						for (peer_id, _multiaddr) in list {
+							info!("mDNS discover peer has expired: {peer_id}");
+							self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+						}
+					},
+					SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
+						let res = handle_gossipsub_events(
+							&mut self.swarm,
+							&mut self.job_runner,
+							&self.db,
+							event,
+							iter_chain.clone().collect(),
+							self.config.domains.clone()
+						);
+						if let Err(e) = res {
 							error!("Failed to handle gossipsub event: {e:?}");
 							continue;
-						},
+						}
+					},
+					SwarmEvent::NewListenAddr { address, .. } => {
+						info!("Local node is listening on {address}");
 					}
-				},
-				SwarmEvent::NewListenAddr { address, .. } => {
-					info!("Local node is listening on {address}");
+					e => info!("{:?}", e),
 				}
-				e => info!("{:?}", e),
 			}
 		}
 	}
-}
-
-/// Recover JobRunner state from DB.
-///
-/// - Load all the TXs from the DB
-/// - Just take TrustUpdate and SeedUpdate transactions
-/// - Update JobRunner using functions update_trust, update_seed
-fn node_recovery(
-	job_runner: &mut VerificationJobRunner, db: &Db, config: &Config,
-) -> Result<(), VerifierNodeError> {
-	// collect all trust update and seed update txs
-	let mut txs = Vec::new();
-	let mut trust_update_txs: Vec<Tx> = db
-		.read_from_end(TxKind::TrustUpdate.into(), None)
-		.map_err(|e| VerifierNodeError::DbError(e))?;
-	txs.append(&mut trust_update_txs);
-	drop(trust_update_txs);
-
-	let mut seed_update_txs: Vec<Tx> = db
-		.read_from_end(TxKind::SeedUpdate.into(), None)
-		.map_err(|e| VerifierNodeError::DbError(e))?;
-	txs.append(&mut seed_update_txs);
-	drop(seed_update_txs);
-
-	// sort txs by sequence_number
-	txs.sort_unstable_by_key(|tx| tx.sequence_number());
-
-	// update job runner
-	for tx in txs {
-		match tx.kind() {
-			TxKind::TrustUpdate => job_runner_update_trust_update(job_runner, &config.domains, tx)?,
-			TxKind::SeedUpdate => job_runner_update_seed_update(job_runner, &config.domains, tx)?,
-			_ => (),
-		}
-	}
-
-	Ok(())
-}
-
-fn job_runner_update_trust_update(
-	job_runner: &mut VerificationJobRunner, domains: &Vec<Domain>, tx: Tx,
-) -> Result<(), VerifierNodeError> {
-	let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
-		.map_err(|e| VerifierNodeError::SerdeError(e))?;
-	let namespace = trust_update.trust_id;
-	let domain = domains.iter().find(|x| &x.trust_namespace() == &namespace).ok_or(
-		VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
-	)?;
-	job_runner
-		.update_trust(domain.clone(), trust_update.entries.clone())
-		.map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
-
-	Ok(())
-}
-
-fn job_runner_update_seed_update(
-	job_runner: &mut VerificationJobRunner, domains: &Vec<Domain>, tx: Tx,
-) -> Result<(), VerifierNodeError> {
-	let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
-		.map_err(|e| VerifierNodeError::SerdeError(e))?;
-	let namespace = seed_update.seed_id;
-	let domain = domains.iter().find(|x| &x.seed_namespace() == &namespace).ok_or(
-		VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
-	)?;
-	job_runner
-		.update_seed(domain.clone(), seed_update.entries.clone())
-		.map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
-	Ok(())
 }

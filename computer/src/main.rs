@@ -1,7 +1,9 @@
-use openrank_computer;
+use openrank_computer::ComputerNode;
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-	openrank_computer::run().await
+	let mut computer = ComputerNode::init().await?;
+	computer.node_recovery()?;
+	computer.run().await
 }
