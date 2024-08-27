@@ -17,7 +17,7 @@ The OpenRank project consists of several components:
 - **Computer** : Performs computations and generates results. (Located in `./computer`)
 - **Verifier** : Responsible for verifying the integrity of data and ensuring the correctness of computations. (Located in `./verifier`)
 - **Common** : Includes algorithm & data structure needed for the project.  (Located in `./common`)
-- **DA(Data Access)** : DA wrapper for openrank codebase (Located in `./da`)
+- **DA(Data Availability)** : DA interface for openrank codebase (Located in `./da`)
 - **Openrank-SDK** : Handles the build & run of RPC client for OpenRank (Located in `./openrank-sdk`)
 
 ## Getting Started
