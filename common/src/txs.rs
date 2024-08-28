@@ -187,6 +187,10 @@ impl Tx {
     pub fn set_sequence_number(&mut self, sequence_number: u64) {
         self.sequence_number = Some(sequence_number);
     }
+
+    pub fn sequence_number(&self) -> u64 {
+        self.sequence_number.unwrap_or_default()
+    }
 }
 
 impl DbItem for Tx {

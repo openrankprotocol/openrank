@@ -316,6 +316,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         // subscribes to our topic
         swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
     }
+    node_recovery(&mut job_runner, &db, &config)?;
 
     // Listen on all interfaces and whatever port the OS assigns
     swarm.listen_on("/ip4/0.0.0.0/udp/11001/quic-v1".parse()?)?;
@@ -363,4 +364,72 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             }
         }
     }
+}
+
+/// Recover JobRunner state from DB.
+///
+/// - Load all the TXs from the DB
+/// - Just take TrustUpdate and SeedUpdate transactions
+/// - Update JobRunner using functions update_trust, update_seed
+fn node_recovery(
+    job_runner: &mut VerificationJobRunner, db: &Db, config: &Config,
+) -> Result<(), VerifierNodeError> {
+    // collect all trust update and seed update txs
+    let mut txs = Vec::new();
+    let mut trust_update_txs: Vec<Tx> = db
+        .read_from_end(TxKind::TrustUpdate.into(), None)
+        .map_err(|e| VerifierNodeError::DbError(e))?;
+    txs.append(&mut trust_update_txs);
+    drop(trust_update_txs);
+
+    let mut seed_update_txs: Vec<Tx> = db
+        .read_from_end(TxKind::SeedUpdate.into(), None)
+        .map_err(|e| VerifierNodeError::DbError(e))?;
+    txs.append(&mut seed_update_txs);
+    drop(seed_update_txs);
+
+    // sort txs by sequence_number
+    txs.sort_unstable_by_key(|tx| tx.sequence_number());
+
+    // update job runner
+    for tx in txs {
+        match tx.kind() {
+            TxKind::TrustUpdate => job_runner_update_trust_update(job_runner, &config.domains, tx)?,
+            TxKind::SeedUpdate => job_runner_update_seed_update(job_runner, &config.domains, tx)?,
+            _ => (),
+        }
+    }
+
+    Ok(())
+}
+
+fn job_runner_update_trust_update(
+    job_runner: &mut VerificationJobRunner, domains: &Vec<Domain>, tx: Tx,
+) -> Result<(), VerifierNodeError> {
+    let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
+        .map_err(|e| VerifierNodeError::DecodeError(e))?;
+    let namespace = trust_update.trust_id;
+    let domain = domains.iter().find(|x| &x.trust_namespace() == &namespace).ok_or(
+        VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
+    )?;
+    job_runner
+        .update_trust(domain.clone(), trust_update.entries.clone())
+        .map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
+
+    Ok(())
+}
+
+fn job_runner_update_seed_update(
+    job_runner: &mut VerificationJobRunner, domains: &Vec<Domain>, tx: Tx,
+) -> Result<(), VerifierNodeError> {
+    let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
+        .map_err(|e| VerifierNodeError::DecodeError(e))?;
+    let namespace = seed_update.seed_id;
+    let domain = domains.iter().find(|x| &x.seed_namespace() == &namespace).ok_or(
+        VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
+    )?;
+    job_runner
+        .update_seed(domain.clone(), seed_update.entries.clone())
+        .map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
+    Ok(())
 }
