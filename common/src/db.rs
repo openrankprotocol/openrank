@@ -3,6 +3,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::usize;
 
 #[derive(Debug)]
 pub enum DbError {
@@ -83,8 +84,9 @@ impl Db {
 
 	/// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
 	pub fn read_from_end<I: DbItem + DeserializeOwned>(
-		&self, num_elements: usize, prefix: String,
+		&self, prefix: String, num_elements: Option<usize>,
 	) -> Result<Vec<I>, DbError> {
+		let num_elements = num_elements.unwrap_or(usize::MAX);
 		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
 		let iter = self.connection.prefix_iterator_cf(&cf, prefix);
 		let mut elements = Vec::new();
@@ -126,9 +128,9 @@ mod test {
 		db.put(tx3.clone()).unwrap();
 
 		// FIX: Test fails if you specify reading more than 1 item for a single prefix
-		let items1 = db.read_from_end::<Tx>(1, TxKind::JobRunRequest.into()).unwrap();
-		let items2 = db.read_from_end::<Tx>(1, TxKind::JobRunAssignment.into()).unwrap();
-		let items3 = db.read_from_end::<Tx>(1, TxKind::JobVerification.into()).unwrap();
+		let items1 = db.read_from_end::<Tx>(TxKind::JobRunRequest.into(), Some(1)).unwrap();
+		let items2 = db.read_from_end::<Tx>(TxKind::JobRunAssignment.into(), Some(1)).unwrap();
+		let items3 = db.read_from_end::<Tx>(TxKind::JobVerification.into(), Some(1)).unwrap();
 		assert_eq!(vec![tx1], items1);
 		assert_eq!(vec![tx2], items2);
 		assert_eq!(vec![tx3], items3);
