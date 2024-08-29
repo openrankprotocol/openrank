@@ -4,9 +4,11 @@ use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 
+/// Proof of tx inclusion in block
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct InclusionProof([u8; 32]);
 
+/// Transaction event which includes proof of inclusion and custom data
 #[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct TxEvent {
 	// Supposed to be block height

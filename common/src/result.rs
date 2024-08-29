@@ -2,6 +2,7 @@ use crate::{db::DbItem, txs::TxHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 
+/// Combination of several tx hashes representing the result of a job run by `Computer`
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct JobResult {
 	pub create_commitment_tx_hash: TxHash,

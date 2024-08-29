@@ -7,12 +7,14 @@ use std::{
 	hash::{DefaultHasher, Hasher},
 };
 
+/// Hash(u64) of the [Domain]
 #[derive(
 	Clone, Debug, Default, Hash, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize,
 )]
 pub struct DomainHash(u64);
 
 impl DomainHash {
+	/// Convert the hash value to a hex string
 	pub fn to_hex(self) -> String {
 		hex::encode(self.0.to_be_bytes())
 	}
@@ -21,6 +23,7 @@ impl DomainHash {
 impl FromHex for DomainHash {
 	type Error = hex::FromHexError;
 
+	/// Convert a hex string to a [DomainHash]
 	fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
 		Ok(DomainHash(u64::from_be_bytes(<[u8; 8]>::from_hex(hex)?)))
 	}
@@ -76,6 +79,7 @@ impl Domain {
 	}
 }
 
+/// Topics for openrank p2p node gossipsub events
 #[derive(Clone, Debug)]
 pub enum Topic {
 	NamespaceTrustUpdate(OwnedNamespace),
