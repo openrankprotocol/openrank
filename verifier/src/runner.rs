@@ -13,6 +13,7 @@ use std::{
 	fmt::{Display, Formatter, Result as FmtResult},
 };
 
+/// Struct containing the state of the verification job runner
 pub struct VerificationJobRunner {
 	count: HashMap<DomainHash, u32>,
 	indices: HashMap<DomainHash, HashMap<Address, u32>>,
@@ -67,6 +68,7 @@ impl VerificationJobRunner {
 		}
 	}
 
+	/// Update the trees for certain domain, with the given trust entries
 	pub fn update_trust(
 		&mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
 	) -> Result<(), JobRunnerError> {
@@ -133,6 +135,7 @@ impl VerificationJobRunner {
 		Ok(())
 	}
 
+	/// Update the trees for certain domain, with the given seed entries
 	pub fn update_seed(
 		&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
 	) -> Result<(), JobRunnerError> {
@@ -183,6 +186,7 @@ impl VerificationJobRunner {
 		Ok(())
 	}
 
+	/// Check if the score tx hashes of the given commitment exists in the `create_scores` of certain domain
 	pub fn check_scores_tx_hashes(
 		&self, domain: Domain, commitment: CreateCommitment,
 	) -> Result<bool, JobRunnerError> {
@@ -198,6 +202,7 @@ impl VerificationJobRunner {
 		Ok(true)
 	}
 
+	/// Get the list of completed job/assignments for certain domain
 	pub fn check_finished_jobs(
 		&mut self, domain: Domain,
 	) -> Result<Vec<(TxHash, bool)>, JobRunnerError> {
@@ -235,6 +240,7 @@ impl VerificationJobRunner {
 		Ok(results)
 	}
 
+	/// Add a new scores of certain transaction, for certain domain
 	pub fn update_scores(
 		&mut self, domain: Domain, tx_hash: TxHash, create_scores: CreateScores,
 	) -> Result<(), JobRunnerError> {
@@ -245,6 +251,7 @@ impl VerificationJobRunner {
 		Ok(())
 	}
 
+	/// Add a new assignment of certain job/assignment, for certain domain
 	pub fn update_assigment(
 		&mut self, domain: Domain, job_run_assignment_tx_hash: TxHash,
 	) -> Result<(), JobRunnerError> {
@@ -258,6 +265,7 @@ impl VerificationJobRunner {
 		Ok(())
 	}
 
+	/// Add a new commitment of certain job/assignment
 	pub fn update_commitment(&mut self, commitment: CreateCommitment) {
 		self.commitments.insert(
 			commitment.job_run_assignment_tx_hash.clone(),
@@ -265,6 +273,7 @@ impl VerificationJobRunner {
 		);
 	}
 
+	/// Build the compute tree of certain job/assignment, for certain domain
 	pub fn create_compute_tree(
 		&mut self, domain: Domain, assignment_id: TxHash,
 	) -> Result<(), JobRunnerError> {
@@ -300,6 +309,7 @@ impl VerificationJobRunner {
 		Ok(())
 	}
 
+	/// Get the verification result(True or False) of certain job/assignment, for certain domain
 	pub fn compute_verification(
 		&mut self, domain: Domain, assignment_id: TxHash,
 	) -> Result<bool, JobRunnerError> {
@@ -348,6 +358,7 @@ impl VerificationJobRunner {
 			.map_err(|e| JobRunnerError::ComputeAlgoError(e))
 	}
 
+	/// Get the local trust tree root and compute tree root of certain job/assignment, for certain domain
 	pub fn get_root_hashes(
 		&self, domain: Domain, assignment_id: TxHash,
 	) -> Result<(Hash, Hash), JobRunnerError> {

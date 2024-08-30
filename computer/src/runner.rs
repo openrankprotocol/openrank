@@ -13,7 +13,7 @@ use std::{
 	fmt::{Display, Formatter, Result as FmtResult},
 };
 
-/// Struct containing the state of the job runner
+/// Struct containing the state of the computer job runner
 pub struct ComputeJobRunner {
 	count: HashMap<DomainHash, u32>,
 	indices: HashMap<DomainHash, HashMap<Address, u32>>,
