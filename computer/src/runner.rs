@@ -13,6 +13,7 @@ use std::{
 	fmt::{Display, Formatter, Result as FmtResult},
 };
 
+/// Struct containing the state of the job runner
 pub struct ComputeJobRunner {
 	count: HashMap<DomainHash, u32>,
 	indices: HashMap<DomainHash, HashMap<Address, u32>>,
@@ -57,6 +58,7 @@ impl ComputeJobRunner {
 		}
 	}
 
+	/// Update the trees for certain domain, with the given trust entries
 	pub fn update_trust(
 		&mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
 	) -> Result<(), JobRunnerError> {
@@ -123,6 +125,7 @@ impl ComputeJobRunner {
 		Ok(())
 	}
 
+	/// Update the trees for certain domain, with the given seed entries
 	pub fn update_seed(
 		&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
 	) -> Result<(), JobRunnerError> {
@@ -173,6 +176,7 @@ impl ComputeJobRunner {
 		Ok(())
 	}
 
+	/// Compute the results for certain domain
 	pub fn compute(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
 		let lt = self
 			.local_trust
@@ -188,6 +192,7 @@ impl ComputeJobRunner {
 		Ok(())
 	}
 
+	/// Create the compute tree for certain domain
 	pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
 		let scores = self
 			.compute_results
@@ -201,6 +206,7 @@ impl ComputeJobRunner {
 		Ok(())
 	}
 
+	/// Get the create scores for certain domain
 	pub fn get_create_scores(&self, domain: Domain) -> Result<Vec<CreateScores>, JobRunnerError> {
 		let domain_indices = self
 			.indices
@@ -228,6 +234,7 @@ impl ComputeJobRunner {
 		Ok(create_scores_txs)
 	}
 
+	/// Get the local trust root hash and compute tree root hash for certain domain
 	pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), JobRunnerError> {
 		let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
 			JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
