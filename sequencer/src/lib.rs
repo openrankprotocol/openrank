@@ -34,6 +34,8 @@ impl Sequencer {
 
 #[rpc_impl]
 impl Sequencer {
+	/// Handle incoming `TrustUpdate` transactions from the network,
+	/// and forward them to the `Computer` node for processing
 	async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
 		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
 			"Failed to parse TX data as string".to_string(),
@@ -64,6 +66,8 @@ impl Sequencer {
 		Ok(tx_event_value)
 	}
 
+	/// Handle incoming `SeedUpdate` transactions from the network,
+	/// and forward them to the `Computer` node for processing
 	async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
 		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
 			"Failed to parse TX data as string".to_string(),
@@ -94,6 +98,8 @@ impl Sequencer {
 		Ok(tx_event_value)
 	}
 
+	/// Handle incoming `JobRunRequest` transactions from the network,
+	/// and forward them to the `Computer` node for processing
 	async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
 		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
 			"Failed to parse TX data as string".to_string(),
@@ -126,6 +132,7 @@ impl Sequencer {
 		Ok(tx_event_value)
 	}
 
+	/// Get the results of the `JobRunRequest` with the job run transaction hash.
 	async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
 		let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
 			"Failed to parse TX hash data as string".to_string(),
