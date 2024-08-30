@@ -47,6 +47,7 @@ pub struct Config {
 	pub sequencer: Sequencer,
 }
 
+/// Create a new `Config` from a local TOML file, given file path
 fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
 	let mut f = File::open(path)?;
 	let mut toml_config = String::new();
@@ -55,6 +56,9 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
 	Ok(config)
 }
 
+/// 1. Read a CSV file and get a list of `TrustEntry`
+/// 2. Create a new `Client`, which can be used to call the Sequencer
+/// 3. Send the list of `TrustEntry` to the Sequencer
 async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
 	let f = File::open(path)?;
 	let mut rdr = csv::Reader::from_reader(f);
@@ -85,6 +89,9 @@ async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error
 	Ok(())
 }
 
+/// 1. Read a CSV file and get a list of `ScoreEntry`
+/// 2. Create a new `Client`, which can be used to call the Sequencer
+/// 3. Send the list of `ScoreEntry` to the Sequencer
 async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
 	let f = File::open(path)?;
 	let mut rdr = csv::Reader::from_reader(f);
@@ -114,6 +121,8 @@ async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>
 	Ok(())
 }
 
+/// 1. Create a new `Client`, which can be used to call the Sequencer
+/// 2. Send a `JobRunRequest` to the Sequencer
 async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
 	let config = read_config(path)?;
 	// Creates a new client
@@ -133,6 +142,8 @@ async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
+/// 1. Create a new `Client`, which can be used to call the Sequencer
+/// 2. Call the Sequencer to get the results(`ScoreEntry`s)
 async fn get_results(
 	arg: String, path: &str,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
