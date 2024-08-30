@@ -1,5 +1,5 @@
 use alloy_rlp::encode;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use karyon_jsonrpc::Client;
 use openrank_common::{
@@ -7,7 +7,7 @@ use openrank_common::{
 	tx_event::TxEvent,
 	txs::{
 		Address, JobRunRequest, OwnedNamespace, ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate,
-		Tx, TxKind,
+		Tx, TxHash, TxKind,
 	},
 };
 use serde::{Deserialize, Serialize};
@@ -18,22 +18,20 @@ use std::{error::Error, io::Read};
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
 
-#[derive(Parser, Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, Subcommand)]
 enum Method {
-	TrustUpdate,
-	SeedUpdate,
-	JobRunRequest,
-	GetResults,
+	TrustUpdate { path: String, config_path: String, output_path: Option<String> },
+	SeedUpdate { path: String, config_path: String, output_path: Option<String> },
+	JobRunRequest { path: String, output_path: Option<String> },
+	GetResults { request_id: String, config_path: String, output_path: Option<String> },
 }
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-	#[arg(value_enum)]
+	#[command(subcommand)]
 	method: Method,
-	arg1: Option<String>,
-	arg2: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +45,24 @@ pub struct Config {
 	pub sequencer: Sequencer,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JobRunRequestResult {
+	job_run_tx_hash: TxHash,
+	tx_event: TxEvent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JobRunResults {
+	votes: Vec<bool>,
+	scores: Vec<ScoreEntry>,
+}
+
+impl JobRunRequestResult {
+	pub fn new(job_run_tx_hash: TxHash, tx_event: TxEvent) -> Self {
+		Self { job_run_tx_hash, tx_event }
+	}
+}
+
 fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
 	let mut f = File::open(path)?;
 	let mut toml_config = String::new();
@@ -55,7 +71,7 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
 	Ok(config)
 }
 
-async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+async fn update_trust(path: &str, config_path: &str) -> Result<Vec<TxEvent>, Box<dyn Error>> {
 	let f = File::open(path)?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
@@ -72,6 +88,7 @@ async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error
 	// Creates a new client
 	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 
+	let mut results = Vec::new();
 	for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
 		let data = encode(TrustUpdate::new(owned_namespace.clone(), chunk.to_vec()));
@@ -80,12 +97,12 @@ async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error
 		let result: Value = client.call("Sequencer.trust_update", hex::encode(tx)).await?;
 		let tx_event: TxEvent = serde_json::from_value(result)?;
 
-		println!("Res: {:?}", tx_event);
+		results.push(tx_event);
 	}
-	Ok(())
+	Ok(results)
 }
 
-async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+async fn update_seed(path: &str, config_path: &str) -> Result<Vec<TxEvent>, Box<dyn Error>> {
 	let f = File::open(path)?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
@@ -100,7 +117,7 @@ async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>
 	let config = read_config(config_path)?;
 	// Creates a new client
 	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
-
+	let mut results = Vec::new();
 	for chunk in entries.chunks(SEED_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
 		let data = encode(SeedUpdate::new(owned_namespace.clone(), chunk.to_vec()));
@@ -109,12 +126,12 @@ async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>
 		let result: Value = client.call("Sequencer.seed_update", hex::encode(tx)).await?;
 		let tx_event: TxEvent = serde_json::from_value(result)?;
 
-		println!("Res: {:?}", tx_event);
+		results.push(tx_event);
 	}
-	Ok(())
+	Ok(results)
 }
 
-async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
+async fn job_run_request(path: &str) -> Result<JobRunRequestResult, Box<dyn Error>> {
 	let config = read_config(path)?;
 	// Creates a new client
 	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
@@ -123,14 +140,12 @@ async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
 	let data = encode(JobRunRequest::new(domain_id, u32::MAX));
 	let tx = Tx::default_with(TxKind::JobRunRequest, data);
 	let tx_hash = tx.hash();
-	let hex_encoded_tx_hash = hex::encode(tx_hash.0);
-	println!("JobRunRequest TX_HASH: {}", hex_encoded_tx_hash);
 
 	let result: Value = client.call("Sequencer.job_run_request", hex::encode(encode(tx))).await?;
 	let tx_event: TxEvent = serde_json::from_value(result)?;
 
-	println!("Res: {:?}", tx_event);
-	Ok(())
+	let job_run_result = JobRunRequestResult::new(tx_hash, tx_event);
+	Ok(job_run_result)
 }
 
 async fn get_results(
@@ -149,52 +164,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let cli = Args::parse();
 
 	match cli.method {
-		Method::TrustUpdate => {
-			let arg1 = cli.arg1.unwrap_or_else(|| {
-				eprintln!("Missing argument");
-				std::process::exit(1);
-			});
-			let arg2 = cli.arg2.unwrap_or_else(|| {
-				eprintln!("Missing argument");
-				std::process::exit(1);
-			});
-			update_trust(arg1.as_str(), arg2.as_str()).await?;
+		Method::TrustUpdate { path, config_path, output_path } => {
+			let res = update_trust(path.as_str(), config_path.as_str()).await?;
+			if let Some(output_path) = output_path {
+				// println!("{:?}", serde_json::to_string(&res));
+			}
 		},
-		Method::SeedUpdate => {
-			let arg1 = cli.arg1.unwrap_or_else(|| {
-				eprintln!("Missing argument");
-				std::process::exit(1);
-			});
-			let arg2 = cli.arg2.unwrap_or_else(|| {
-				eprintln!("Missing argument");
-				std::process::exit(1);
-			});
-			update_seed(arg1.as_str(), arg2.as_str()).await?;
+		Method::SeedUpdate { path, config_path, output_path } => {
+			let res = update_seed(path.as_str(), config_path.as_str()).await?;
+			if let Some(output_path) = output_path {
+				// println!("{:?}", serde_json::to_string(&res));
+			}
 		},
-		Method::JobRunRequest => {
-			let arg1 = cli.arg1.unwrap_or_else(|| {
-				eprintln!("Missing argument");
-				std::process::exit(1);
-			});
-			job_run_request(arg1.as_str()).await?;
+		Method::JobRunRequest { path, output_path } => {
+			let res = job_run_request(path.as_str()).await?;
+			let hex_encoded_tx_hash = hex::encode(res.job_run_tx_hash.0);
+			println!("{}", hex_encoded_tx_hash);
+			if let Some(output_path) = output_path {
+				// println!("{:?}", serde_json::to_string(&res));
+			}
 		},
-		Method::GetResults => {
-			let arg1 = cli.arg1.unwrap_or_else(|| {
-				eprintln!("Missing argument");
-				std::process::exit(1);
-			});
-			let arg2 = cli.arg2.unwrap_or_else(|| {
-				eprintln!("Missing argument");
-				std::process::exit(1);
-			});
-			let (votes, mut results) = get_results(arg1, arg2.as_str()).await?;
-			println!("votes: {:?}", votes);
+		Method::GetResults { request_id, config_path, output_path } => {
+			let (votes, mut results) = get_results(request_id, config_path.as_str()).await?;
 			results.reverse();
-			let chunk = results.chunks(100).next();
+			let chunk = results.chunks(10).next();
 			if let Some(scores) = chunk {
 				for res in scores {
 					println!("{}: {}", res.id, res.value);
 				}
+			}
+			if let Some(output_path) = output_path {
+				// println!("{:?}", serde_json::to_string(&res));
 			}
 		},
 	}
