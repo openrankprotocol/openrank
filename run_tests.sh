@@ -1,7 +1,7 @@
 #!/bin/bash
-curl https://raw.githubusercontent.com/openrankprotocol/datasets/main/small-trust-db.csv -o trust-db.csv
+curl https://raw.githubusercontent.com/openrankprotocol/datasets/main/trust-db.csv -o trust-db.csv
 wait
-curl https://raw.githubusercontent.com/openrankprotocol/datasets/main/small-seed-db.csv -o seed-db.csv
+curl https://raw.githubusercontent.com/openrankprotocol/datasets/main/seed-db.csv -o seed-db.csv
 wait
 cargo run -p openrank-sdk trust-update -- "./trust-db.csv" "./openrank-sdk/config.toml"
 wait
@@ -14,9 +14,16 @@ wait
 RESULTS="$(cargo run -p openrank-sdk -- get-results $TX_HASH "./openrank-sdk/config.toml")"
 wait
 
-EXPECTED_RESULTS="Address(0000000200000000000000000000000000000000): 0.45882937
-Address(0000000300000000000000000000000000000000): 0.418254
-Address(0000000100000000000000000000000000000000): 0.122916676"
+EXPECTED_RESULTS="Address(00003bfd00000000000000000000000000000000): 0.41635644
+Address(0003eba300000000000000000000000000000000): 0.17619567
+Address(00043dc000000000000000000000000000000000): 0.1102105
+Address(000a27ba00000000000000000000000000000000): 0.043718923
+Address(00066a8d00000000000000000000000000000000): 0.017245345
+Address(00003e6f00000000000000000000000000000000): 0.013828715
+Address(0005fa7100000000000000000000000000000000): 0.0124359485
+Address(0000461400000000000000000000000000000000): 0.009337622
+Address(0006085200000000000000000000000000000000): 0.009251362
+Address(0007c28400000000000000000000000000000000): 0.008563522"
 
 if [ "$RESULTS" != "$EXPECTED_RESULTS" ]
 then
