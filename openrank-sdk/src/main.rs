@@ -12,8 +12,8 @@ use openrank_common::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::error::Error;
 use std::fs::File;
+use std::{error::Error, io::Read};
 
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
@@ -32,16 +32,31 @@ enum Method {
 struct Args {
 	#[arg(value_enum)]
 	method: Method,
-	arg: Option<String>,
+	arg1: Option<String>,
+	arg2: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sequencer {
+	endpoint: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
 	pub domain: Domain,
+	pub sequencer: Sequencer,
 }
 
-async fn update_trust() -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/trust-db.csv")?;
+fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
+	let mut f = File::open(path)?;
+	let mut toml_config = String::new();
+	f.read_to_string(&mut toml_config)?;
+	let config: Config = toml::from_str(toml_config.as_str())?;
+	Ok(config)
+}
+
+async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+	let f = File::open(path)?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {
@@ -53,8 +68,9 @@ async fn update_trust() -> Result<(), Box<dyn Error>> {
 		entries.push(trust_entry);
 	}
 
+	let config = read_config(config_path)?;
 	// Creates a new client
-	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
+	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 
 	for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
@@ -69,8 +85,8 @@ async fn update_trust() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-async fn update_seed() -> Result<(), Box<dyn Error>> {
-	let f = File::open("./openrank-sdk/seed-db.csv")?;
+async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+	let f = File::open(path)?;
 	let mut rdr = csv::Reader::from_reader(f);
 	let mut entries = Vec::new();
 	for result in rdr.records() {
@@ -81,8 +97,9 @@ async fn update_seed() -> Result<(), Box<dyn Error>> {
 		entries.push(score_entry);
 	}
 
+	let config = read_config(config_path)?;
 	// Creates a new client
-	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
+	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 
 	for chunk in entries.chunks(SEED_CHUNK_SIZE) {
 		let owned_namespace = OwnedNamespace::new(Address::default(), 1);
@@ -97,11 +114,10 @@ async fn update_seed() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-async fn job_run_request() -> Result<(), Box<dyn Error>> {
-	let config: Config = toml::from_str(include_str!("../config.toml"))?;
-
+async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
+	let config = read_config(path)?;
 	// Creates a new client
-	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
+	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 
 	let domain_id = config.domain.to_hash();
 	let data = encode(JobRunRequest::new(domain_id, u32::MAX));
@@ -117,9 +133,12 @@ async fn job_run_request() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-async fn get_results(arg: String) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
+async fn get_results(
+	arg: String, path: &str,
+) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
+	let config = read_config(path)?;
 	// Creates a new client
-	let client = Client::builder("tcp://127.0.0.1:60000")?.build().await?;
+	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 	let result: Value = client.call("Sequencer.get_results", arg).await?;
 	let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
 	Ok(scores)
@@ -131,23 +150,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	match cli.method {
 		Method::TrustUpdate => {
-			update_trust().await?;
+			let arg1 = cli.arg1.unwrap_or_else(|| {
+				eprintln!("Missing argument");
+				std::process::exit(1);
+			});
+			let arg2 = cli.arg2.unwrap_or_else(|| {
+				eprintln!("Missing argument");
+				std::process::exit(1);
+			});
+			update_trust(arg1.as_str(), arg2.as_str()).await?;
 		},
 		Method::SeedUpdate => {
-			update_seed().await?;
+			let arg1 = cli.arg1.unwrap_or_else(|| {
+				eprintln!("Missing argument");
+				std::process::exit(1);
+			});
+			let arg2 = cli.arg2.unwrap_or_else(|| {
+				eprintln!("Missing argument");
+				std::process::exit(1);
+			});
+			update_seed(arg1.as_str(), arg2.as_str()).await?;
 		},
 		Method::JobRunRequest => {
-			job_run_request().await?;
+			let arg1 = cli.arg1.unwrap_or_else(|| {
+				eprintln!("Missing argument");
+				std::process::exit(1);
+			});
+			job_run_request(arg1.as_str()).await?;
 		},
 		Method::GetResults => {
-			let arg = match cli.arg {
-				Some(arg) => arg,
-				None => {
-					eprintln!("Missing argument");
-					std::process::exit(1);
-				},
-			};
-			let (votes, mut results) = get_results(arg).await?;
+			let arg1 = cli.arg1.unwrap_or_else(|| {
+				eprintln!("Missing argument");
+				std::process::exit(1);
+			});
+			let arg2 = cli.arg2.unwrap_or_else(|| {
+				eprintln!("Missing argument");
+				std::process::exit(1);
+			});
+			let (votes, mut results) = get_results(arg1, arg2.as_str()).await?;
 			println!("votes: {:?}", votes);
 			results.reverse();
 			let chunk = results.chunks(100).next();

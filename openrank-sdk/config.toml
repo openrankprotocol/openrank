@@ -4,3 +4,6 @@ trust_id = 1
 seed_owner = "0000000000000000000000000000000000000000"
 seed_id = 1
 algo_id = 0
+
+[sequencer]
+endpoint = "tcp://127.0.0.1:60000"
