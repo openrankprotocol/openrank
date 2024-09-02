@@ -200,92 +200,115 @@ fn handle_gossipsub_events(
     Ok(())
 }
 
-pub async fn run() -> Result<(), Box<dyn Error>> {
-    dotenv().ok();
-    tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+pub struct BlockBuilderNode {
+    swarm: Swarm<MyBehaviour>,
+    config: Config,
+    db: Db,
+    secret_key: SigningKey,
+}
 
-    let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
-    let secret_key_bytes = hex::decode(secret_key_hex)?;
-    let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
+impl BlockBuilderNode {
+    pub async fn init() -> Result<Self, Box<dyn Error>> {
+        dotenv().ok();
+        tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+        let swarm = build_node().await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-    let mut swarm = build_node().await?;
-    info!("PEER_ID: {:?}", swarm.local_peer_id());
+        let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
+        let secret_key_bytes = hex::decode(secret_key_hex)?;
+        let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
-    // Listen on all interfaces and whatever port the OS assigns
-    swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
-    swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
+        let config: Config = toml::from_str(include_str!("../config.toml"))?;
+        let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
-    let config: Config = toml::from_str(include_str!("../config.toml"))?;
-    let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
-
-    let topics_requests: Vec<Topic> = config
-        .domains
-        .clone()
-        .into_iter()
-        .map(|x| x.to_hash())
-        .map(|domain_hash| Topic::DomainRequest(domain_hash.clone()))
-        .collect();
-    let topics_commitment: Vec<Topic> = config
-        .domains
-        .clone()
-        .into_iter()
-        .map(|x| x.to_hash())
-        .map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
-        .collect();
-    let topics_scores: Vec<Topic> = config
-        .domains
-        .clone()
-        .into_iter()
-        .map(|x| x.to_hash())
-        .map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
-        .collect();
-    let topics_verification: Vec<Topic> = config
-        .domains
-        .clone()
-        .into_iter()
-        .map(|x| x.to_hash())
-        .map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
-        .collect();
-
-    for topic in topics_verification
-        .iter()
-        .chain(&topics_commitment)
-        .chain(&topics_scores)
-        .chain(&topics_requests)
-    {
-        // Create a Gossipsub topic
-        let topic = gossipsub::IdentTopic::new(topic.clone());
-        // subscribes to our topic
-        swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+        Ok(Self { swarm, config, db, secret_key })
     }
 
-    // Kick it off
-    loop {
-        select! {
-            event = swarm.select_next_some() => match event {
-                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-                    for (peer_id, _multiaddr) in list {
-                        info!("mDNS discovered a new peer: {peer_id}");
-                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-                    }
-                },
-                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-                    for (peer_id, _multiaddr) in list {
-                        info!("mDNS discover peer has expired: {peer_id}");
-                        swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-                    }
-                },
-                SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-                    let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
-                    let res = handle_gossipsub_events(&mut swarm, &db, event, iter_chain.collect(), config.whitelist.clone(), &secret_key);
-                    if let Err(e) = res {
-                        error!("{e:?}");
-                    }
-                },
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    info!("Local node is listening on {address}");
-                },
-                e => info!("NEW_EVENT: {:?}", e),
+    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        // Listen on all interfaces and whatever port the OS assigns
+        self.swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
+        self.swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
+
+        let topics_requests: Vec<Topic> = self
+            .config
+            .domains
+            .clone()
+            .into_iter()
+            .map(|x| x.to_hash())
+            .map(|domain_hash| Topic::DomainRequest(domain_hash.clone()))
+            .collect();
+        let topics_commitment: Vec<Topic> = self
+            .config
+            .domains
+            .clone()
+            .into_iter()
+            .map(|x| x.to_hash())
+            .map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
+            .collect();
+        let topics_scores: Vec<Topic> = self
+            .config
+            .domains
+            .clone()
+            .into_iter()
+            .map(|x| x.to_hash())
+            .map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+            .collect();
+        let topics_verification: Vec<Topic> = self
+            .config
+            .domains
+            .clone()
+            .into_iter()
+            .map(|x| x.to_hash())
+            .map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
+            .collect();
+
+        for topic in topics_verification
+            .iter()
+            .chain(&topics_commitment)
+            .chain(&topics_scores)
+            .chain(&topics_requests)
+        {
+            // Create a Gossipsub topic
+            let topic = gossipsub::IdentTopic::new(topic.clone());
+            // subscribes to our topic
+            self.swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+        }
+
+        // Kick it off
+        loop {
+            select! {
+                event = self.swarm.select_next_some() => match event {
+                    SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+                        for (peer_id, _multiaddr) in list {
+                            info!("mDNS discovered a new peer: {peer_id}");
+                            self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                        }
+                    },
+                    SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+                        for (peer_id, _multiaddr) in list {
+                            info!("mDNS discover peer has expired: {peer_id}");
+                            self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                        }
+                    },
+                    SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
+                        let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
+                        let res = handle_gossipsub_events(
+                            &mut self.swarm,
+                            &self.db,
+                            event,
+                            iter_chain.collect(),
+                            self.config.whitelist.clone(),
+                            &self.secret_key
+                        );
+                        if let Err(e) = res {
+                            error!("{e:?}");
+                        }
+                    },
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        info!("Local node is listening on {address}");
+                    },
+                    e => info!("NEW_EVENT: {:?}", e),
+                }
             }
         }
     }
