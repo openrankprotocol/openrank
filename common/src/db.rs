@@ -44,58 +44,58 @@ pub struct Db {
 }
 
 impl Db {
-	/// Creates new database connection, given info of local file path and column families.
-	pub fn new(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
-		assert!(path.ends_with("-storage"));
-		let mut opts = Options::default();
-		opts.create_if_missing(true);
-		opts.create_missing_column_families(true);
-		let db = DB::open_cf(&opts, path, cfs).map_err(|e| DbError::RocksDB(e))?;
-		Ok(Self { connection: db })
-	}
+    /// Creates new database connection, given info of local file path and column families.
+    pub fn new(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
+        assert!(path.ends_with("-storage"));
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        let db = DB::open_cf(&opts, path, cfs).map_err(|e| DbError::RocksDB(e))?;
+        Ok(Self { connection: db })
+    }
 
-	/// Creates new read-only database connection, given info of local file path and column families.
-	pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
-		assert!(path.ends_with("-storage"));
-		let mut opts = Options::default();
-		opts.create_if_missing(true);
-		opts.create_missing_column_families(true);
-		let db =
-			DB::open_cf_for_read_only(&opts, path, cfs, false).map_err(|e| DbError::RocksDB(e))?;
-		Ok(Self { connection: db })
-	}
+    /// Creates new read-only database connection, given info of local file path and column families.
+    pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
+        assert!(path.ends_with("-storage"));
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        let db =
+            DB::open_cf_for_read_only(&opts, path, cfs, false).map_err(|e| DbError::RocksDB(e))?;
+        Ok(Self { connection: db })
+    }
 
-	/// Puts value into database
-	pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
-		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let key = item.get_full_key();
-		let value = to_vec(&item).map_err(|e| DbError::Serde(e))?;
-		self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
-	}
+    /// Puts value into database
+    pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
+        let key = item.get_full_key();
+        let value = to_vec(&item).map_err(|e| DbError::Serde(e))?;
+        self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
+    }
 
-	/// Gets value from database
-	pub fn get<I: DbItem + DeserializeOwned>(&self, key: Vec<u8>) -> Result<I, DbError> {
-		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let item_res = self.connection.get_cf(&cf, key).map_err(|e| DbError::RocksDB(e))?;
-		let item = item_res.ok_or(DbError::NotFound)?;
-		let value = serde_json::from_slice(&item).map_err(|e| DbError::Serde(e))?;
-		Ok(value)
-	}
+    /// Gets value from database
+    pub fn get<I: DbItem + DeserializeOwned>(&self, key: Vec<u8>) -> Result<I, DbError> {
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
+        let item_res = self.connection.get_cf(&cf, key).map_err(|e| DbError::RocksDB(e))?;
+        let item = item_res.ok_or(DbError::NotFound)?;
+        let value = serde_json::from_slice(&item).map_err(|e| DbError::Serde(e))?;
+        Ok(value)
+    }
 
-	/// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
-	pub fn read_from_end<I: DbItem + DeserializeOwned>(
-		&self, prefix: String, num_elements: Option<usize>,
-	) -> Result<Vec<I>, DbError> {
-		let num_elements = num_elements.unwrap_or(usize::MAX);
-		let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-		let iter = self.connection.prefix_iterator_cf(&cf, prefix);
-		let mut elements = Vec::new();
-		for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
-			let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
-			elements.push(tx);
-		}
-		Ok(elements)
-	}
+    /// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
+    pub fn read_from_end<I: DbItem + DeserializeOwned>(
+        &self, prefix: String, num_elements: Option<usize>,
+    ) -> Result<Vec<I>, DbError> {
+        let num_elements = num_elements.unwrap_or(usize::MAX);
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
+        let iter = self.connection.prefix_iterator_cf(&cf, prefix);
+        let mut elements = Vec::new();
+        for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
+            let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
+            elements.push(tx);
+        }
+        Ok(elements)
+    }
 }
 
 #[cfg(test)]

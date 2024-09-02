@@ -65,17 +65,17 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
 /// 2. Create a new `Client`, which can be used to call the Sequencer
 /// 3. Send the list of `TrustEntry` to the Sequencer
 async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
-	let f = File::open(path)?;
-	let mut rdr = csv::Reader::from_reader(f);
-	let mut entries = Vec::new();
-	for result in rdr.records() {
-		let record: StringRecord = result?;
-		let (from, to, value): (u32, u32, f32) = record.deserialize(None)?;
-		let from_addr = Address::from(from);
-		let to_addr = Address::from(to);
-		let trust_entry = TrustEntry::new(from_addr, to_addr, value);
-		entries.push(trust_entry);
-	}
+    let f = File::open(path)?;
+    let mut rdr = csv::Reader::from_reader(f);
+    let mut entries = Vec::new();
+    for result in rdr.records() {
+        let record: StringRecord = result?;
+        let (from, to, value): (u32, u32, f32) = record.deserialize(None)?;
+        let from_addr = Address::from(from);
+        let to_addr = Address::from(to);
+        let trust_entry = TrustEntry::new(from_addr, to_addr, value);
+        entries.push(trust_entry);
+    }
 
     let config = read_config(config_path)?;
     // Creates a new client
@@ -101,16 +101,16 @@ async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error
 /// 2. Create a new `Client`, which can be used to call the Sequencer
 /// 3. Send the list of `ScoreEntry` to the Sequencer
 async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
-	let f = File::open(path)?;
-	let mut rdr = csv::Reader::from_reader(f);
-	let mut entries = Vec::new();
-	for result in rdr.records() {
-		let record: StringRecord = result?;
-		let (i, value): (u32, f32) = record.deserialize(None)?;
-		let i_addr = Address::from(i);
-		let score_entry = ScoreEntry::new(i_addr, value);
-		entries.push(score_entry);
-	}
+    let f = File::open(path)?;
+    let mut rdr = csv::Reader::from_reader(f);
+    let mut entries = Vec::new();
+    for result in rdr.records() {
+        let record: StringRecord = result?;
+        let (i, value): (u32, f32) = record.deserialize(None)?;
+        let i_addr = Address::from(i);
+        let score_entry = ScoreEntry::new(i_addr, value);
+        entries.push(score_entry);
+    }
 
     let config = read_config(config_path)?;
     // Creates a new client
@@ -135,9 +135,9 @@ async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>
 /// 1. Create a new `Client`, which can be used to call the Sequencer
 /// 2. Send a `JobRunRequest` to the Sequencer
 async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
-	let config = read_config(path)?;
-	// Creates a new client
-	let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let config = read_config(path)?;
+    // Creates a new client
+    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();

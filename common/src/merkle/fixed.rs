@@ -20,19 +20,19 @@ impl<H> DenseMerkleTree<H>
 where
     H: Digest,
 {
-	/// Get the root of the tree
-	pub fn root(&self) -> Result<Hash, MerkleError> {
-		self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(MerkleError::RootNotFound)
-	}
+    /// Get the root of the tree
+    pub fn root(&self) -> Result<Hash, MerkleError> {
+        self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(MerkleError::RootNotFound)
+    }
 
-	/// Build a MerkleTree from given leaf nodes
-	pub fn new(mut leaves: Vec<Hash>) -> Result<Self, MerkleError> {
-		let next_power_of_two = leaves.len().next_power_of_two();
-		if leaves.len() < next_power_of_two {
-			let diff = next_power_of_two - leaves.len();
-			leaves.extend(vec![Hash::default(); diff]);
-		}
-		let num_levels = (u32::BITS - next_power_of_two.leading_zeros()) as u8;
+    /// Build a MerkleTree from given leaf nodes
+    pub fn new(mut leaves: Vec<Hash>) -> Result<Self, MerkleError> {
+        let next_power_of_two = leaves.len().next_power_of_two();
+        if leaves.len() < next_power_of_two {
+            let diff = next_power_of_two - leaves.len();
+            leaves.extend(vec![Hash::default(); diff]);
+        }
+        let num_levels = (u32::BITS - next_power_of_two.leading_zeros()) as u8;
 
         let mut default = Vec::new();
         default.push(Hash::default());

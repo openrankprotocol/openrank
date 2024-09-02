@@ -46,16 +46,16 @@ impl Sequencer {
 
 #[rpc_impl]
 impl Sequencer {
-	/// Handle incoming `TrustUpdate` transactions from the network,
-	/// and forward them to the `Computer` node for processing
-	async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
-		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
-			"Failed to parse TX data as string".to_string(),
-		))?;
-		let tx_bytes = hex::decode(tx_str).map_err(|e| {
-			error!("{}", e);
-			RPCError::ParseError("Failed to parse TX data".to_string())
-		})?;
+    /// Handle incoming `TrustUpdate` transactions from the network,
+    /// and forward them to the `Computer` node for processing
+    async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
+        let tx_str = tx.as_str().ok_or(RPCError::ParseError(
+            "Failed to parse TX data as string".to_string(),
+        ))?;
+        let tx_bytes = hex::decode(tx_str).map_err(|e| {
+            error!("{}", e);
+            RPCError::ParseError("Failed to parse TX data".to_string())
+        })?;
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
@@ -84,16 +84,16 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-	/// Handle incoming `SeedUpdate` transactions from the network,
-	/// and forward them to the `Computer` node for processing
-	async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
-		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
-			"Failed to parse TX data as string".to_string(),
-		))?;
-		let tx_bytes = hex::decode(tx_str).map_err(|e| {
-			error!("{}", e);
-			RPCError::ParseError("Failed to parse TX data".to_string())
-		})?;
+    /// Handle incoming `SeedUpdate` transactions from the network,
+    /// and forward them to the `Computer` node for processing
+    async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
+        let tx_str = tx.as_str().ok_or(RPCError::ParseError(
+            "Failed to parse TX data as string".to_string(),
+        ))?;
+        let tx_bytes = hex::decode(tx_str).map_err(|e| {
+            error!("{}", e);
+            RPCError::ParseError("Failed to parse TX data".to_string())
+        })?;
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
@@ -122,16 +122,16 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-	/// Handle incoming `JobRunRequest` transactions from the network,
-	/// and forward them to the `Computer` node for processing
-	async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
-		let tx_str = tx.as_str().ok_or(RPCError::ParseError(
-			"Failed to parse TX data as string".to_string(),
-		))?;
-		let tx_bytes = hex::decode(tx_str).map_err(|e| {
-			error!("{}", e);
-			RPCError::ParseError("Failed to parse TX data".to_string())
-		})?;
+    /// Handle incoming `JobRunRequest` transactions from the network,
+    /// and forward them to the `Computer` node for processing
+    async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
+        let tx_str = tx.as_str().ok_or(RPCError::ParseError(
+            "Failed to parse TX data as string".to_string(),
+        ))?;
+        let tx_bytes = hex::decode(tx_str).map_err(|e| {
+            error!("{}", e);
+            RPCError::ParseError("Failed to parse TX data".to_string())
+        })?;
 
         let tx = Tx::decode(&mut tx_bytes.as_slice()).map_err(|e| {
             error!("{}", e);
@@ -162,21 +162,21 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-	/// Get the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash.
-	async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
-		let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
-			"Failed to parse TX hash data as string".to_string(),
-		))?;
-		let tx_hash_bytes = hex::decode(tx_hash_str).map_err(|e| {
-			error!("{}", e);
-			RPCError::ParseError("Failed to parse TX data".to_string())
-		})?;
-		let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-		let db = Db::new_read_only("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])
-			.map_err(|e| {
-				error!("{}", e);
-				RPCError::InternalError
-			})?;
+    /// Get the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash.
+    async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
+        let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
+            "Failed to parse TX hash data as string".to_string(),
+        ))?;
+        let tx_hash_bytes = hex::decode(tx_hash_str).map_err(|e| {
+            error!("{}", e);
+            RPCError::ParseError("Failed to parse TX data".to_string())
+        })?;
+        let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        let db = Db::new_read_only("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])
+            .map_err(|e| {
+                error!("{}", e);
+                RPCError::InternalError
+            })?;
 
         let key = JobResult::construct_full_key(tx_hash);
         let result = db.get::<JobResult>(key).map_err(|e| {

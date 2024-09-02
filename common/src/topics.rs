@@ -14,19 +14,19 @@ use std::{
 pub struct DomainHash(u64);
 
 impl DomainHash {
-	/// Convert the hash value to a hex string
-	pub fn to_hex(self) -> String {
-		hex::encode(self.0.to_be_bytes())
-	}
+    /// Convert the hash value to a hex string
+    pub fn to_hex(self) -> String {
+        hex::encode(self.0.to_be_bytes())
+    }
 }
 
 impl FromHex for DomainHash {
     type Error = hex::FromHexError;
 
-	/// Convert a hex string to a [DomainHash]
-	fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-		Ok(DomainHash(u64::from_be_bytes(<[u8; 8]>::from_hex(hex)?)))
-	}
+    /// Convert a hex string to a [DomainHash]
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        Ok(DomainHash(u64::from_be_bytes(<[u8; 8]>::from_hex(hex)?)))
+    }
 }
 
 impl From<u64> for DomainHash {

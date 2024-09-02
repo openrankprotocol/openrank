@@ -79,10 +79,10 @@ pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
 #[derive(Debug)]
 /// An error type for the merkle tree.
 pub enum MerkleError {
-	/// The root of the merkle tree is not found.
-	RootNotFound,
-	/// The nodes are not found in the merkle tree.
-	NodesNotFound,
+    /// The root of the merkle tree is not found.
+    RootNotFound,
+    /// The nodes are not found in the merkle tree.
+    NodesNotFound,
 }
 
 impl StdError for MerkleError {}
