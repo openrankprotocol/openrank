@@ -68,7 +68,7 @@ impl VerificationJobRunner {
 		}
 	}
 
-	/// Update the trees for certain domain, with the given trust entries
+	/// Update the state of trees for certain domain, with the given trust entries
 	pub fn update_trust(
 		&mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
 	) -> Result<(), JobRunnerError> {
@@ -135,7 +135,7 @@ impl VerificationJobRunner {
 		Ok(())
 	}
 
-	/// Update the trees for certain domain, with the given seed entries
+	/// Update the state of trees for certain domain, with the given seed entries
 	pub fn update_seed(
 		&mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
 	) -> Result<(), JobRunnerError> {

@@ -132,7 +132,7 @@ impl Sequencer {
 		Ok(tx_event_value)
 	}
 
-	/// Get the results of the `JobRunRequest` with the job run transaction hash.
+	/// Get the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash.
 	async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
 		let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
 			"Failed to parse TX hash data as string".to_string(),

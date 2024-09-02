@@ -143,7 +143,7 @@ async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
 }
 
 /// 1. Create a new `Client`, which can be used to call the Sequencer
-/// 2. Call the Sequencer to get the results(`ScoreEntry`s)
+/// 2. Call the Sequencer to get the EigenTrust scores(`ScoreEntry`s)
 async fn get_results(
 	arg: String, path: &str,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {

@@ -2,14 +2,13 @@ use std::collections::HashMap;
 
 use super::AlgoError;
 
-/// The weight given to the seed trust values in the trust matrix calculation.
-/// See the docstring for the `et` function for more information.
+/// The trust weight given to the seed trust vector in the trust matrix calculation.
 const PRE_TRUST_WEIGHT: f32 = 0.5;
 
-/// The threshold value used for convergence checking in the `is_converged` function.
+/// The threshold value used for convergence check in the trust matrix calculation.
 ///
 /// If the absolute difference between the current score and the next score is
-/// less than `DELTA`, then the score has converged.
+/// less than `DELTA`, the score has converged.
 const DELTA: f32 = 0.01;
 
 /// Remove self-trust from local trust matrix. This is necessary to prevent circular
@@ -86,7 +85,6 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
 pub fn positive_run<const NUM_ITER: usize>(
 	mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
 ) -> Result<Vec<(u32, f32)>, AlgoError> {
-	// Pre-process the local trust matrix by dividing each element by the sum of its row.
 	pre_process(&mut lt);
 	normalise_lt(&mut lt)?;
 	normalise_seed(&mut seed)?;
