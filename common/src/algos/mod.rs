@@ -5,15 +5,15 @@ pub mod et;
 
 #[derive(Debug)]
 pub enum AlgoError {
-	ZeroSum,
+    ZeroSum,
 }
 
 impl StdError for AlgoError {}
 
 impl Display for AlgoError {
-	fn fmt(&self, f: &mut Formatter) -> FmtResult {
-		match self {
-			Self::ZeroSum => write!(f, "ZeroSum"),
-		}
-	}
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::ZeroSum => write!(f, "ZeroSum"),
+        }
+    }
 }
