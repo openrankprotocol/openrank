@@ -64,7 +64,7 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
 /// 1. Read a CSV file and get a list of `TrustEntry`
 /// 2. Create a new `Client`, which can be used to call the Sequencer
 /// 3. Send the list of `TrustEntry` to the Sequencer
-async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+async fn update_trust(sk: SigningKey, path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
     let f = File::open(path)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
@@ -100,7 +100,7 @@ async fn update_trust(path: &str, config_path: &str) -> Result<(), Box<dyn Error
 /// 1. Read a CSV file and get a list of `ScoreEntry`
 /// 2. Create a new `Client`, which can be used to call the Sequencer
 /// 3. Send the list of `ScoreEntry` to the Sequencer
-async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+async fn update_seed(sk: SigningKey, path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
     let f = File::open(path)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
@@ -134,7 +134,7 @@ async fn update_seed(path: &str, config_path: &str) -> Result<(), Box<dyn Error>
 
 /// 1. Create a new `Client`, which can be used to call the Sequencer
 /// 2. Send a `JobRunRequest` to the Sequencer
-async fn job_run_request(path: &str) -> Result<(), Box<dyn Error>> {
+async fn job_run_request(sk: SigningKey, path: &str) -> Result<(), Box<dyn Error>> {
     let config = read_config(path)?;
     // Creates a new client
     let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
