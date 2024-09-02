@@ -1,62 +1,62 @@
 use openrank_common::{
-	algos::{et::positive_run, AlgoError},
-	merkle::{
-		fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
-		MerkleError,
-	},
-	topics::{Domain, DomainHash},
-	txs::{Address, CreateScores, ScoreEntry, TrustEntry},
+    algos::{et::positive_run, AlgoError},
+    merkle::{
+        fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
+        MerkleError,
+    },
+    topics::{Domain, DomainHash},
+    txs::{Address, CreateScores, ScoreEntry, TrustEntry},
 };
 use sha3::Keccak256;
 use std::{
-	collections::HashMap,
-	fmt::{Display, Formatter, Result as FmtResult},
+    collections::HashMap,
+    fmt::{Display, Formatter, Result as FmtResult},
 };
 
 /// Struct containing the state of the computer job runner
 pub struct ComputeJobRunner {
-	count: HashMap<DomainHash, u32>,
-	indices: HashMap<DomainHash, HashMap<Address, u32>>,
-	local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
-	seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
-	lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
-	lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
-	compute_results: HashMap<DomainHash, Vec<(u32, f32)>>,
-	compute_tree: HashMap<DomainHash, DenseMerkleTree<Keccak256>>,
+    count: HashMap<DomainHash, u32>,
+    indices: HashMap<DomainHash, HashMap<Address, u32>>,
+    local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
+    seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
+    lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
+    lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
+    compute_results: HashMap<DomainHash, Vec<(u32, f32)>>,
+    compute_tree: HashMap<DomainHash, DenseMerkleTree<Keccak256>>,
 }
 
 impl ComputeJobRunner {
-	pub fn new(domains: Vec<DomainHash>) -> Self {
-		let mut count = HashMap::new();
-		let mut indices = HashMap::new();
-		let mut local_trust = HashMap::new();
-		let mut seed_trust = HashMap::new();
-		let mut lt_sub_trees = HashMap::new();
-		let mut lt_master_tree = HashMap::new();
-		let mut compute_results = HashMap::new();
-		for domain in domains {
-			count.insert(domain.clone(), 0);
-			indices.insert(domain.clone(), HashMap::new());
-			local_trust.insert(domain.clone(), HashMap::new());
-			seed_trust.insert(domain.clone(), HashMap::new());
-			lt_sub_trees.insert(domain.clone(), HashMap::new());
-			lt_master_tree.insert(
-				domain.clone(),
-				DenseIncrementalMerkleTree::<Keccak256>::new(32),
-			);
-			compute_results.insert(domain, Vec::<(u32, f32)>::new());
-		}
-		Self {
-			count,
-			indices,
-			local_trust,
-			seed_trust,
-			lt_sub_trees,
-			lt_master_tree,
-			compute_results,
-			compute_tree: HashMap::new(),
-		}
-	}
+    pub fn new(domains: Vec<DomainHash>) -> Self {
+        let mut count = HashMap::new();
+        let mut indices = HashMap::new();
+        let mut local_trust = HashMap::new();
+        let mut seed_trust = HashMap::new();
+        let mut lt_sub_trees = HashMap::new();
+        let mut lt_master_tree = HashMap::new();
+        let mut compute_results = HashMap::new();
+        for domain in domains {
+            count.insert(domain.clone(), 0);
+            indices.insert(domain.clone(), HashMap::new());
+            local_trust.insert(domain.clone(), HashMap::new());
+            seed_trust.insert(domain.clone(), HashMap::new());
+            lt_sub_trees.insert(domain.clone(), HashMap::new());
+            lt_master_tree.insert(
+                domain.clone(),
+                DenseIncrementalMerkleTree::<Keccak256>::new(32),
+            );
+            compute_results.insert(domain, Vec::<(u32, f32)>::new());
+        }
+        Self {
+            count,
+            indices,
+            local_trust,
+            seed_trust,
+            lt_sub_trees,
+            lt_master_tree,
+            compute_results,
+            compute_tree: HashMap::new(),
+        }
+    }
 
 	/// Update the state of trees for certain domain, with the given trust entries
 	pub fn update_trust(
@@ -105,25 +105,25 @@ impl ComputeJobRunner {
 			let old_value = lt.get(&(from_index, to_index)).unwrap_or(&0.0);
 			lt.insert((from_index, to_index), entry.value + old_value);
 
-			if !lt_sub_trees.contains_key(&from_index) {
-				lt_sub_trees.insert(from_index, default_sub_tree.clone());
-			}
-			let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
-				JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index),
-			)?;
-			let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
-			sub_tree.insert_leaf(to_index, leaf);
+            if !lt_sub_trees.contains_key(&from_index) {
+                lt_sub_trees.insert(from_index, default_sub_tree.clone());
+            }
+            let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
+                JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index),
+            )?;
+            let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
+            sub_tree.insert_leaf(to_index, leaf);
 
-			let sub_tree_root =
-				sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
-			let seed_value = seed.get(&to_index).unwrap_or(&0.0);
-			let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
-			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
-			lt_master_tree.insert_leaf(from_index, leaf);
-		}
+            let sub_tree_root =
+                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            let seed_value = seed.get(&to_index).unwrap_or(&0.0);
+            let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
+            let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
+            lt_master_tree.insert_leaf(from_index, leaf);
+        }
 
-		Ok(())
-	}
+        Ok(())
+    }
 
 	/// Update the state of trees for certain domain, with the given seed entries
 	pub fn update_seed(
@@ -158,23 +158,23 @@ impl ComputeJobRunner {
 				curr_count
 			};
 
-			if !lt_sub_trees.contains_key(&index) {
-				lt_sub_trees.insert(index, default_sub_tree.clone());
-			}
-			let sub_tree = lt_sub_trees
-				.get_mut(&index)
-				.ok_or(JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
-			let sub_tree_root =
-				sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
-			let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
-			let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
-			lt_master_tree.insert_leaf(index, leaf);
+            if !lt_sub_trees.contains_key(&index) {
+                lt_sub_trees.insert(index, default_sub_tree.clone());
+            }
+            let sub_tree = lt_sub_trees
+                .get_mut(&index)
+                .ok_or(JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
+            let sub_tree_root =
+                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
+            let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
+            lt_master_tree.insert_leaf(index, leaf);
 
-			seed.insert(index, entry.value);
-		}
+            seed.insert(index, entry.value);
+        }
 
-		Ok(())
-	}
+        Ok(())
+    }
 
 	/// Compute the EigenTrust scores for certain domain
 	pub fn compute(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
@@ -252,62 +252,62 @@ impl ComputeJobRunner {
 
 #[derive(Debug)]
 pub enum JobRunnerError {
-	IndicesNotFound(DomainHash),
-	CountNotFound(DomainHash),
-	LocalTrustSubTreesNotFoundWithDomain(DomainHash),
-	LocalTrustSubTreesNotFoundWithIndex(u32),
-	LocalTrustMasterTreeNotFound(DomainHash),
-	LocalTrustNotFound(DomainHash),
-	SeedTrustNotFound(DomainHash),
-	ComputeResultsNotFound(DomainHash),
-	IndexToAddressNotFound(u32),
-	ComputeTreeNotFound(DomainHash),
+    IndicesNotFound(DomainHash),
+    CountNotFound(DomainHash),
+    LocalTrustSubTreesNotFoundWithDomain(DomainHash),
+    LocalTrustSubTreesNotFoundWithIndex(u32),
+    LocalTrustMasterTreeNotFound(DomainHash),
+    LocalTrustNotFound(DomainHash),
+    SeedTrustNotFound(DomainHash),
+    ComputeResultsNotFound(DomainHash),
+    IndexToAddressNotFound(u32),
+    ComputeTreeNotFound(DomainHash),
 
-	ComputeMerkleError(MerkleError),
-	ComputeAlgoError(AlgoError),
+    ComputeMerkleError(MerkleError),
+    ComputeAlgoError(AlgoError),
 }
 
 impl Display for JobRunnerError {
-	fn fmt(&self, f: &mut Formatter) -> FmtResult {
-		match self {
-			Self::IndicesNotFound(domain) => {
-				write!(f, "indices not found for domain: {:?}", domain)
-			},
-			Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
-			Self::LocalTrustSubTreesNotFoundWithDomain(domain) => write!(
-				f,
-				"local_trust_sub_trees not found for domain: {:?}",
-				domain
-			),
-			Self::LocalTrustSubTreesNotFoundWithIndex(index) => {
-				write!(f, "local_trust_sub_trees not found for index: {}", index)
-			},
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::IndicesNotFound(domain) => {
+                write!(f, "indices not found for domain: {:?}", domain)
+            },
+            Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
+            Self::LocalTrustSubTreesNotFoundWithDomain(domain) => write!(
+                f,
+                "local_trust_sub_trees not found for domain: {:?}",
+                domain
+            ),
+            Self::LocalTrustSubTreesNotFoundWithIndex(index) => {
+                write!(f, "local_trust_sub_trees not found for index: {}", index)
+            },
 
-			Self::LocalTrustMasterTreeNotFound(domain) => {
-				write!(
-					f,
-					"local_trust_master_tree not found for domain: {:?}",
-					domain
-				)
-			},
-			Self::LocalTrustNotFound(domain) => {
-				write!(f, "local_trust not found for domain: {:?}", domain)
-			},
-			Self::SeedTrustNotFound(domain) => {
-				write!(f, "seed_trust not found for domain: {:?}", domain)
-			},
-			Self::ComputeResultsNotFound(domain) => {
-				write!(f, "compute_results not found for domain: {:?}", domain)
-			},
-			Self::IndexToAddressNotFound(index) => {
-				write!(f, "index_to_address not found for index: {}", index)
-			},
-			Self::ComputeTreeNotFound(domain) => {
-				write!(f, "compute_tree not found for domain: {:?}", domain)
-			},
+            Self::LocalTrustMasterTreeNotFound(domain) => {
+                write!(
+                    f,
+                    "local_trust_master_tree not found for domain: {:?}",
+                    domain
+                )
+            },
+            Self::LocalTrustNotFound(domain) => {
+                write!(f, "local_trust not found for domain: {:?}", domain)
+            },
+            Self::SeedTrustNotFound(domain) => {
+                write!(f, "seed_trust not found for domain: {:?}", domain)
+            },
+            Self::ComputeResultsNotFound(domain) => {
+                write!(f, "compute_results not found for domain: {:?}", domain)
+            },
+            Self::IndexToAddressNotFound(index) => {
+                write!(f, "index_to_address not found for index: {}", index)
+            },
+            Self::ComputeTreeNotFound(domain) => {
+                write!(f, "compute_tree not found for domain: {:?}", domain)
+            },
 
-			Self::ComputeMerkleError(err) => err.fmt(f),
-			Self::ComputeAlgoError(err) => err.fmt(f),
-		}
-	}
+            Self::ComputeMerkleError(err) => err.fmt(f),
+            Self::ComputeAlgoError(err) => err.fmt(f),
+        }
+    }
 }

@@ -7,40 +7,40 @@ use std::usize;
 
 #[derive(Debug)]
 pub enum DbError {
-	RocksDB(RocksDBError),
-	Serde(SerdeError),
-	CfNotFound,
-	NotFound,
+    RocksDB(RocksDBError),
+    Serde(SerdeError),
+    CfNotFound,
+    NotFound,
 }
 
 impl StdError for DbError {}
 
 impl Display for DbError {
-	fn fmt(&self, f: &mut Formatter) -> FmtResult {
-		match self {
-			Self::RocksDB(e) => write!(f, "{}", e),
-			Self::Serde(e) => write!(f, "{}", e),
-			Self::CfNotFound => write!(f, "CfNotFound"),
-			Self::NotFound => write!(f, "NotFound"),
-		}
-	}
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::RocksDB(e) => write!(f, "{}", e),
+            Self::Serde(e) => write!(f, "{}", e),
+            Self::CfNotFound => write!(f, "CfNotFound"),
+            Self::NotFound => write!(f, "NotFound"),
+        }
+    }
 }
 
 pub trait DbItem {
-	fn get_key(&self) -> Vec<u8>;
-	fn get_prefix(&self) -> String;
-	fn get_cf() -> String;
-	fn get_full_key(&self) -> Vec<u8> {
-		let suffix = self.get_key();
-		let mut key = self.get_prefix().as_bytes().to_vec();
-		key.extend(suffix);
-		key
-	}
+    fn get_key(&self) -> Vec<u8>;
+    fn get_prefix(&self) -> String;
+    fn get_cf() -> String;
+    fn get_full_key(&self) -> Vec<u8> {
+        let suffix = self.get_key();
+        let mut key = self.get_prefix().as_bytes().to_vec();
+        key.extend(suffix);
+        key
+    }
 }
 
 /// Wrapper for database connection
 pub struct Db {
-	connection: DB,
+    connection: DB,
 }
 
 impl Db {
@@ -100,39 +100,39 @@ impl Db {
 
 #[cfg(test)]
 mod test {
-	use super::{Db, DbItem};
-	use crate::txs::{JobRunAssignment, JobRunRequest, JobVerification, Tx, TxKind};
-	use alloy_rlp::encode;
+    use super::{Db, DbItem};
+    use crate::txs::{JobRunAssignment, JobRunRequest, JobVerification, Tx, TxKind};
+    use alloy_rlp::encode;
 
-	#[test]
-	fn test_put_get() {
-		let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
-		let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
-		db.put(tx.clone()).unwrap();
-		let key = Tx::construct_full_key(TxKind::JobRunRequest, tx.hash());
-		let item = db.get::<Tx>(key).unwrap();
-		assert_eq!(tx, item);
-	}
+    #[test]
+    fn test_put_get() {
+        let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
+        let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
+        db.put(tx.clone()).unwrap();
+        let key = Tx::construct_full_key(TxKind::JobRunRequest, tx.hash());
+        let item = db.get::<Tx>(key).unwrap();
+        assert_eq!(tx, item);
+    }
 
-	#[test]
-	fn test_read_from_end() {
-		let db = Db::new("test-rfs-storage", &[&Tx::get_cf()]).unwrap();
-		let tx1 = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
-		let tx2 = Tx::default_with(
-			TxKind::JobRunAssignment,
-			encode(JobRunAssignment::default()),
-		);
-		let tx3 = Tx::default_with(TxKind::JobVerification, encode(JobVerification::default()));
-		db.put(tx1.clone()).unwrap();
-		db.put(tx2.clone()).unwrap();
-		db.put(tx3.clone()).unwrap();
+    #[test]
+    fn test_read_from_end() {
+        let db = Db::new("test-rfs-storage", &[&Tx::get_cf()]).unwrap();
+        let tx1 = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
+        let tx2 = Tx::default_with(
+            TxKind::JobRunAssignment,
+            encode(JobRunAssignment::default()),
+        );
+        let tx3 = Tx::default_with(TxKind::JobVerification, encode(JobVerification::default()));
+        db.put(tx1.clone()).unwrap();
+        db.put(tx2.clone()).unwrap();
+        db.put(tx3.clone()).unwrap();
 
-		// FIX: Test fails if you specify reading more than 1 item for a single prefix
-		let items1 = db.read_from_end::<Tx>(TxKind::JobRunRequest.into(), Some(1)).unwrap();
-		let items2 = db.read_from_end::<Tx>(TxKind::JobRunAssignment.into(), Some(1)).unwrap();
-		let items3 = db.read_from_end::<Tx>(TxKind::JobVerification.into(), Some(1)).unwrap();
-		assert_eq!(vec![tx1], items1);
-		assert_eq!(vec![tx2], items2);
-		assert_eq!(vec![tx3], items3);
-	}
+        // FIX: Test fails if you specify reading more than 1 item for a single prefix
+        let items1 = db.read_from_end::<Tx>(TxKind::JobRunRequest.into(), Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(TxKind::JobRunAssignment.into(), Some(1)).unwrap();
+        let items3 = db.read_from_end::<Tx>(TxKind::JobVerification.into(), Some(1)).unwrap();
+        assert_eq!(vec![tx1], items1);
+        assert_eq!(vec![tx2], items2);
+        assert_eq!(vec![tx3], items3);
+    }
 }

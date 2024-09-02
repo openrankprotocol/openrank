@@ -83,11 +83,11 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
 ///
 /// A vector of tuples containing the node ID and the final score.
 pub fn positive_run<const NUM_ITER: usize>(
-	mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
+    mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
 ) -> Result<Vec<(u32, f32)>, AlgoError> {
-	pre_process(&mut lt);
-	normalise_lt(&mut lt)?;
-	normalise_seed(&mut seed)?;
+    pre_process(&mut lt);
+    normalise_lt(&mut lt)?;
+    normalise_seed(&mut seed)?;
 
 	// Initialize the scores of each node to the seed trust values.
 	let mut scores = seed.clone();
@@ -165,7 +165,7 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
 ///
 /// `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
-	mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
+    mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
 ) -> Result<bool, AlgoError> {
 	// Normalize the local trust matrix
 	normalise_lt(&mut lt)?;
