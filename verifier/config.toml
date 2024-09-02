@@ -1,6 +1,10 @@
 [[domains]]
-trust_owner = "0000000000000000000000000000000000000000"
+trust_owner = "fdc065619e2defb916dca551f85bf7d7a44023ef"
 trust_id = 1
-seed_owner = "0000000000000000000000000000000000000000"
+seed_owner = "fdc065619e2defb916dca551f85bf7d7a44023ef"
 seed_id = 1
 algo_id = 0
+
+[whitelist]
+block_builder = ["baf339966e8caa8f47e696b0354b9fcb1186b3f8"]
+computer = ["7c2df8c780d2e0401d7091c54086d228dabad208"]
