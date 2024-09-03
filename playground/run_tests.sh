@@ -3,15 +3,15 @@ curl https://raw.githubusercontent.com/openrankprotocol/datasets/main/trust-db.c
 wait
 curl https://raw.githubusercontent.com/openrankprotocol/datasets/main/seed-db.csv -o seed-db.csv
 wait
-RUSTFLAGS=-Awarnings cargo run -p openrank-sdk trust-update -- "./trust-db.csv" "./openrank-sdk/config.toml"
+RUSTFLAGS=-Awarnings cargo run -p openrank-sdk trust-update -- "./trust-db.csv" "../openrank-sdk/config.toml"
 wait
-RUSTFLAGS=-Awarnings cargo run -p openrank-sdk -- seed-update "./seed-db.csv" "./openrank-sdk/config.toml"
+RUSTFLAGS=-Awarnings cargo run -p openrank-sdk -- seed-update "./seed-db.csv" "../openrank-sdk/config.toml"
 wait
-TX_HASH="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk -- job-run-request "./openrank-sdk/config.toml")"
+TX_HASH="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk -- job-run-request "../openrank-sdk/config.toml")"
 wait
 sleep 1s
 wait
-RESULTS="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk -- get-results $TX_HASH "./openrank-sdk/config.toml")"
+RESULTS="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk -- get-results $TX_HASH "../openrank-sdk/config.toml")"
 wait
 
 EXPECTED_RESULTS="Address(00003bfd00000000000000000000000000000000): 0.41635644
