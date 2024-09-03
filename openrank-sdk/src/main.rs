@@ -2,10 +2,12 @@ use alloy_rlp::encode;
 use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
+use hex::FromHex;
 use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
 use karyon_jsonrpc::Client;
 use openrank_common::{
     address_from_sk,
+    algos::et::is_converged_address,
     merkle::hash_leaf,
     topics::Domain,
     tx_event::TxEvent,
@@ -17,8 +19,12 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha3::Keccak256;
-use std::fs::File;
-use std::{error::Error, io::Read};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+};
+use std::{error::Error, io::BufWriter};
 
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
@@ -29,6 +35,7 @@ enum Method {
     SeedUpdate { path: String, config_path: String, output_path: Option<String> },
     JobRunRequest { path: String, output_path: Option<String> },
     GetResults { request_id: String, config_path: String, output_path: Option<String> },
+    GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
     GenerateKeypair,
     ShowAddress,
 }
@@ -172,9 +179,9 @@ async fn job_run_request(
 }
 
 async fn get_results(
-    arg: String, path: &str,
+    arg: String, config_path: &str,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
-    let config = read_config(path)?;
+    let config = read_config(config_path)?;
     // Creates a new client
     let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
     let result: Value = client.call("Sequencer.get_results", arg).await?;
@@ -186,6 +193,44 @@ fn generate_keypair<R: CryptoRngCore>(rng: &mut R) -> (SigningKey, Address) {
     let sk = SigningKey::random(rng);
     let addr = address_from_sk(&sk);
     (sk, addr)
+}
+
+fn check_score_integrity(
+    votes: Vec<bool>, scores: Vec<ScoreEntry>, path: &str,
+) -> Result<bool, Box<dyn Error>> {
+    let f = File::open(path)?;
+    let mut rdr = csv::Reader::from_reader(f);
+    let mut test_vector = Vec::new();
+    for result in rdr.records() {
+        let record: StringRecord = result?;
+        let (i, value): (String, f32) = record.deserialize(None)?;
+        let i_addr = Address::from_hex(i)?;
+        let score_entry = ScoreEntry::new(i_addr, value);
+        test_vector.push(score_entry);
+    }
+
+    let mut test_map = HashMap::new();
+    for score in test_vector {
+        test_map.insert(score.id, score.value);
+    }
+
+    let mut score_map = HashMap::new();
+    for score in scores {
+        score_map.insert(score.id, score.value);
+    }
+
+    let is_converged = is_converged_address(&test_map, &score_map);
+    let votes = votes.iter().fold(true, |acc, vote| acc & vote);
+
+    Ok(is_converged & votes)
+}
+
+fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), Box<dyn Error>> {
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer(&mut writer, &data)?;
+    writer.flush()?;
+    Ok(())
 }
 
 #[tokio::main]
@@ -200,13 +245,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Method::TrustUpdate { path, config_path, output_path } => {
             let res = update_trust(secret_key, path.as_str(), config_path.as_str()).await?;
             if let Some(output_path) = output_path {
-                // println!("{:?}", serde_json::to_string(&res));
+                write_json_to_file(&output_path, res)?;
             }
         },
         Method::SeedUpdate { path, config_path, output_path } => {
             let res = update_seed(secret_key, path.as_str(), config_path.as_str()).await?;
             if let Some(output_path) = output_path {
-                // println!("{:?}", serde_json::to_string(&res));
+                write_json_to_file(&output_path, res)?;
             }
         },
         Method::JobRunRequest { path, output_path } => {
@@ -214,21 +259,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let hex_encoded_tx_hash = hex::encode(res.job_run_tx_hash.0);
             println!("{}", hex_encoded_tx_hash);
             if let Some(output_path) = output_path {
-                // println!("{:?}", serde_json::to_string(&res));
+                write_json_to_file(&output_path, res)?;
             }
         },
         Method::GetResults { request_id, config_path, output_path } => {
             let (votes, mut results) = get_results(request_id, config_path.as_str()).await?;
             results.reverse();
             let chunk = results.chunks(10).next();
+
+            println!("votes: {:?}", votes);
             if let Some(scores) = chunk {
                 for res in scores {
                     println!("{}: {}", res.id, res.value);
                 }
             }
             if let Some(output_path) = output_path {
-                // println!("{:?}", serde_json::to_string(&res));
+                write_json_to_file(&output_path, results)?;
             }
+        },
+        Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
+            let (votes, mut results) = get_results(request_id, config_path.as_str()).await?;
+            results.reverse();
+            let res = check_score_integrity(votes, results, &test_vector)?;
+            println!("Integrity check result: {}", res);
+            assert!(res);
         },
         Method::GenerateKeypair => {
             let rng = &mut thread_rng();
