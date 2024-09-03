@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::AlgoError;
 
 const PRE_TRUST_WEIGHT: f32 = 0.5;
 const DELTA: f32 = 0.01;
 
-fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
+fn pre_process(lt: &mut BTreeMap<(u32, u32), f32>) {
     for ((from, to), value) in lt {
         if from == to {
             *value = 0.;
@@ -13,7 +13,7 @@ fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
     }
 }
 
-fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
+fn normalise_lt(lt: &mut BTreeMap<(u32, u32), f32>) -> Result<(), AlgoError> {
     let mut sum_map: HashMap<u32, f32> = HashMap::new();
     for ((from, _), value) in lt.iter() {
         let val = sum_map.get(from).unwrap_or(&0.0);
@@ -30,7 +30,7 @@ fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
     Ok(())
 }
 
-fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
+fn normalise_seed(seed: &mut BTreeMap<u32, f32>) -> Result<(), AlgoError> {
     let sum: f32 = seed.iter().map(|(_, v)| v).sum();
     if sum == 0.0 {
         return Err(AlgoError::ZeroSum);
@@ -42,7 +42,7 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
 }
 
 pub fn positive_run<const NUM_ITER: usize>(
-    mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
+    mut lt: BTreeMap<(u32, u32), f32>, mut seed: BTreeMap<u32, f32>,
 ) -> Result<Vec<(u32, f32)>, AlgoError> {
     pre_process(&mut lt);
     normalise_lt(&mut lt)?;
@@ -50,7 +50,7 @@ pub fn positive_run<const NUM_ITER: usize>(
 
     let mut scores = seed.clone();
     loop {
-        let mut next_scores: HashMap<u32, f32> = HashMap::new();
+        let mut next_scores: BTreeMap<u32, f32> = BTreeMap::new();
         for ((from, to), value) in &lt {
             let origin_score = scores.get(from).unwrap_or(&0.0);
             let score = *value * origin_score;
@@ -73,7 +73,7 @@ pub fn positive_run<const NUM_ITER: usize>(
     Ok(scores.into_iter().collect())
 }
 
-pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>) -> bool {
+pub fn is_converged(scores: &BTreeMap<u32, f32>, next_scores: &BTreeMap<u32, f32>) -> bool {
     let mut is_converged = true;
     for (i, v) in scores {
         let next_score = next_scores.get(i).unwrap_or(&0.0);
@@ -84,10 +84,10 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
 }
 
 pub fn convergence_check(
-    mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
+    mut lt: BTreeMap<(u32, u32), f32>, seed: &BTreeMap<u32, f32>, scores: &BTreeMap<u32, f32>,
 ) -> Result<bool, AlgoError> {
     normalise_lt(&mut lt)?;
-    let mut next_scores = HashMap::new();
+    let mut next_scores = BTreeMap::new();
     for ((from, to), value) in &lt {
         let origin_score = scores.get(from).unwrap_or(&0.0);
         let score = *value * origin_score;

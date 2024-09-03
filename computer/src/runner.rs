@@ -9,15 +9,15 @@ use openrank_common::{
 };
 use sha3::Keccak256;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
 pub struct ComputeJobRunner {
     count: HashMap<DomainHash, u32>,
     indices: HashMap<DomainHash, HashMap<Address, u32>>,
-    local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
-    seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
+    local_trust: HashMap<DomainHash, BTreeMap<(u32, u32), f32>>,
+    seed_trust: HashMap<DomainHash, BTreeMap<u32, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
     compute_results: HashMap<DomainHash, Vec<(u32, f32)>>,
@@ -36,8 +36,8 @@ impl ComputeJobRunner {
         for domain in domains {
             count.insert(domain.clone(), 0);
             indices.insert(domain.clone(), HashMap::new());
-            local_trust.insert(domain.clone(), HashMap::new());
-            seed_trust.insert(domain.clone(), HashMap::new());
+            local_trust.insert(domain.clone(), BTreeMap::new());
+            seed_trust.insert(domain.clone(), BTreeMap::new());
             lt_sub_trees.insert(domain.clone(), HashMap::new());
             lt_master_tree.insert(
                 domain.clone(),
