@@ -1,7 +1,7 @@
 use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use karyon_jsonrpc::{rpc_impl, RPCError, Server};
-use libp2p::{gossipsub, mdns, swarm::SwarmEvent};
+use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     build_node,
     db::{Db, DbItem},
@@ -12,14 +12,14 @@ use openrank_common::{
         Address, CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry,
         SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
     },
-    MyBehaviourEvent,
+    MyBehaviour, MyBehaviourEvent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{cmp::Ordering, error::Error, sync::Arc};
 use tokio::{
     select,
-    sync::mpsc::{self, Sender},
+    sync::mpsc::{self, Receiver, Sender},
 };
 use tracing::{error, info};
 
@@ -36,11 +36,12 @@ pub struct Config {
 pub struct Sequencer {
     sender: Sender<(Vec<u8>, Topic)>,
     whitelisted_users: Vec<Address>,
+    db: Db,
 }
 
 impl Sequencer {
-    pub fn new(sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>) -> Self {
-        Self { sender, whitelisted_users }
+    pub fn new(sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>, db: Db) -> Self {
+        Self { sender, whitelisted_users, db }
     }
 }
 
@@ -164,6 +165,10 @@ impl Sequencer {
 
     /// Get the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash.
     async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
+        self.db.refresh().map_err(|e| {
+            error!("{}", e);
+            RPCError::InternalError
+        })?;
         let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX hash data as string".to_string(),
         ))?;
@@ -172,20 +177,15 @@ impl Sequencer {
             RPCError::ParseError("Failed to parse TX data".to_string())
         })?;
         let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-        let db = Db::new_read_only("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])
-            .map_err(|e| {
-                error!("{}", e);
-                RPCError::InternalError
-            })?;
 
         let key = JobResult::construct_full_key(tx_hash);
-        let result = db.get::<JobResult>(key).map_err(|e| {
+        let result = self.db.get::<JobResult>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
         let key =
             Tx::construct_full_key(TxKind::CreateCommitment, result.create_commitment_tx_hash);
-        let tx = db.get::<Tx>(key).map_err(|e| {
+        let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
@@ -197,7 +197,7 @@ impl Sequencer {
             let mut create_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
                 let key = Tx::construct_full_key(TxKind::CreateScores, tx_hash);
-                let tx = db.get::<Tx>(key).map_err(|e| {
+                let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
                 })?;
@@ -236,7 +236,7 @@ impl Sequencer {
             let mut verification_resutls_tx = Vec::new();
             for tx_hash in result.job_verification_tx_hashes.iter() {
                 let key = Tx::construct_full_key(TxKind::JobVerification, tx_hash.clone());
-                let tx = db.get::<Tx>(key).map_err(|e| {
+                let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
                 })?;
@@ -267,51 +267,68 @@ impl Sequencer {
     }
 }
 
-pub async fn run() -> Result<(), Box<dyn Error>> {
-    let config: Config = toml::from_str(include_str!("../config.toml"))?;
-    let mut swarm = build_node().await?;
-    info!("PEER_ID: {:?}", swarm.local_peer_id());
+pub struct SequencerNode {
+    swarm: Swarm<MyBehaviour>,
+    server: Arc<Server>,
+    receiver: Receiver<(Vec<u8>, Topic)>,
+}
 
-    // Listen on all interfaces and whatever port the OS assigns
-    swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
-    swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
+impl SequencerNode {
+    pub async fn init() -> Result<Self, Box<dyn Error>> {
+        let swarm = build_node().await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-    let (sender, mut receiver) = mpsc::channel(100);
-    let sequencer = Arc::new(Sequencer::new(sender.clone(), config.whitelist.users));
-    let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
-    server.start();
+        let config: Config = toml::from_str(include_str!("../config.toml"))?;
+        let db = Db::new_secondary(
+            "./local-storage",
+            "./local-secondary-storage",
+            &[&Tx::get_cf(), &JobResult::get_cf()],
+        )?;
+        let (sender, receiver) = mpsc::channel(100);
+        let sequencer = Arc::new(Sequencer::new(sender.clone(), config.whitelist.users, db));
+        let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 
-    // Kick it off
-    loop {
-        select! {
-            sibling = receiver.recv() => {
-                if let Some((data, topic)) = sibling {
-                    let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                    info!("PUBLISH: {:?}", topic.clone());
-                    if let Err(e) =
-                       swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
-                    {
-                       error!("Publish error: {e:?}");
+        Ok(Self { swarm, server, receiver })
+    }
+
+    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        // Listen on all interfaces and whatever port the OS assigns
+        self.swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
+        self.swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
+        self.server.start();
+
+        // Kick it off
+        loop {
+            select! {
+                sibling = self.receiver.recv() => {
+                    if let Some((data, topic)) = sibling {
+                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                        info!("PUBLISH: {:?}", topic.clone());
+                        if let Err(e) =
+                           self.swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
+                        {
+                           error!("Publish error: {e:?}");
+                        }
                     }
                 }
-            }
-            event = swarm.select_next_some() => match event {
-                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
-                    for (peer_id, _multiaddr) in list {
-                        info!("mDNS discovered a new peer: {peer_id}");
-                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-                    }
-                },
-                SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
-                    for (peer_id, _multiaddr) in list {
-                        info!("mDNS discover peer has expired: {peer_id}");
-                        swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-                    }
-                },
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    info!("Local node is listening on {address}");
-                },
-                e => info!("{:?}", e),
+                event = self.swarm.select_next_some() => match event {
+                    SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
+                        for (peer_id, _multiaddr) in list {
+                            info!("mDNS discovered a new peer: {peer_id}");
+                            self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                        }
+                    },
+                    SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
+                        for (peer_id, _multiaddr) in list {
+                            info!("mDNS discover peer has expired: {peer_id}");
+                            self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                        }
+                    },
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        info!("Local node is listening on {address}");
+                    },
+                    e => info!("{:?}", e),
+                }
             }
         }
     }
