@@ -233,28 +233,35 @@ fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), Box<dyn E
     Ok(())
 }
 
+fn get_secret_key() -> Result<SigningKey, Box<dyn Error>> {
+    let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
+    let secret_key_bytes = hex::decode(secret_key_hex)?;
+    let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
+    Ok(secret_key)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
     let cli = Args::parse();
-    let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
-    let secret_key_bytes = hex::decode(secret_key_hex)?;
-    let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
     match cli.method {
         Method::TrustUpdate { path, config_path, output_path } => {
+            let secret_key = get_secret_key()?;
             let res = update_trust(secret_key, path.as_str(), config_path.as_str()).await?;
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }
         },
         Method::SeedUpdate { path, config_path, output_path } => {
+            let secret_key = get_secret_key()?;
             let res = update_seed(secret_key, path.as_str(), config_path.as_str()).await?;
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }
         },
         Method::JobRunRequest { path, output_path } => {
+            let secret_key = get_secret_key()?;
             let res = job_run_request(secret_key, path.as_str()).await?;
             let hex_encoded_tx_hash = hex::encode(res.job_run_tx_hash.0);
             println!("{}", hex_encoded_tx_hash);
@@ -292,6 +299,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("ADDRESS:     {}", address.to_hex());
         },
         Method::ShowAddress => {
+            let secret_key = get_secret_key()?;
             let addr = address_from_sk(&secret_key);
             println!("ADDRESS: {}", addr.to_hex());
         },
