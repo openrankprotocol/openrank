@@ -1,20 +1,7 @@
 #!/bin/bash
 
-TRUST_DB_FILE="trust-db.csv"
-SEED_DB_FILE="seed-db.csv"
-
-TRUST_DB="https://raw.githubusercontent.com/openrankprotocol/datasets/main/${TRUST_DB_FILE}"
-SEED_DB="https://raw.githubusercontent.com/openrankprotocol/datasets/main/${SEED_DB_FILE}"
-
-if ! [ -e $TRUST_DB_FILE ]; then
-    curl $TRUST_DB -o $TRUST_DB_FILE
-    wait
-fi
-
-if ! [ -e $SEED_DB_FILE ]; then
-    curl $SEED_DB -o $SEED_DB_FILE
-    wait
-fi
+TRUST_DB_FILE="../datasets/trust-db.csv"
+SEED_DB_FILE="../datasets/seed-db.csv"
 
 OUTPUT="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk trust-update "./${TRUST_DB_FILE}" "./config.toml")"
 echo $OUTPUT
