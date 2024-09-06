@@ -56,6 +56,21 @@ contract JobManager {
         }
     }
 
+    // Block Builder assigns a job with signature validation
+    function assignJob(bytes32 txHash, address _computer, address[] memory _verifiers, bytes memory signature) external {
+
+    }
+
+    // Computer submits a job commitment with signature validation
+    function submitCommitment(bytes32 txHash, bytes32 _commitment, bytes memory signature) external onlyComputer {
+
+    }
+
+    // Verifiers submit their verification votes with signature validation
+    function submitVerification(bytes32 txHash, bool isValid, bytes memory signature) external {
+        
+    }
+
     // Recover signer from the provided hash and signature
     function recoverSigner(bytes32 hash, bytes memory signature) internal pure returns (address) {
         bytes32 messageHash = prefixed(hash);
