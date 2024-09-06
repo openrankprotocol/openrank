@@ -1,0 +1,3 @@
+[submodule "jobmanager-smart-contract/lib/forge-std"]
+	path = jobmanager-smart-contract/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
