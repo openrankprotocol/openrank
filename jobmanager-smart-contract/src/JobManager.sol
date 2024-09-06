@@ -58,7 +58,28 @@ contract JobManager {
 
     // Block Builder assigns a job with signature validation
     function assignJob(bytes32 txHash, address _computer, address[] memory _verifiers, bytes memory signature) external onlyBlockBuilder {
+        require(jobs[txHash].blockBuilder == address(0), "Job already exists");
+        require(_computer == computer, "Assigned computer is not whitelisted");
 
+        // Verify the signature
+        address signer = recoverSigner(txHash, signature);
+        require(signer == blockBuilder, "Invalid Block Builder signature");
+
+        for (uint256 i = 0; i < _verifiers.length; i++) {
+            require(verifiers[_verifiers[i]], "Verifier is not whitelisted");
+        }
+
+        jobs[txHash] = Job({
+            blockBuilder: msg.sender,
+            computer: _computer,
+            verifiers: _verifiers,
+            commitment: bytes32(0),
+            isCommitted: false,
+            verifierVotes: new bool[](_verifiers.length),
+            isValid: false
+        });
+
+        emit JobAssigned(txHash, _computer, _verifiers);
     }
 
     // Computer submits a job commitment with signature validation
