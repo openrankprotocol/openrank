@@ -99,7 +99,30 @@ contract JobManager {
 
     // Verifiers submit their verification votes with signature validation
     function submitVerification(bytes32 txHash, bool isValid, bytes memory signature) external onlyVerifier{
+        require(jobs[txHash].isCommitted, "Commitment not submitted");
 
+        // Verify the signature
+        address signer = recoverSigner(txHash, signature);
+        require(verifiers[signer], "Invalid Verifier signature");
+
+        // Find verifier's index
+        uint256 verifierIndex = findVerifierIndex(jobs[txHash].verifiers, signer);
+        require(verifierIndex < jobs[txHash].verifiers.length, "Verifier not part of this job");
+
+        jobs[txHash].verifierVotes[verifierIndex] = isValid;
+
+        // Check if all verifiers voted positively
+        bool allVotesPositive = true;
+        for (uint256 i = 0; i < jobs[txHash].verifierVotes.length; i++) {
+            if (!jobs[txHash].verifierVotes[i]) {
+                allVotesPositive = false;
+                break;
+            }
+        }
+
+        jobs[txHash].isValid = allVotesPositive;
+
+        emit JobVerified(txHash, isValid, signer);
     }
 
     // Recover signer from the provided hash and signature
@@ -123,5 +146,15 @@ contract JobManager {
             v := byte(0, mload(add(sig, 96)))
         }
         return (v, r, s);
+    }
+
+    // Helper function to find verifier's index in the job's verifiers array
+    function findVerifierIndex(address[] memory verifiersList, address verifier) internal pure returns (uint256) {
+        for (uint256 i = 0; i < verifiersList.length; i++) {
+            if (verifiersList[i] == verifier) {
+                return i;
+            }
+        }
+        return type(uint256).max; // Return max uint256 if not found
     }
 }
