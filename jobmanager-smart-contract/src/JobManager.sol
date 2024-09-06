@@ -57,7 +57,7 @@ contract JobManager {
     }
 
     // Block Builder assigns a job with signature validation
-    function assignJob(bytes32 txHash, address _computer, address[] memory _verifiers, bytes memory signature) external {
+    function assignJob(bytes32 txHash, address _computer, address[] memory _verifiers, bytes memory signature) external onlyBlockBuilder {
 
     }
 
@@ -67,8 +67,8 @@ contract JobManager {
     }
 
     // Verifiers submit their verification votes with signature validation
-    function submitVerification(bytes32 txHash, bool isValid, bytes memory signature) external {
-        
+    function submitVerification(bytes32 txHash, bool isValid, bytes memory signature) external onlyVerifier{
+
     }
 
     // Recover signer from the provided hash and signature
