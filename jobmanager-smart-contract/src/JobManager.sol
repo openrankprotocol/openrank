@@ -84,7 +84,17 @@ contract JobManager {
 
     // Computer submits a job commitment with signature validation
     function submitCommitment(bytes32 txHash, bytes32 _commitment, bytes memory signature) external onlyComputer {
+        require(jobs[txHash].blockBuilder != address(0), "Job not assigned");
+        require(!jobs[txHash].isCommitted, "Commitment already submitted");
 
+        // Verify the signature
+        address signer = recoverSigner(txHash, signature);
+        require(signer == computer, "Invalid Computer signature");
+
+        jobs[txHash].commitment = _commitment;
+        jobs[txHash].isCommitted = true;
+
+        emit JobCommitted(txHash, _commitment);
     }
 
     // Verifiers submit their verification votes with signature validation
