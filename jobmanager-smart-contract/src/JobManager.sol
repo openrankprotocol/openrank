@@ -57,7 +57,7 @@ contract JobManager {
     }
 
     // Block Builder assigns a job with signature validation
-    function assignJob(bytes32 txHash, address _computer, address[] memory _verifiers, bytes memory signature) external onlyBlockBuilder {
+    function assignJob(bytes32 txHash, address _computer, address[] calldata _verifiers, bytes calldata signature) external onlyBlockBuilder {
         require(jobs[txHash].blockBuilder == address(0), "Job already exists");
         require(_computer == computer, "Assigned computer is not whitelisted");
 
@@ -83,7 +83,7 @@ contract JobManager {
     }
 
     // Computer submits a job commitment with signature validation
-    function submitCommitment(bytes32 txHash, bytes32 _commitment, bytes memory signature) external onlyComputer {
+    function submitCommitment(bytes32 txHash, bytes32 _commitment, bytes calldata signature) external onlyComputer {
         require(jobs[txHash].blockBuilder != address(0), "Job not assigned");
         require(!jobs[txHash].isCommitted, "Commitment already submitted");
 
@@ -98,7 +98,7 @@ contract JobManager {
     }
 
     // Verifiers submit their verification votes with signature validation
-    function submitVerification(bytes32 txHash, bool isValid, bytes memory signature) external onlyVerifier{
+    function submitVerification(bytes32 txHash, bool isValid, bytes calldata signature) external onlyVerifier{
         require(jobs[txHash].isCommitted, "Commitment not submitted");
 
         // Verify the signature
