@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::txs::Address;
-
 use super::AlgoError;
 
 const PRE_TRUST_WEIGHT: f32 = 0.5;
@@ -85,9 +83,7 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
     is_converged
 }
 
-pub fn is_converged_address(
-    scores: &HashMap<Address, f32>, next_scores: &HashMap<Address, f32>,
-) -> bool {
+pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<String, f32>) -> bool {
     let mut is_converged = true;
     for (i, v) in scores {
         let next_score = next_scores.get(i).unwrap_or(&0.0);

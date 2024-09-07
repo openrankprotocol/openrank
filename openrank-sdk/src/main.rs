@@ -2,12 +2,11 @@ use alloy_rlp::encode;
 use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
-use hex::FromHex;
 use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
 use karyon_jsonrpc::Client;
 use openrank_common::{
     address_from_sk,
-    algos::et::is_converged_address,
+    algos::et::is_converged_org,
     merkle::hash_leaf,
     topics::Domain,
     tx_event::TxEvent,
@@ -93,10 +92,8 @@ async fn update_trust(
     let mut entries = Vec::new();
     for result in rdr.records() {
         let record: StringRecord = result?;
-        let (from, to, value): (u32, u32, f32) = record.deserialize(None)?;
-        let from_addr = Address::from(from);
-        let to_addr = Address::from(to);
-        let trust_entry = TrustEntry::new(from_addr, to_addr, value);
+        let (from, to, value): (String, String, f32) = record.deserialize(None)?;
+        let trust_entry = TrustEntry::new(from, to, value);
         entries.push(trust_entry);
     }
 
@@ -129,9 +126,8 @@ async fn update_seed(
     let mut entries = Vec::new();
     for result in rdr.records() {
         let record: StringRecord = result?;
-        let (i, value): (u32, f32) = record.deserialize(None)?;
-        let i_addr = Address::from(i);
-        let score_entry = ScoreEntry::new(i_addr, value);
+        let (i, value): (String, f32) = record.deserialize(None)?;
+        let score_entry = ScoreEntry::new(i, value);
         entries.push(score_entry);
     }
 
@@ -183,7 +179,8 @@ async fn get_results(
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let client =
+        Client::builder(config.sequencer.endpoint.as_str())?.set_timeout(900000).build().await?;
     let result: Value = client.call("Sequencer.get_results", arg).await?;
     let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
     Ok(scores)
@@ -204,8 +201,7 @@ fn check_score_integrity(
     for result in rdr.records() {
         let record: StringRecord = result?;
         let (i, value): (String, f32) = record.deserialize(None)?;
-        let i_addr = Address::from_hex(i)?;
-        let score_entry = ScoreEntry::new(i_addr, value);
+        let score_entry = ScoreEntry::new(i, value);
         test_vector.push(score_entry);
     }
 
@@ -219,7 +215,7 @@ fn check_score_integrity(
         score_map.insert(score.id, score.value);
     }
 
-    let is_converged = is_converged_address(&test_map, &score_map);
+    let is_converged = is_converged_org(&test_map, &score_map);
     let votes = votes.iter().fold(true, |acc, vote| acc & vote);
 
     Ok(is_converged & votes)
@@ -270,9 +266,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
         Method::GetResults { request_id, config_path, output_path } => {
-            let (votes, mut results) = get_results(request_id, config_path.as_str()).await?;
-            results.reverse();
-            let chunk = results.chunks(10).next();
+            let (votes, results) = get_results(request_id, config_path.as_str()).await?;
+            // results.reverse();
+            let chunk = results.chunks(100).next();
 
             println!("votes: {:?}", votes);
             if let Some(scores) = chunk {

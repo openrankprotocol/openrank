@@ -5,17 +5,17 @@ use openrank_common::{
         MerkleError,
     },
     topics::{Domain, DomainHash},
-    txs::{Address, CreateCommitment, CreateScores, ScoreEntry, TrustEntry, TxHash},
+    txs::{CreateCommitment, CreateScores, ScoreEntry, TrustEntry, TxHash},
 };
 use sha3::Keccak256;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
 pub struct VerificationJobRunner {
     count: HashMap<DomainHash, u32>,
-    indices: HashMap<DomainHash, HashMap<Address, u32>>,
+    indices: HashMap<DomainHash, HashMap<String, u32>>,
     local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
     seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
@@ -339,7 +339,7 @@ impl VerificationJobRunner {
             for entry in score_entries_vec {
                 let i = domain_indices
                     .get(&entry.id)
-                    .ok_or(JobRunnerError::DomainIndiceNotFound(entry.id.clone()))?;
+                    .ok_or(JobRunnerError::DomainIndexNotFound(entry.id.clone()))?;
                 score_entries_map.insert(*i, entry.value);
             }
             score_entries_map
@@ -389,7 +389,7 @@ pub enum JobRunnerError {
 
     ActiveAssignmentsNotFound(DomainHash),
     CommitmentNotFound(TxHash),
-    DomainIndiceNotFound(Address),
+    DomainIndexNotFound(String),
 
     ComputeMerkleError(MerkleError),
     ComputeAlgoError(AlgoError),
@@ -450,7 +450,7 @@ impl Display for JobRunnerError {
                     assigment_id
                 )
             },
-            Self::DomainIndiceNotFound(address) => {
+            Self::DomainIndexNotFound(address) => {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
             Self::ComputeMerkleError(err) => err.fmt(f),
