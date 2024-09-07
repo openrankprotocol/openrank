@@ -8,6 +8,7 @@ use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
     merkle::hash_leaf,
+    result::GetResultsQuery,
     topics::Domain,
     tx_event::TxEvent,
     txs::{
@@ -50,6 +51,7 @@ struct Args {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sequencer {
     endpoint: String,
+    result_size: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,7 +183,11 @@ async fn get_results(
     // Creates a new client
     let client =
         Client::builder(config.sequencer.endpoint.as_str())?.set_timeout(900000).build().await?;
-    let result: Value = client.call("Sequencer.get_results", arg).await?;
+    let tx_hash_bytes = hex::decode(arg)?;
+    let job_run_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let results_query =
+        GetResultsQuery::new(job_run_request_tx_hash, 0, config.sequencer.result_size);
+    let result: Value = client.call("Sequencer.get_results", results_query).await?;
     let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
     Ok(scores)
 }
@@ -266,23 +272,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
         Method::GetResults { request_id, config_path, output_path } => {
-            let (votes, results) = get_results(request_id, config_path.as_str()).await?;
-            // results.reverse();
-            let chunk = results.chunks(100).next();
+            let (votes, scores) = get_results(request_id, config_path.as_str()).await?;
 
             println!("votes: {:?}", votes);
-            if let Some(scores) = chunk {
-                for res in scores {
-                    println!("{}: {}", res.id, res.value);
-                }
+            for res in &scores {
+                println!("{}: {}", res.id, res.value);
             }
             if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, results)?;
+                write_json_to_file(&output_path, scores)?;
             }
         },
         Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
-            let (votes, mut results) = get_results(request_id, config_path.as_str()).await?;
-            results.reverse();
+            let (votes, results) = get_results(request_id, config_path.as_str()).await?;
             let res = check_score_integrity(votes, results, &test_vector)?;
             println!("Integrity check result: {}", res);
             assert!(res);

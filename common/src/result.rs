@@ -2,6 +2,19 @@ use crate::{db::DbItem, txs::TxHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetResultsQuery {
+    pub job_run_request_tx_hash: TxHash,
+    pub start: u32,
+    pub size: u32,
+}
+
+impl GetResultsQuery {
+    pub fn new(job_run_request_tx_hash: TxHash, start: u32, size: u32) -> Self {
+        Self { job_run_request_tx_hash, start, size }
+    }
+}
+
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct JobResult {
     pub create_commitment_tx_hash: TxHash,
