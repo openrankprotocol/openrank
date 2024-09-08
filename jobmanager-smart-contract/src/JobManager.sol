@@ -155,32 +155,37 @@ contract JobManager {
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobAssignment(bytes32 jobId, address _computer, address _verifier, bytes calldata signature) external onlyBlockBuilder {
-        require(jobs[jobId].blockBuilder == address(0), "Job already exists");
+    function submitJobAssignment(bytes32 jobId, address _computer, address _verifier, OpenrankTx calldata transaction, bytes calldata signature) external onlyBlockBuilder {
+        require(jobs[jobId].computer == address(0), "Job already assigned to a computer");
         require(_computer == computer, "Assigned computer is not whitelisted");
-
-        // Verify the signature
-        address signer = recoverSigner(jobId, signature);
+        require(verifiers[_verifier], "Verifier is not whitelisted");
+        
+        // construct tx hash from transaction and check the signature
+        bytes32 txHash = getTxHash(transaction);
+        address signer = recoverSigner(txHash, signature);
         require(signer == blockBuilder, "Invalid Block Builder signature");
 
-        require(verifiers[_verifier], "Verifier is not whitelisted");
+        // check the transaction kind & jobRunRequestTxHash
+        require(transaction.kind == TxKind.JobRunAssignment, "Invalid transaction kind");
 
-        jobs[jobId] = Job({
-            blockBuilder: msg.sender,
-            computer: _computer,
-            verifier: _verifier,
-            commitment: bytes32(0),
-            isCommitted: false,
-            isVerfierVoted: false,
-            isValid: false
-        });
+        JobRunAssignment memory jobRunAssignment = abi.decode(transaction.body, (JobRunAssignment));
+
+        require(jobRunAssignment.jobRunRequestTxHash == txHash, "Invalid Job run request tx hash");
+
+        // save Job in storage
+        jobs[jobId].computer = _computer;
+        jobs[jobId].verifier = _verifier;
+        jobs[jobId].jobRunAssignmentTxHash = txHash;
+
+        // save TX in storage
+        txs[txHash] = transaction;
 
         emit JobAssigned(jobId, _computer, _verifier);
     }
 
     // Computer submits a CreateCommitment with signature validation
     function submitCreateCommitment(bytes32 jobId, bytes32 _commitment, bytes calldata signature) external onlyComputer {
-        require(jobs[jobId].blockBuilder != address(0), "Job not assigned");
+        require(jobs[jobId].computer != address(0), "Job not assigned");
         require(!jobs[jobId].isCommitted, "Commitment already submitted");
 
         // Verify the signature
