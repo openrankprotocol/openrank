@@ -112,6 +112,48 @@ contract JobManager {
         }
     }
 
+    // User sends JobRunRequest to Block Builder
+    function sendJobRunRequest(bytes32 jobId, address _blockBuilder, OpenrankTx calldata transaction, bytes calldata signature) external {
+        require(_blockBuilder == blockBuilder, "Assigned block builder is not whitelisted");
+
+        // construct tx hash from transaction and check the signature
+        bytes32 txHash = getTxHash(transaction);
+        address signer = recoverSigner(txHash, signature);
+        
+        // check if signer is whitelisted user
+        // require(signer == user, "Invalid user signature");
+
+        // check the transaction kind & jobId
+        require(transaction.kind == TxKind.JobRunRequest, "Invalid transaction kind");
+
+        JobRunRequest memory jobRunRequest = abi.decode(transaction.body, (JobRunRequest));
+
+        require(jobRunRequest.job_id == jobId, "Invalid Job Id");
+
+        // save Job in storage
+        jobs[jobId] = Job({
+            blockBuilder: _blockBuilder,
+            computer: address(0),
+            verifier: address(0),
+            commitment: bytes32(0),
+            isCommitted: false,
+            isVerfierVoted: false,
+            isValid: false,
+            
+            jobId: jobId,
+            jobRunRequestTxHash: bytes32(0),
+            jobRunAssignmentTxHash: bytes32(0),
+            createCommitmentTxHash: bytes32(0),
+            jobVerificationTxHash: bytes32(0)
+        });
+
+
+        // save TX in storage
+        txs[txHash] = transaction;
+
+        emit JobRunRequested(jobId, _blockBuilder, txHash);
+    }
+
     // Block Builder sends JobAssignment to Computer, with signature validation
     function submitJobAssignment(bytes32 jobId, address _computer, address _verifier, bytes calldata signature) external onlyBlockBuilder {
         require(jobs[jobId].blockBuilder == address(0), "Job already exists");
@@ -188,5 +230,10 @@ contract JobManager {
             v := byte(0, mload(add(sig, 96)))
         }
         return (v, r, s);
+    }
+
+    // Helper function to get the transaction hash from the OpenrankTx
+    function getTxHash(OpenrankTx calldata transaction) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(transaction.nonce, transaction.from, transaction.to, transaction.kind, transaction.body));
     }
 }
