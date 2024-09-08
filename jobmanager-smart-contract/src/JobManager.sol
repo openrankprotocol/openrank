@@ -184,16 +184,30 @@ contract JobManager {
     }
 
     // Computer submits a CreateCommitment with signature validation
-    function submitCreateCommitment(bytes32 jobId, bytes32 _commitment, bytes calldata signature) external onlyComputer {
+    function submitCreateCommitment(bytes32 jobId, bytes32 _commitment, OpenrankTx calldata transaction, bytes calldata signature) external onlyComputer {
         require(jobs[jobId].computer != address(0), "Job not assigned");
         require(!jobs[jobId].isCommitted, "Commitment already submitted");
 
-        // Verify the signature
-        address signer = recoverSigner(jobId, signature);
+        // construct tx hash from transaction and check the signature
+        bytes32 txHash = getTxHash(transaction);
+        address signer = recoverSigner(txHash, signature);
         require(signer == computer, "Invalid Computer signature");
 
+        // check the transaction kind & jobRunAssignmentTxHash
+        require(transaction.kind == TxKind.CreateCommitment, "Invalid transaction kind");
+
+        CreateCommitment memory createCommitment = abi.decode(transaction.body, (CreateCommitment));
+        
+        require(createCommitment.jobRunAssignmentTxHash == jobs[jobId].jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
+
+        // save Job in storage
         jobs[jobId].commitment = _commitment;
         jobs[jobId].isCommitted = true;
+        
+        jobs[jobId].createCommitmentTxHash = txHash;
+
+        // save TX in storage
+        txs[txHash] = transaction;
 
         emit JobCommitted(jobId, _commitment);
     }
