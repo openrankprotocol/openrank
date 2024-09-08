@@ -203,7 +203,7 @@ contract JobManager {
         // save Job in storage
         jobs[jobId].commitment = _commitment;
         jobs[jobId].isCommitted = true;
-        
+
         jobs[jobId].createCommitmentTxHash = txHash;
 
         // save TX in storage
@@ -213,17 +213,32 @@ contract JobManager {
     }
 
     // Verifier submit JobVerification result with signature validation
-    function submitJobVerification(bytes32 jobId, bool isValid, bytes calldata signature) external onlyVerifier{
+    function submitJobVerification(bytes32 jobId, OpenrankTx calldata transaction, bytes calldata signature) external onlyVerifier{
         require(jobs[jobId].isCommitted, "Commitment not submitted");
 
-        // Verify the signature
-        address signer = recoverSigner(jobId, signature);
+        // construct tx hash from transaction and check the signature
+        bytes32 txHash = getTxHash(transaction);
+        address signer = recoverSigner(txHash, signature);
         require(verifiers[signer], "Invalid Verifier signature");
 
         require(jobs[jobId].verifier == signer, "Verifier not part of this job");
 
+        // check the transaction kind & jobRunAssignmentTxHash
+        require(transaction.kind == TxKind.JobVerification, "Invalid transaction kind");
+
+        JobVerification memory jobVerification = abi.decode(transaction.body, (JobVerification));
+
+        require(jobVerification.jobRunAssignmentTxHash == jobs[jobId].jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
+
+        // save Job in storage
+        bool isValid = jobVerification.verificationResult;
         jobs[jobId].isValid = isValid;
         jobs[jobId].isVerfierVoted = true;
+
+        jobs[jobId].jobVerificationTxHash = txHash;
+
+        // save TX in storage
+        txs[txHash] = transaction;
 
         emit JobVerified(jobId, isValid, signer);
     }
