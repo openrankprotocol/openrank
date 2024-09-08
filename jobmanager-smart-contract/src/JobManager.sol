@@ -16,15 +16,71 @@ contract JobManager {
         bool isCommitted;
         bool isVerfierVoted;
         bool isValid;
+
+        bytes32 jobId;
+        bytes32 jobRunRequestTxHash;
+        bytes32 jobRunAssignmentTxHash;
+        bytes32 createCommitmentTxHash;
+        bytes32 jobVerificationTxHash;
+    }
+
+    // enum to store TX kind
+    enum TxKind { 
+        TrustUpdate,
+        SeedUpdate,
+        JobRunRequest,
+        JobRunAssignment,
+        CreateScores,
+        CreateCommitment,
+        JobVerification,
+        ProposedBlock,
+        FinalisedBlock
+    }
+
+    // struct to store TX
+    struct OpenrankTx {
+        uint64 nonce;
+        bytes20 from;
+        bytes20 to;
+        TxKind kind;
+        bytes body;
+    }
+
+    struct JobRunRequest {
+        uint64 domainHash;
+        uint32 blockHeight;
+        bytes32 job_id;
+    }
+
+    struct JobRunAssignment {
+        bytes32 jobRunRequestTxHash;
+        bytes20 assigned_computer;
+        bytes20 assigned_verifier;
+    }
+
+    struct CreateCommitment {
+        bytes32 jobRunAssignmentTxHash;
+        bytes32 ltRootHash;
+        bytes32 computeRootHash;
+        bytes32[] scoresTxHashes;
+    }
+
+    struct JobVerification {
+        bytes32 jobRunAssignmentTxHash;
+        bool verificationResult;
     }
 
     // Store jobs with JobId as the key
     mapping(bytes32 => Job) public jobs;
 
+    // Store OpenrankTx with txHash as the key
+    mapping(bytes32 => OpenrankTx) public txs;
+
     // Events
-    event JobAssigned(bytes32 indexed txHash, address computer, address verifier);
-    event JobCommitted(bytes32 indexed txHash, bytes32 commitment);
-    event JobVerified(bytes32 indexed txHash, bool isVerified, address verifier);
+    event JobRunRequested(bytes32 indexed jobId, address blockBuilder, bytes32 txHash);
+    event JobAssigned(bytes32 indexed jobId, address computer, address verifier);
+    event JobCommitted(bytes32 indexed jobId, bytes32 commitment);
+    event JobVerified(bytes32 indexed jobId, bool isVerified, address verifier);
 
     // Modifier for whitelisted Block Builder
     modifier onlyBlockBuilder() {
