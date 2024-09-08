@@ -18,7 +18,7 @@ contract JobManager {
         bool isValid;
     }
 
-    // Store jobs with txHash as the key
+    // Store jobs with JobId as the key
     mapping(bytes32 => Job) public jobs;
 
     // Events
@@ -57,17 +57,17 @@ contract JobManager {
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobAssignment(bytes32 txHash, address _computer, address _verifier, bytes calldata signature) external onlyBlockBuilder {
-        require(jobs[txHash].blockBuilder == address(0), "Job already exists");
+    function submitJobAssignment(bytes32 jobId, address _computer, address _verifier, bytes calldata signature) external onlyBlockBuilder {
+        require(jobs[jobId].blockBuilder == address(0), "Job already exists");
         require(_computer == computer, "Assigned computer is not whitelisted");
 
         // Verify the signature
-        address signer = recoverSigner(txHash, signature);
+        address signer = recoverSigner(jobId, signature);
         require(signer == blockBuilder, "Invalid Block Builder signature");
 
         require(verifiers[_verifier], "Verifier is not whitelisted");
 
-        jobs[txHash] = Job({
+        jobs[jobId] = Job({
             blockBuilder: msg.sender,
             computer: _computer,
             verifier: _verifier,
@@ -77,38 +77,38 @@ contract JobManager {
             isValid: false
         });
 
-        emit JobAssigned(txHash, _computer, _verifier);
+        emit JobAssigned(jobId, _computer, _verifier);
     }
 
     // Computer submits a CreateCommitment with signature validation
-    function submitCreateCommitment(bytes32 txHash, bytes32 _commitment, bytes calldata signature) external onlyComputer {
-        require(jobs[txHash].blockBuilder != address(0), "Job not assigned");
-        require(!jobs[txHash].isCommitted, "Commitment already submitted");
+    function submitCreateCommitment(bytes32 jobId, bytes32 _commitment, bytes calldata signature) external onlyComputer {
+        require(jobs[jobId].blockBuilder != address(0), "Job not assigned");
+        require(!jobs[jobId].isCommitted, "Commitment already submitted");
 
         // Verify the signature
-        address signer = recoverSigner(txHash, signature);
+        address signer = recoverSigner(jobId, signature);
         require(signer == computer, "Invalid Computer signature");
 
-        jobs[txHash].commitment = _commitment;
-        jobs[txHash].isCommitted = true;
+        jobs[jobId].commitment = _commitment;
+        jobs[jobId].isCommitted = true;
 
-        emit JobCommitted(txHash, _commitment);
+        emit JobCommitted(jobId, _commitment);
     }
 
     // Verifier submit JobVerification result with signature validation
-    function submitJobVerification(bytes32 txHash, bool isValid, bytes calldata signature) external onlyVerifier{
-        require(jobs[txHash].isCommitted, "Commitment not submitted");
+    function submitJobVerification(bytes32 jobId, bool isValid, bytes calldata signature) external onlyVerifier{
+        require(jobs[jobId].isCommitted, "Commitment not submitted");
 
         // Verify the signature
-        address signer = recoverSigner(txHash, signature);
+        address signer = recoverSigner(jobId, signature);
         require(verifiers[signer], "Invalid Verifier signature");
 
-        require(jobs[txHash].verifier == signer, "Verifier not part of this job");
+        require(jobs[jobId].verifier == signer, "Verifier not part of this job");
 
-        jobs[txHash].isValid = isValid;
-        jobs[txHash].isVerfierVoted = true;
+        jobs[jobId].isValid = isValid;
+        jobs[jobId].isVerfierVoted = true;
 
-        emit JobVerified(txHash, isValid, signer);
+        emit JobVerified(jobId, isValid, signer);
     }
 
     // Recover signer from the provided hash and signature
