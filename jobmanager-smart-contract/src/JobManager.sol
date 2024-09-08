@@ -11,10 +11,10 @@ contract JobManager {
     struct Job {
         address blockBuilder;
         address computer;
-        address[] verifiers;
+        address verifier;
         bytes32 commitment;
         bool isCommitted;
-        bool verifierVote;
+        bool isVerfierVoted;
         bool isValid;
     }
 
@@ -22,7 +22,7 @@ contract JobManager {
     mapping(bytes32 => Job) public jobs;
 
     // Events
-    event JobAssigned(bytes32 indexed txHash, address computer, address[] verifiers);
+    event JobAssigned(bytes32 indexed txHash, address computer, address verifier);
     event JobCommitted(bytes32 indexed txHash, bytes32 commitment);
     event JobVerified(bytes32 indexed txHash, bool isVerified, address verifier);
 
@@ -57,7 +57,7 @@ contract JobManager {
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobAssignment(bytes32 txHash, address _computer, address[] calldata _verifiers, bytes calldata signature) external onlyBlockBuilder {
+    function submitJobAssignment(bytes32 txHash, address _computer, address _verifier, bytes calldata signature) external onlyBlockBuilder {
         require(jobs[txHash].blockBuilder == address(0), "Job already exists");
         require(_computer == computer, "Assigned computer is not whitelisted");
 
@@ -65,21 +65,19 @@ contract JobManager {
         address signer = recoverSigner(txHash, signature);
         require(signer == blockBuilder, "Invalid Block Builder signature");
 
-        for (uint256 i = 0; i < _verifiers.length; i++) {
-            require(verifiers[_verifiers[i]], "Verifier is not whitelisted");
-        }
+        require(verifiers[_verifier], "Verifier is not whitelisted");
 
         jobs[txHash] = Job({
             blockBuilder: msg.sender,
             computer: _computer,
-            verifiers: _verifiers,
+            verifier: _verifier,
             commitment: bytes32(0),
             isCommitted: false,
-            verifierVote: false,
+            isVerfierVoted: false,
             isValid: false
         });
 
-        emit JobAssigned(txHash, _computer, _verifiers);
+        emit JobAssigned(txHash, _computer, _verifier);
     }
 
     // Computer submits a CreateCommitment with signature validation
@@ -105,12 +103,10 @@ contract JobManager {
         address signer = recoverSigner(txHash, signature);
         require(verifiers[signer], "Invalid Verifier signature");
 
-        // Find verifier's index
-        uint256 verifierIndex = findVerifierIndex(jobs[txHash].verifiers, signer);
-        require(verifierIndex < jobs[txHash].verifiers.length, "Verifier not part of this job");
+        require(jobs[txHash].verifier == signer, "Verifier not part of this job");
 
-        jobs[txHash].verifierVote = isValid;
         jobs[txHash].isValid = isValid;
+        jobs[txHash].isVerfierVoted = true;
 
         emit JobVerified(txHash, isValid, signer);
     }
@@ -136,15 +132,5 @@ contract JobManager {
             v := byte(0, mload(add(sig, 96)))
         }
         return (v, r, s);
-    }
-
-    // Helper function to find verifier's index in the job's verifiers array
-    function findVerifierIndex(address[] memory verifiersList, address verifier) internal pure returns (uint256) {
-        for (uint256 i = 0; i < verifiersList.length; i++) {
-            if (verifiersList[i] == verifier) {
-                return i;
-            }
-        }
-        return type(uint256).max; // Return max uint256 if not found
     }
 }
