@@ -14,7 +14,7 @@ contract JobManager {
         address[] verifiers;
         bytes32 commitment;
         bool isCommitted;
-        bool[] verifierVotes;
+        bool verifierVote;
         bool isValid;
     }
 
@@ -75,7 +75,7 @@ contract JobManager {
             verifiers: _verifiers,
             commitment: bytes32(0),
             isCommitted: false,
-            verifierVotes: new bool[](_verifiers.length),
+            verifierVote: false,
             isValid: false
         });
 
@@ -109,18 +109,8 @@ contract JobManager {
         uint256 verifierIndex = findVerifierIndex(jobs[txHash].verifiers, signer);
         require(verifierIndex < jobs[txHash].verifiers.length, "Verifier not part of this job");
 
-        jobs[txHash].verifierVotes[verifierIndex] = isValid;
-
-        // Check if all verifiers voted positively
-        bool allVotesPositive = true;
-        for (uint256 i = 0; i < jobs[txHash].verifierVotes.length; i++) {
-            if (!jobs[txHash].verifierVotes[i]) {
-                allVotesPositive = false;
-                break;
-            }
-        }
-
-        jobs[txHash].isValid = allVotesPositive;
+        jobs[txHash].verifierVote = isValid;
+        jobs[txHash].isValid = isValid;
 
         emit JobVerified(txHash, isValid, signer);
     }
