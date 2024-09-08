@@ -114,6 +114,7 @@ contract JobManager {
 
     // User sends JobRunRequest to Block Builder
     function sendJobRunRequest(bytes32 jobId, address _blockBuilder, OpenrankTx calldata transaction, bytes calldata signature) external {
+        require(jobs[jobId].blockBuilder == address(0), "Job already assigned to a block builder");
         require(_blockBuilder == blockBuilder, "Assigned block builder is not whitelisted");
 
         // construct tx hash from transaction and check the signature
