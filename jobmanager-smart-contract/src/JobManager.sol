@@ -97,7 +97,7 @@ contract JobManager {
     }
 
     // User sends JobRunRequest to Block Builder
-    function sendJobRunRequest(bytes32 jobId, OpenrankTx calldata transaction, bytes calldata signature) external {
+    function sendJobRunRequest(OpenrankTx calldata transaction, bytes calldata signature) external {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
@@ -105,16 +105,13 @@ contract JobManager {
         // check if signer is whitelisted user
         // require(signer == user, "Invalid user signature");
 
+        // check the transaction kind & jobId
+        require(transaction.kind == TxKind.JobRunRequest, "Invalid transaction kind");
 
         address _blockBuilder = transaction.to;
         require(blockBuilders[_blockBuilder], "Assigned block builder is not whitelisted");
 
-        // check the transaction kind & jobId
-        require(transaction.kind == TxKind.JobRunRequest, "Invalid transaction kind");
-
         JobRunRequest memory jobRunRequest = abi.decode(transaction.body, (JobRunRequest));
-
-        require(jobRunRequest.job_id == jobId, "Invalid Job ID");
 
         // save TX in storage
         txs[txHash] = transaction;
@@ -124,7 +121,7 @@ contract JobManager {
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobAssignment(bytes32 jobRunRequestTxHash, OpenrankTx calldata transaction, bytes calldata signature) external onlyBlockBuilder {        
+    function submitJobAssignment(OpenrankTx calldata transaction, bytes calldata signature) external onlyBlockBuilder {        
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
@@ -135,7 +132,7 @@ contract JobManager {
 
         JobRunAssignment memory jobRunAssignment = abi.decode(transaction.body, (JobRunAssignment));
 
-        require(jobRunAssignment.jobRunRequestTxHash == jobRunRequestTxHash, "Invalid Job run request tx hash");
+        require(hasTx[jobRunAssignment.jobRunRequestTxHash], "Invalid Job run request tx hash");
 
         address _computer = jobRunAssignment.assigned_computer;
         address _verifier = jobRunAssignment.assigned_verifier;
@@ -150,7 +147,7 @@ contract JobManager {
     }
 
     // Computer submits a CreateCommitment with signature validation
-    function submitCreateCommitment(bytes32 jobRunAssignmentTxHash, OpenrankTx calldata transaction, bytes calldata signature) external onlyComputer {
+    function submitCreateCommitment(OpenrankTx calldata transaction, bytes calldata signature) external onlyComputer {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
@@ -161,7 +158,7 @@ contract JobManager {
 
         CreateCommitment memory createCommitment = abi.decode(transaction.body, (CreateCommitment));
         
-        require(createCommitment.jobRunAssignmentTxHash == jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
+        require(hasTx[createCommitment.jobRunAssignmentTxHash], "Invalid Job run assignment tx hash");
 
         // save TX in storage
         txs[txHash] = transaction;
@@ -171,7 +168,7 @@ contract JobManager {
     }
 
     // Verifier submit JobVerification result with signature validation
-    function submitJobVerification(bytes32 jobRunAssignmentTxHash, OpenrankTx calldata transaction, bytes calldata signature) external onlyVerifier{
+    function submitJobVerification(OpenrankTx calldata transaction, bytes calldata signature) external onlyVerifier{
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
@@ -182,7 +179,7 @@ contract JobManager {
 
         JobVerification memory jobVerification = abi.decode(transaction.body, (JobVerification));
 
-        require(jobVerification.jobRunAssignmentTxHash == jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
+        require(hasTx[jobVerification.jobRunAssignmentTxHash], "Invalid Job run assignment tx hash");
 
         // save TX in storage
         txs[txHash] = transaction;
