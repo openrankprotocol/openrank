@@ -55,6 +55,7 @@ contract JobManager {
 
     // Store OpenrankTx with txHash as the key
     mapping(bytes32 => OpenrankTx) public txs;
+    mapping(bytes32 => bool) public hasTx;
 
     // Events
     event JobRunRequested(bytes32 txHash, address blockBuilder);
@@ -117,6 +118,7 @@ contract JobManager {
 
         // save TX in storage
         txs[txHash] = transaction;
+        hasTx[txHash] = true;
 
         emit JobRunRequested(txHash, _blockBuilder);
     }
@@ -142,6 +144,7 @@ contract JobManager {
 
         // save TX in storage
         txs[txHash] = transaction;
+        hasTx[txHash] = true;
 
         emit JobAssigned(txHash, _computer, _verifier);
     }
@@ -162,6 +165,7 @@ contract JobManager {
 
         // save TX in storage
         txs[txHash] = transaction;
+        hasTx[txHash] = true;
 
         emit JobCommitted(txHash);
     }
@@ -182,6 +186,7 @@ contract JobManager {
 
         // save TX in storage
         txs[txHash] = transaction;
+        hasTx[txHash] = true;
 
         emit JobVerified(txHash, jobVerification.verificationResult, signer);
     }
