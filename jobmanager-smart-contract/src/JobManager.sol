@@ -7,23 +7,6 @@ contract JobManager {
     mapping(address => bool) public computers;
     mapping(address => bool) public verifiers;
 
-    // Struct to store job details
-    struct Job {
-        address blockBuilder;
-        address computer;
-        address verifier;
-        bytes32 commitment;
-        bool isCommitted;
-        bool isVerfierVoted;
-        bool isValid;
-
-        bytes32 jobId;
-        bytes32 jobRunRequestTxHash;
-        bytes32 jobRunAssignmentTxHash;
-        bytes32 createCommitmentTxHash;
-        bytes32 jobVerificationTxHash;
-    }
-
     // enum to store TX kind
     enum TxKind { 
         TrustUpdate,
@@ -40,8 +23,8 @@ contract JobManager {
     // struct to store TX
     struct OpenrankTx {
         uint64 nonce;
-        bytes20 from;
-        bytes20 to;
+        address from;
+        address to;
         TxKind kind;
         bytes body;
     }
@@ -54,8 +37,8 @@ contract JobManager {
 
     struct JobRunAssignment {
         bytes32 jobRunRequestTxHash;
-        bytes20 assigned_computer;
-        bytes20 assigned_verifier;
+        address assigned_computer;
+        address assigned_verifier;
     }
 
     struct CreateCommitment {
@@ -70,17 +53,14 @@ contract JobManager {
         bool verificationResult;
     }
 
-    // Store jobs with JobId as the key
-    mapping(bytes32 => Job) public jobs;
-
     // Store OpenrankTx with txHash as the key
     mapping(bytes32 => OpenrankTx) public txs;
 
     // Events
-    event JobRunRequested(bytes32 indexed jobId, address blockBuilder, bytes32 txHash);
-    event JobAssigned(bytes32 indexed jobId, address computer, address verifier);
-    event JobCommitted(bytes32 indexed jobId, bytes32 commitment);
-    event JobVerified(bytes32 indexed jobId, bool isVerified, address verifier);
+    event JobRunRequested(bytes32 txHash, address blockBuilder);
+    event JobAssigned(bytes32 txHash, address computer, address verifier);
+    event JobCommitted(bytes32 txHash);
+    event JobVerified(bytes32 txHash, bool isVerified, address verifier);
 
     // Modifier for whitelisted Block Builder
     modifier onlyBlockBuilder() {
@@ -116,10 +96,7 @@ contract JobManager {
     }
 
     // User sends JobRunRequest to Block Builder
-    function sendJobRunRequest(bytes32 jobId, address _blockBuilder, OpenrankTx calldata transaction, bytes calldata signature) external {
-        require(jobs[jobId].blockBuilder == address(0), "Job already assigned to a block builder");
-        require(blockBuilders[_blockBuilder], "Assigned block builder is not whitelisted");
-
+    function sendJobRunRequest(bytes32 jobId, OpenrankTx calldata transaction, bytes calldata signature) external {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
@@ -127,43 +104,25 @@ contract JobManager {
         // check if signer is whitelisted user
         // require(signer == user, "Invalid user signature");
 
+
+        address _blockBuilder = transaction.to;
+        require(blockBuilders[_blockBuilder], "Assigned block builder is not whitelisted");
+
         // check the transaction kind & jobId
         require(transaction.kind == TxKind.JobRunRequest, "Invalid transaction kind");
 
         JobRunRequest memory jobRunRequest = abi.decode(transaction.body, (JobRunRequest));
 
-        require(jobRunRequest.job_id == jobId, "Invalid Job Id");
-
-        // save Job in storage
-        jobs[jobId] = Job({
-            blockBuilder: _blockBuilder,
-            computer: address(0),
-            verifier: address(0),
-            commitment: bytes32(0),
-            isCommitted: false,
-            isVerfierVoted: false,
-            isValid: false,
-            
-            jobId: jobId,
-            jobRunRequestTxHash: bytes32(0),
-            jobRunAssignmentTxHash: bytes32(0),
-            createCommitmentTxHash: bytes32(0),
-            jobVerificationTxHash: bytes32(0)
-        });
-
+        require(jobRunRequest.job_id == jobId, "Invalid Job ID");
 
         // save TX in storage
         txs[txHash] = transaction;
 
-        emit JobRunRequested(jobId, _blockBuilder, txHash);
+        emit JobRunRequested(txHash, _blockBuilder);
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobAssignment(bytes32 jobId, address _computer, address _verifier, OpenrankTx calldata transaction, bytes calldata signature) external onlyBlockBuilder {
-        require(jobs[jobId].computer == address(0), "Job already assigned to a computer");
-        require(computers[_computer], "Assigned computer is not whitelisted");
-        require(verifiers[_verifier], "Verifier is not whitelisted");
-        
+    function submitJobAssignment(bytes32 jobRunRequestTxHash, OpenrankTx calldata transaction, bytes calldata signature) external onlyBlockBuilder {        
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
@@ -174,24 +133,21 @@ contract JobManager {
 
         JobRunAssignment memory jobRunAssignment = abi.decode(transaction.body, (JobRunAssignment));
 
-        require(jobRunAssignment.jobRunRequestTxHash == txHash, "Invalid Job run request tx hash");
+        require(jobRunAssignment.jobRunRequestTxHash == jobRunRequestTxHash, "Invalid Job run request tx hash");
 
-        // save Job in storage
-        jobs[jobId].computer = _computer;
-        jobs[jobId].verifier = _verifier;
-        jobs[jobId].jobRunAssignmentTxHash = txHash;
+        address _computer = jobRunAssignment.assigned_computer;
+        address _verifier = jobRunAssignment.assigned_verifier;
+        require(computers[_computer], "Assigned computer is not whitelisted");
+        require(verifiers[_verifier], "Verifier is not whitelisted");
 
         // save TX in storage
         txs[txHash] = transaction;
 
-        emit JobAssigned(jobId, _computer, _verifier);
+        emit JobAssigned(txHash, _computer, _verifier);
     }
 
     // Computer submits a CreateCommitment with signature validation
-    function submitCreateCommitment(bytes32 jobId, bytes32 _commitment, OpenrankTx calldata transaction, bytes calldata signature) external onlyComputer {
-        require(jobs[jobId].computer != address(0), "Job not assigned");
-        require(!jobs[jobId].isCommitted, "Commitment already submitted");
-
+    function submitCreateCommitment(bytes32 jobRunAssignmentTxHash, OpenrankTx calldata transaction, bytes calldata signature) external onlyComputer {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
@@ -202,49 +158,32 @@ contract JobManager {
 
         CreateCommitment memory createCommitment = abi.decode(transaction.body, (CreateCommitment));
         
-        require(createCommitment.jobRunAssignmentTxHash == jobs[jobId].jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
-
-        // save Job in storage
-        jobs[jobId].commitment = _commitment;
-        jobs[jobId].isCommitted = true;
-
-        jobs[jobId].createCommitmentTxHash = txHash;
+        require(createCommitment.jobRunAssignmentTxHash == jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
 
         // save TX in storage
         txs[txHash] = transaction;
 
-        emit JobCommitted(jobId, _commitment);
+        emit JobCommitted(txHash);
     }
 
     // Verifier submit JobVerification result with signature validation
-    function submitJobVerification(bytes32 jobId, OpenrankTx calldata transaction, bytes calldata signature) external onlyVerifier{
-        require(jobs[jobId].isCommitted, "Commitment not submitted");
-
+    function submitJobVerification(bytes32 jobRunAssignmentTxHash, OpenrankTx calldata transaction, bytes calldata signature) external onlyVerifier{
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
         require(verifiers[signer], "Invalid Verifier signature");
-
-        require(jobs[jobId].verifier == signer, "Verifier not part of this job");
 
         // check the transaction kind & jobRunAssignmentTxHash
         require(transaction.kind == TxKind.JobVerification, "Invalid transaction kind");
 
         JobVerification memory jobVerification = abi.decode(transaction.body, (JobVerification));
 
-        require(jobVerification.jobRunAssignmentTxHash == jobs[jobId].jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
-
-        // save Job in storage
-        bool isValid = jobVerification.verificationResult;
-        jobs[jobId].isValid = isValid;
-        jobs[jobId].isVerfierVoted = true;
-
-        jobs[jobId].jobVerificationTxHash = txHash;
+        require(jobVerification.jobRunAssignmentTxHash == jobRunAssignmentTxHash, "Invalid Job run assignment tx hash");
 
         // save TX in storage
         txs[txHash] = transaction;
 
-        emit JobVerified(jobId, isValid, signer);
+        emit JobVerified(txHash, jobVerification.verificationResult, signer);
     }
 
     // Recover signer from the provided hash and signature
