@@ -3,8 +3,8 @@ pragma solidity ^0.8.13;
 
 contract JobManager {
     // Roles and whitelists
-    address public blockBuilder;
-    address public computer;
+    mapping(address => bool) public blockBuilders;
+    mapping(address => bool) public computers;
     mapping(address => bool) public verifiers;
 
     // Struct to store job details
@@ -84,13 +84,13 @@ contract JobManager {
 
     // Modifier for whitelisted Block Builder
     modifier onlyBlockBuilder() {
-        require(msg.sender == blockBuilder, "Not authorized as Block Builder");
+        require(blockBuilders[msg.sender], "Not authorized as Block Builder");
         _;
     }
 
     // Modifier for whitelisted Computer
     modifier onlyComputer() {
-        require(msg.sender == computer, "Not authorized as Computer");
+        require(computers[msg.sender], "Not authorized as Computer");
         _;
     }
 
@@ -101,11 +101,14 @@ contract JobManager {
     }
 
     // Initialize the contract with whitelisted addresses
-    constructor(address _blockBuilder, address _computer, address[] memory _verifiers) {
-        require(_blockBuilder != address(0), "Invalid Block Builder address");
-        require(_computer != address(0), "Invalid Computer address");
-        blockBuilder = _blockBuilder;
-        computer = _computer;
+    constructor(address[] memory _blockBuilders, address[] memory _computers, address[] memory _verifiers) {
+        for (uint256 i = 0; i < _blockBuilders.length; i++) {
+            blockBuilders[_blockBuilders[i]] = true;
+        }
+
+        for (uint256 i = 0; i < _computers.length; i++) {
+            computers[_computers[i]] = true;
+        }
 
         for (uint256 i = 0; i < _verifiers.length; i++) {
             verifiers[_verifiers[i]] = true;
@@ -115,7 +118,7 @@ contract JobManager {
     // User sends JobRunRequest to Block Builder
     function sendJobRunRequest(bytes32 jobId, address _blockBuilder, OpenrankTx calldata transaction, bytes calldata signature) external {
         require(jobs[jobId].blockBuilder == address(0), "Job already assigned to a block builder");
-        require(_blockBuilder == blockBuilder, "Assigned block builder is not whitelisted");
+        require(blockBuilders[_blockBuilder], "Assigned block builder is not whitelisted");
 
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
@@ -158,13 +161,13 @@ contract JobManager {
     // Block Builder sends JobAssignment to Computer, with signature validation
     function submitJobAssignment(bytes32 jobId, address _computer, address _verifier, OpenrankTx calldata transaction, bytes calldata signature) external onlyBlockBuilder {
         require(jobs[jobId].computer == address(0), "Job already assigned to a computer");
-        require(_computer == computer, "Assigned computer is not whitelisted");
+        require(computers[_computer], "Assigned computer is not whitelisted");
         require(verifiers[_verifier], "Verifier is not whitelisted");
         
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
-        require(signer == blockBuilder, "Invalid Block Builder signature");
+        require(blockBuilders[signer], "Invalid Block Builder signature");
 
         // check the transaction kind & jobRunRequestTxHash
         require(transaction.kind == TxKind.JobRunAssignment, "Invalid transaction kind");
@@ -192,7 +195,7 @@ contract JobManager {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
         address signer = recoverSigner(txHash, signature);
-        require(signer == computer, "Invalid Computer signature");
+        require(computers[signer], "Invalid Computer signature");
 
         // check the transaction kind & jobRunAssignmentTxHash
         require(transaction.kind == TxKind.CreateCommitment, "Invalid transaction kind");
