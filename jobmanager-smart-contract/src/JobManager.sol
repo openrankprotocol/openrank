@@ -27,30 +27,40 @@ contract JobManager {
         address to;
         TxKind kind;
         bytes body;
+        Signature signature;
+        uint64 sequence_number;
+    }
+
+    struct Signature {
+        bytes32 s;
+        bytes32 r;
+        uint8 r_id;
     }
 
     struct JobRunRequest {
-        uint64 domainHash;
-        uint32 blockHeight;
+        uint64 domain_id;
+        uint32 block_height;
         bytes32 job_id;
     }
 
     struct JobRunAssignment {
-        bytes32 jobRunRequestTxHash;
-        address assigned_computer;
-        address assigned_verifier;
+        bytes32 job_run_request_tx_hash;
+        address assigned_compute_node;
+        address assigned_verifier_node;
     }
 
     struct CreateCommitment {
-        bytes32 jobRunAssignmentTxHash;
-        bytes32 ltRootHash;
-        bytes32 computeRootHash;
-        bytes32[] scoresTxHashes;
+        bytes32 job_run_assignment_tx_hash;
+        bytes32 lt_root_hash;
+        bytes32 compute_root_hash;
+        bytes32[] scores_tx_hashes;
+        bytes32[] new_trust_tx_hashes;
+        bytes32[] new_seed_tx_hashes;
     }
 
     struct JobVerification {
-        bytes32 jobRunAssignmentTxHash;
-        bool verificationResult;
+        bytes32 job_run_assignment_tx_hash;
+        bool verification_result;
     }
 
     // Store OpenrankTx with txHash as the key
@@ -132,10 +142,10 @@ contract JobManager {
 
         JobRunAssignment memory jobRunAssignment = abi.decode(transaction.body, (JobRunAssignment));
 
-        require(hasTx[jobRunAssignment.jobRunRequestTxHash], "Invalid Job run request tx hash");
+        require(hasTx[jobRunAssignment.job_run_request_tx_hash], "Invalid Job run request tx hash");
 
-        address _computer = jobRunAssignment.assigned_computer;
-        address _verifier = jobRunAssignment.assigned_verifier;
+        address _computer = jobRunAssignment.assigned_compute_node;
+        address _verifier = jobRunAssignment.assigned_verifier_node;
         require(computers[_computer], "Assigned computer is not whitelisted");
         require(verifiers[_verifier], "Verifier is not whitelisted");
 
@@ -158,7 +168,7 @@ contract JobManager {
 
         CreateCommitment memory createCommitment = abi.decode(transaction.body, (CreateCommitment));
         
-        require(hasTx[createCommitment.jobRunAssignmentTxHash], "Invalid Job run assignment tx hash");
+        require(hasTx[createCommitment.job_run_assignment_tx_hash], "Invalid Job run assignment tx hash");
 
         // save TX in storage
         txs[txHash] = transaction;
@@ -179,13 +189,13 @@ contract JobManager {
 
         JobVerification memory jobVerification = abi.decode(transaction.body, (JobVerification));
 
-        require(hasTx[jobVerification.jobRunAssignmentTxHash], "Invalid Job run assignment tx hash");
+        require(hasTx[jobVerification.job_run_assignment_tx_hash], "Invalid Job run assignment tx hash");
 
         // save TX in storage
         txs[txHash] = transaction;
         hasTx[txHash] = true;
 
-        emit JobVerified(txHash, jobVerification.verificationResult, signer);
+        emit JobVerified(txHash, jobVerification.verification_result, signer);
     }
 
     // Recover signer from the provided hash and signature
