@@ -107,10 +107,15 @@ contract JobManager {
     }
 
     // User sends JobRunRequest to Block Builder
-    function sendJobRunRequest(OpenrankTx calldata transaction, bytes calldata signature) external {
+    function sendJobRunRequest(OpenrankTx calldata transaction, bytes32 openRankTxHash) external {
         // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
-        address signer = recoverSigner(txHash, signature);
+        
+        // TODO: should compute tx hash from given transaction, not `openRankTxHash`
+        // bytes32 txHash = getTxHash(transaction);
+
+        Signature memory sig = transaction.signature;
+        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
+        address signer = recoverSigner(openRankTxHash, signature);
         
         // check if signer is whitelisted user
         // require(signer == user, "Invalid user signature");
@@ -121,20 +126,23 @@ contract JobManager {
         address _blockBuilder = transaction.to;
         require(blockBuilders[_blockBuilder], "Assigned block builder is not whitelisted");
 
-        JobRunRequest memory jobRunRequest = abi.decode(transaction.body, (JobRunRequest));
+        // JobRunRequest memory jobRunRequest = abi.decode(transaction.body, (JobRunRequest));
 
         // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
+        txs[openRankTxHash] = transaction;
+        hasTx[openRankTxHash] = true;
 
-        emit JobRunRequested(txHash, _blockBuilder);
+        emit JobRunRequested(openRankTxHash, _blockBuilder);
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobAssignment(OpenrankTx calldata transaction, bytes calldata signature) external onlyBlockBuilder {        
+    function submitJobAssignment(OpenrankTx calldata transaction, bytes32 openRankTxHash) external onlyBlockBuilder {        
         // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
-        address signer = recoverSigner(txHash, signature);
+        // bytes32 txHash = getTxHash(transaction);
+
+        Signature memory sig = transaction.signature;
+        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
+        address signer = recoverSigner(openRankTxHash, signature);
         require(blockBuilders[signer], "Invalid Block Builder signature");
 
         // check the transaction kind & jobRunRequestTxHash
@@ -150,17 +158,20 @@ contract JobManager {
         require(verifiers[_verifier], "Verifier is not whitelisted");
 
         // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
+        txs[openRankTxHash] = transaction;
+        hasTx[openRankTxHash] = true;
 
-        emit JobAssigned(txHash, _computer, _verifier);
+        emit JobAssigned(openRankTxHash, _computer, _verifier);
     }
 
     // Computer submits a CreateCommitment with signature validation
-    function submitCreateCommitment(OpenrankTx calldata transaction, bytes calldata signature) external onlyComputer {
+    function submitCreateCommitment(OpenrankTx calldata transaction, bytes32 openRankTxHash) external onlyComputer {
         // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
-        address signer = recoverSigner(txHash, signature);
+        // bytes32 txHash = getTxHash(transaction);
+
+        Signature memory sig = transaction.signature;
+        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
+        address signer = recoverSigner(openRankTxHash, signature);
         require(computers[signer], "Invalid Computer signature");
 
         // check the transaction kind & jobRunAssignmentTxHash
@@ -171,17 +182,20 @@ contract JobManager {
         require(hasTx[createCommitment.job_run_assignment_tx_hash], "Invalid Job run assignment tx hash");
 
         // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
+        txs[openRankTxHash] = transaction;
+        hasTx[openRankTxHash] = true;
 
-        emit JobCommitted(txHash);
+        emit JobCommitted(openRankTxHash);
     }
 
     // Verifier submit JobVerification result with signature validation
-    function submitJobVerification(OpenrankTx calldata transaction, bytes calldata signature) external onlyVerifier{
+    function submitJobVerification(OpenrankTx calldata transaction, bytes32 openRankTxHash) external onlyVerifier{
         // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
-        address signer = recoverSigner(txHash, signature);
+        // bytes32 txHash = getTxHash(transaction);
+
+        Signature memory sig = transaction.signature;
+        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
+        address signer = recoverSigner(openRankTxHash, signature);
         require(verifiers[signer], "Invalid Verifier signature");
 
         // check the transaction kind & jobRunAssignmentTxHash
@@ -192,10 +206,10 @@ contract JobManager {
         require(hasTx[jobVerification.job_run_assignment_tx_hash], "Invalid Job run assignment tx hash");
 
         // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
+        txs[openRankTxHash] = transaction;
+        hasTx[openRankTxHash] = true;
 
-        emit JobVerified(txHash, jobVerification.verification_result, signer);
+        emit JobVerified(openRankTxHash, jobVerification.verification_result, signer);
     }
 
     // Recover signer from the provided hash and signature
@@ -216,8 +230,8 @@ contract JobManager {
         return (v, r, s);
     }
 
-    // Helper function to get the transaction hash from the OpenrankTx
-    function getTxHash(OpenrankTx calldata transaction) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(transaction.nonce, transaction.from, transaction.to, transaction.kind, transaction.body));
-    }
+    // // Helper function to get the transaction hash from the OpenrankTx
+    // function getTxHash(OpenrankTx calldata transaction) internal pure returns (bytes32) {
+    //     return keccak256(abi.encodePacked(transaction.nonce, transaction.from, transaction.to, transaction.kind, transaction.body));
+    // }
 }
