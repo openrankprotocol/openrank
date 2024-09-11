@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+// import "https://github.com/hamdiallam/solidity-rlp/blob/master/contracts/RLPReader.sol";
+import "./RLPReader.sol";
+
 contract JobManager {
+    using RLPReader for bytes;
+    using RLPReader for RLPReader.RLPItem;
+    using RLPReader for RLPReader.Iterator;
+
     // Roles and whitelists
     mapping(address => bool) public blockBuilders;
     mapping(address => bool) public computers;
@@ -234,5 +241,69 @@ contract JobManager {
     // Helper function to get the transaction hash from the OpenrankTx
     function getTxHash(OpenrankTx memory transaction) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(transaction.nonce, transaction.from, transaction.to, transaction.kind, transaction.body));
+    }
+
+    // Decode RLP back into the JobRunRequest struct
+    function decodeJobRunRequest(bytes memory rlpData) public pure returns (JobRunRequest memory) {
+        RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
+        return JobRunRequest({
+            domain_id: uint64(items[0].toUint()),
+            block_height: uint32(items[1].toUint()),
+            job_id: bytes32(items[2].toBytes())
+        });
+    }
+
+    // Decode RLP back into the JobRunAssignment struct
+    function decodeJobRunAssignment(bytes memory rlpData) public pure returns (JobRunAssignment memory) {
+        RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
+        return JobRunAssignment({
+            job_run_request_tx_hash: bytes32(items[0].toBytes()),
+            assigned_compute_node: items[1].toAddress(),
+            assigned_verifier_node: items[2].toAddress()
+        });
+    }
+
+    // Decode RLP back into the CreateCommitment struct
+    function decodeCreateCommitment(bytes memory rlpData) public pure returns (CreateCommitment memory) {
+        RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
+
+        // Decode bytes32[] field
+        RLPReader.RLPItem[] memory scoresTxHashes = items[3].toList();
+        bytes32[] memory scores_tx_hashes = new bytes32[](scoresTxHashes.length);
+        for (uint i = 0; i < scoresTxHashes.length; i++) {
+            scores_tx_hashes[i] = bytes32(scoresTxHashes[i].toBytes());
+        }
+
+        // Decode bytes32[] field
+        RLPReader.RLPItem[] memory newTrustTxHashes = items[4].toList();
+        bytes32[] memory new_trust_tx_hashes = new bytes32[](newTrustTxHashes.length);
+        for (uint i = 0; i < newTrustTxHashes.length; i++) {
+            new_trust_tx_hashes[i] = bytes32(newTrustTxHashes[i].toBytes());
+        }
+
+        // Decode bytes32[] field
+        RLPReader.RLPItem[] memory newSeedTxHashes = items[5].toList();
+        bytes32[] memory new_seed_tx_hashes = new bytes32[](newSeedTxHashes.length);
+        for (uint i = 0; i < newSeedTxHashes.length; i++) {
+            new_seed_tx_hashes[i] = bytes32(newSeedTxHashes[i].toBytes());
+        }
+
+        return CreateCommitment({
+            job_run_assignment_tx_hash: bytes32(items[0].toBytes()),
+            lt_root_hash: bytes32(items[1].toBytes()),
+            compute_root_hash: bytes32(items[2].toBytes()),
+            scores_tx_hashes: scores_tx_hashes,
+            new_trust_tx_hashes: new_trust_tx_hashes,
+            new_seed_tx_hashes: new_seed_tx_hashes
+        });
+    }
+
+    // Decode RLP back into the JobVerification struct
+    function decodeJobVerification(bytes memory rlpData) public pure returns (JobVerification memory) {
+        RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
+        return JobVerification({
+            job_run_assignment_tx_hash: bytes32(items[0].toBytes()),
+            verification_result: items[1].toBoolean()
+        });
     }
 }
