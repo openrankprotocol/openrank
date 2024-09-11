@@ -215,8 +215,7 @@ contract JobManager {
     }
 
     // Recover signer from the provided hash and signature
-    function recoverSigner(bytes32 hash, bytes memory signature) internal pure returns (address) {
-        bytes32 messageHash = keccak256(abi.encodePacked(hash));
+    function recoverSigner(bytes32 messageHash, bytes memory signature) internal pure returns (address) {
         (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
         return ecrecover(messageHash, v, r, s);
     }
