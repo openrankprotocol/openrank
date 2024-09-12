@@ -3,11 +3,15 @@ pragma solidity ^0.8.13;
 
 // import "https://github.com/hamdiallam/solidity-rlp/blob/master/contracts/RLPReader.sol";
 import "./RLPReader.sol";
+import "./RLPEncode.sol";
 
 contract JobManager {
     using RLPReader for bytes;
     using RLPReader for RLPReader.RLPItem;
     using RLPReader for RLPReader.Iterator;
+
+    using RLPEncode for bytes;
+    using RLPEncode for uint;
 
     // Roles and whitelists
     mapping(address => bool) public blockBuilders;
@@ -128,7 +132,7 @@ contract JobManager {
         // check the transaction kind & jobId
         require(transaction.kind == TxKind.JobRunRequest, "Invalid transaction kind");
 
-        address _blockBuilder = transaction.to;
+        address _blockBuilder = address(convertBytesToBytes20(transaction.to));
         require(blockBuilders[_blockBuilder], "Assigned block builder is not whitelisted");
 
         JobRunRequest memory jobRunRequest = decodeJobRunRequest(transaction.body);
@@ -246,7 +250,13 @@ contract JobManager {
 
     // Helper function to get the transaction hash from the OpenrankTx
     function getTxHash(OpenrankTx memory transaction) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(transaction.nonce, transaction.from, transaction.to, transaction.kind, transaction.body));
+        bytes[] memory _from = new bytes[](1);
+        _from[0] = RLPEncode.encodeBytes(transaction.from);
+
+        bytes[] memory _to = new bytes[](1);
+        _to[0] = RLPEncode.encodeBytes(transaction.to);
+
+        return keccak256(abi.encodePacked(transaction.nonce, RLPEncode.encodeList(_from), RLPEncode.encodeList(_to), RLPEncode.encodeUint(uint(transaction.kind)), transaction.body));
     }
 
     // Decode RLP back into the JobRunRequest struct
