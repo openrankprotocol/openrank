@@ -52,8 +52,8 @@ contract JobManager {
 
     struct JobRunAssignment {
         bytes32 job_run_request_tx_hash;
-        address assigned_compute_node;
-        address assigned_verifier_node;
+        bytes20 assigned_compute_node;
+        bytes20 assigned_verifier_node;
     }
 
     struct CreateCommitment {
@@ -157,8 +157,8 @@ contract JobManager {
 
         require(hasTx[jobRunAssignment.job_run_request_tx_hash], "Invalid Job run request tx hash");
 
-        address _computer = jobRunAssignment.assigned_compute_node;
-        address _verifier = jobRunAssignment.assigned_verifier_node;
+        address _computer = address(jobRunAssignment.assigned_compute_node);
+        address _verifier = address(jobRunAssignment.assigned_verifier_node);
         require(computers[_computer], "Assigned computer is not whitelisted");
         require(verifiers[_verifier], "Verifier is not whitelisted");
 
@@ -254,8 +254,8 @@ contract JobManager {
         RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
         return JobRunAssignment({
             job_run_request_tx_hash: bytes32(items[0].toList()[0].toBytes()),
-            assigned_compute_node: items[1].toAddress(),
-            assigned_verifier_node: items[2].toAddress()
+            assigned_compute_node: bytes20(items[1].toList()[0].toBytes()),
+            assigned_verifier_node: bytes20(items[2].toList()[0].toBytes())
         });
     }
 
