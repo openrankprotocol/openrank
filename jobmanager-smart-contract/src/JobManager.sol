@@ -153,7 +153,7 @@ contract JobManager {
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobAssignment(OpenrankTx calldata transaction) external onlyBlockBuilder {        
+    function submitJobRunAssignment(OpenrankTx calldata transaction) external onlyBlockBuilder {        
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
