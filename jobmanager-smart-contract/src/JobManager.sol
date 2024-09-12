@@ -245,7 +245,7 @@ contract JobManager {
         return JobRunRequest({
             domain_id: uint64(items[0].toUint()),
             block_height: uint32(items[1].toUint()),
-            job_id: bytes32(items[2].toBytes())
+            job_id: bytes32(items[2].toList()[0].toBytes())
         });
     }
 
@@ -253,7 +253,7 @@ contract JobManager {
     function decodeJobRunAssignment(bytes memory rlpData) public pure returns (JobRunAssignment memory) {
         RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
         return JobRunAssignment({
-            job_run_request_tx_hash: bytes32(items[0].toBytes()),
+            job_run_request_tx_hash: bytes32(items[0].toList()[0].toBytes()),
             assigned_compute_node: items[1].toAddress(),
             assigned_verifier_node: items[2].toAddress()
         });
@@ -267,27 +267,27 @@ contract JobManager {
         RLPReader.RLPItem[] memory scoresTxHashes = items[3].toList();
         bytes32[] memory scores_tx_hashes = new bytes32[](scoresTxHashes.length);
         for (uint i = 0; i < scoresTxHashes.length; i++) {
-            scores_tx_hashes[i] = bytes32(scoresTxHashes[i].toBytes());
+            scores_tx_hashes[i] = bytes32(scoresTxHashes[i].toList()[0].toBytes());
         }
 
         // Decode bytes32[] field
         RLPReader.RLPItem[] memory newTrustTxHashes = items[4].toList();
         bytes32[] memory new_trust_tx_hashes = new bytes32[](newTrustTxHashes.length);
         for (uint i = 0; i < newTrustTxHashes.length; i++) {
-            new_trust_tx_hashes[i] = bytes32(newTrustTxHashes[i].toBytes());
+            new_trust_tx_hashes[i] = bytes32(newTrustTxHashes[i].toList()[0].toBytes());
         }
 
         // Decode bytes32[] field
         RLPReader.RLPItem[] memory newSeedTxHashes = items[5].toList();
         bytes32[] memory new_seed_tx_hashes = new bytes32[](newSeedTxHashes.length);
         for (uint i = 0; i < newSeedTxHashes.length; i++) {
-            new_seed_tx_hashes[i] = bytes32(newSeedTxHashes[i].toBytes());
+            new_seed_tx_hashes[i] = bytes32(newSeedTxHashes[i].toList()[0].toBytes());
         }
 
         return CreateCommitment({
-            job_run_assignment_tx_hash: bytes32(items[0].toBytes()),
-            lt_root_hash: bytes32(items[1].toBytes()),
-            compute_root_hash: bytes32(items[2].toBytes()),
+            job_run_assignment_tx_hash: bytes32(items[0].toList()[0].toBytes()),
+            lt_root_hash: bytes32(items[1].toList()[0].toBytes()),
+            compute_root_hash: bytes32(items[2].toList()[0].toBytes()),
             scores_tx_hashes: scores_tx_hashes,
             new_trust_tx_hashes: new_trust_tx_hashes,
             new_seed_tx_hashes: new_seed_tx_hashes
@@ -298,7 +298,7 @@ contract JobManager {
     function decodeJobVerification(bytes memory rlpData) public pure returns (JobVerification memory) {
         RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
         return JobVerification({
-            job_run_assignment_tx_hash: bytes32(items[0].toBytes()),
+            job_run_assignment_tx_hash: bytes32(items[0].toList()[0].toBytes()),
             verification_result: items[1].toBoolean()
         });
     }
