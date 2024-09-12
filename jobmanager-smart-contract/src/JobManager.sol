@@ -30,8 +30,8 @@ contract JobManager {
     // struct to store TX
     struct OpenrankTx {
         uint64 nonce;
-        address from;
-        address to;
+        bytes from; // assume it's address(bytes20)
+        bytes to; // assume it's address(bytes20)
         TxKind kind;
         bytes body;
         Signature signature;
@@ -138,6 +138,16 @@ contract JobManager {
         hasTx[txHash] = true;
 
         emit JobRunRequested(txHash, _blockBuilder);
+    }
+
+    // Convert bytes to bytes20
+    function convertBytesToBytes20(bytes memory input) public pure returns (bytes20) {
+        require(input.length == 20, "Input must be 20 bytes long");
+        bytes20 result;
+        assembly {
+            result := mload(add(input, 0x20))
+        }
+        return result;
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
