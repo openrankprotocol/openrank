@@ -234,7 +234,9 @@ contract JobManager {
     // Recover signer from the provided hash and signature
     function recoverSigner(bytes32 messageHash, bytes memory signature) internal pure returns (address) {
         (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
-        return ecrecover(messageHash, v, r, s);
+        address signer = ecrecover(messageHash, v, r, s);
+        require(signer != address(0), "Invalid signature");
+        return signer;
     }
 
     // Helper function to split the signature into `r`, `s`, and `v`
