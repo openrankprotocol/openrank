@@ -245,6 +245,8 @@ contract JobManager {
             s := mload(add(sig, 64))
             v := byte(0, mload(add(sig, 96)))
         }
+        // Since OpenRankTX signature uses `recovery_id`(0 - 3), we need to convert it to valid `v`(27 or 28)
+        v = v + 27;
         return (v, r, s);
     }
 
