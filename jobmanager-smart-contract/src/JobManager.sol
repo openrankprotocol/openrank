@@ -84,24 +84,6 @@ contract JobManager {
     event JobCommitted(bytes32 txHash);
     event JobVerified(bytes32 txHash, bool isVerified);
 
-    // Modifier for whitelisted Block Builder
-    modifier onlyBlockBuilder() {
-        require(blockBuilders[msg.sender], "Not authorized as Block Builder");
-        _;
-    }
-
-    // Modifier for whitelisted Computer
-    modifier onlyComputer() {
-        require(computers[msg.sender], "Not authorized as Computer");
-        _;
-    }
-
-    // Modifier for whitelisted Verifier
-    modifier onlyVerifier() {
-        require(verifiers[msg.sender], "Not authorized as Verifier");
-        _;
-    }
-
     // Initialize the contract with whitelisted addresses
     constructor(address[] memory _blockBuilders, address[] memory _computers, address[] memory _verifiers) {
         for (uint256 i = 0; i < _blockBuilders.length; i++) {
@@ -153,7 +135,7 @@ contract JobManager {
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobRunAssignment(OpenrankTx calldata transaction) external onlyBlockBuilder {        
+    function submitJobRunAssignment(OpenrankTx calldata transaction) external {        
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
@@ -183,7 +165,7 @@ contract JobManager {
     }
 
     // Computer submits a CreateCommitment with signature validation
-    function submitCreateCommitment(OpenrankTx calldata transaction) external onlyComputer {
+    function submitCreateCommitment(OpenrankTx calldata transaction) external {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
@@ -208,7 +190,7 @@ contract JobManager {
     }
 
     // Verifier submit JobVerification result with signature validation
-    function submitJobVerification(OpenrankTx calldata transaction) external onlyVerifier{
+    function submitJobVerification(OpenrankTx calldata transaction) external {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
