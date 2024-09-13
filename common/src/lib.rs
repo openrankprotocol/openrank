@@ -93,11 +93,12 @@ pub fn broadcast_event(
 
 pub fn address_from_sk(sk: &SigningKey) -> Address {
     let vk = sk.verifying_key();
-    let vk_bytes = vk.to_sec1_bytes();
+    let uncompressed_point = vk.to_encoded_point(false);
+    let vk_bytes = uncompressed_point.as_bytes();
 
-    let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+    let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
     let mut address_bytes = [0u8; 20];
-    address_bytes.copy_from_slice(&hash.0[..20]);
+    address_bytes.copy_from_slice(&hash.0[12..]);
 
     Address(address_bytes)
 }
