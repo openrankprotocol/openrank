@@ -102,3 +102,30 @@ pub fn address_from_sk(sk: &SigningKey) -> Address {
 
     Address(address_bytes)
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_address_from_sk() {
+        // Ref: https://github.com/ethereum/tests/blob/develop/BasicTests/keyaddrtest.json
+        let test_vectors: Vec<(&str, &str)> = vec![
+            (
+                "c85ef7d79691fe79573b1a7064c19c1a9819ebdbd1faaab1a8ec92344438aaf4",
+                "cd2a3d9f938e13cd947ec05abc7fe734df8dd826",
+            ),
+            (
+                "c87f65ff3f271bf5dc8643484f66b200109caffe4bf98c4cb393dc35740b28c0",
+                "13978aee95f38490e9769c39b2773ed763d9cd5f",
+            ),
+        ];
+
+        for (key_bytes_hex, expected_addr_hex) in test_vectors {
+            let sk_bytes = hex::decode(key_bytes_hex).unwrap();
+            let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+            let address = address_from_sk(&sk);
+            assert_eq!(address.0.to_vec(), hex::decode(expected_addr_hex).unwrap());
+        }
+    }
+}
