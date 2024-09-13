@@ -113,7 +113,7 @@ contract JobManager {
         // // require(signer == user, "Invalid user signature");
 
         // check the transaction kind & jobId
-        require(transaction.kind == TxKind.JobRunRequest, "Invalid transaction kind");
+        require(transaction.kind == TxKind.JobRunRequest, "Expected JobRunRequest TX");
 
         JobRunRequest memory jobRunRequest = decodeJobRunRequest(transaction.body);
 
@@ -146,16 +146,16 @@ contract JobManager {
         // require(blockBuilders[signer], "Invalid Block Builder signature");
 
         // check the transaction kind & jobRunRequestTxHash
-        require(transaction.kind == TxKind.JobRunAssignment, "Invalid transaction kind");
+        require(transaction.kind == TxKind.JobRunAssignment, "Expected JobRunAssignment TX");
 
         JobRunAssignment memory jobRunAssignment = decodeJobRunAssignment(transaction.body);
 
-        require(hasTx[jobRunAssignment.job_run_request_tx_hash], "Invalid Job run request tx hash");
+        require(hasTx[jobRunAssignment.job_run_request_tx_hash], "Matching JobRunRequest TX missing");
 
         address _computer = address(jobRunAssignment.assigned_compute_node);
         address _verifier = address(jobRunAssignment.assigned_verifier_node);
-        require(computers[_computer], "Assigned computer is not whitelisted");
-        require(verifiers[_verifier], "Verifier is not whitelisted");
+        require(computers[_computer], "Assigned computer not whitelisted");
+        require(verifiers[_verifier], "Assigned verifier not whitelisted");
 
         // save TX in storage
         txs[txHash] = transaction;
@@ -176,11 +176,11 @@ contract JobManager {
         // require(computers[signer], "Invalid Computer signature");
 
         // check the transaction kind & jobRunAssignmentTxHash
-        require(transaction.kind == TxKind.CreateCommitment, "Invalid transaction kind");
+        require(transaction.kind == TxKind.CreateCommitment, "Expected CreateCommitment TX");
 
         CreateCommitment memory createCommitment = decodeCreateCommitment(transaction.body);
         
-        require(hasTx[createCommitment.job_run_assignment_tx_hash], "Invalid Job run assignment tx hash");
+        require(hasTx[createCommitment.job_run_assignment_tx_hash], "Matching JobRunAssignment TX missing");
 
         // save TX in storage
         txs[txHash] = transaction;
@@ -201,11 +201,11 @@ contract JobManager {
         // require(verifiers[signer], "Invalid Verifier signature");
 
         // check the transaction kind & jobRunAssignmentTxHash
-        require(transaction.kind == TxKind.JobVerification, "Invalid transaction kind");
+        require(transaction.kind == TxKind.JobVerification, "Expected JobVerification TX");
 
         JobVerification memory jobVerification = decodeJobVerification(transaction.body);
 
-        require(hasTx[jobVerification.job_run_assignment_tx_hash], "Invalid Job run assignment tx hash");
+        require(hasTx[jobVerification.job_run_assignment_tx_hash], "Matching JobRunAssignment TX missing");
 
         // save TX in storage
         txs[txHash] = transaction;
