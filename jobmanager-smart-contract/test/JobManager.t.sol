@@ -12,7 +12,8 @@ contract JobManagerTest is Test {
     address public verifier;
 
     function setUp() public {
-        // Get the addresses from the default test wallets
+        // Use the addresses which are the same as Rust tests.
+        // (See [project root]/common/src/txs.rs)
         bytes20 pk_bytes = hex"a94f5374fce5edbc8e2a8697c15331677e6ebf0b";
         blockBuilder = address(pk_bytes);
         address[] memory _blockBuilders = new address[](1);
@@ -206,7 +207,7 @@ contract JobManagerTest is Test {
 
 
     function test_submitJobVerification() public {
-         // Send JobRunRequest 
+        // Send JobRunRequest 
         JobManager.OpenrankTx memory t0 = JobManager.OpenrankTx({
             nonce: 0,
             from: hex"0000000000000000000000000000000000000000",

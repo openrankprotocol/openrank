@@ -104,7 +104,6 @@ contract JobManager {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
-        // TODO: come back to this after https://github.com/openrankprotocol/openrank/issues/53 is resolved
         // Signature memory sig = transaction.signature;
         // bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
         // address signer = recoverSigner(txHash, signature);
@@ -139,11 +138,10 @@ contract JobManager {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
-        // TODO: come back to this after https://github.com/openrankprotocol/openrank/issues/53 is resolved
-        // Signature memory sig = transaction.signature;
-        // bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
-        // address signer = recoverSigner(txHash, signature);
-        // require(blockBuilders[signer], "Invalid Block Builder signature");
+        Signature memory sig = transaction.signature;
+        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
+        address signer = recoverSigner(txHash, signature);
+        require(blockBuilders[signer], "BlockBuilder not whitelisted");
 
         // check the transaction kind & jobRunRequestTxHash
         require(transaction.kind == TxKind.JobRunAssignment, "Expected JobRunAssignment TX");
@@ -169,11 +167,10 @@ contract JobManager {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
-        // TODO: come back to this after https://github.com/openrankprotocol/openrank/issues/53 is resolved
-        // Signature memory sig = transaction.signature;
-        // bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
-        // address signer = recoverSigner(txHash, signature);
-        // require(computers[signer], "Invalid Computer signature");
+        Signature memory sig = transaction.signature;
+        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
+        address signer = recoverSigner(txHash, signature);
+        require(computers[signer], "Computer not whitelisted");
 
         // check the transaction kind & jobRunAssignmentTxHash
         require(transaction.kind == TxKind.CreateCommitment, "Expected CreateCommitment TX");
@@ -194,11 +191,10 @@ contract JobManager {
         // construct tx hash from transaction and check the signature
         bytes32 txHash = getTxHash(transaction);
 
-        // TODO: come back to this after https://github.com/openrankprotocol/openrank/issues/53 is resolved
-        // Signature memory sig = transaction.signature;
-        // bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
-        // address signer = recoverSigner(txHash, signature);
-        // require(verifiers[signer], "Invalid Verifier signature");
+        Signature memory sig = transaction.signature;
+        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
+        address signer = recoverSigner(txHash, signature);
+        require(verifiers[signer], "Verifier not whitelisted");
 
         // check the transaction kind & jobRunAssignmentTxHash
         require(transaction.kind == TxKind.JobVerification, "Expected JobVerification TX");
