@@ -93,11 +93,49 @@ pub fn broadcast_event(
 
 pub fn address_from_sk(sk: &SigningKey) -> Address {
     let vk = sk.verifying_key();
-    let vk_bytes = vk.to_sec1_bytes();
+    let uncompressed_point = vk.to_encoded_point(false);
+    let vk_bytes = uncompressed_point.as_bytes();
 
-    let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+    let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
     let mut address_bytes = [0u8; 20];
-    address_bytes.copy_from_slice(&hash.0[..20]);
+    address_bytes.copy_from_slice(&hash.0[12..]);
 
     Address(address_bytes)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_address_from_sk() {
+        // reference:
+        //  https://github.com/ethereum/tests/blob/develop/BasicTests/keyaddrtest.json
+        //  https://github.com/ethereum/execution-spec-tests/blob/main/src/ethereum_test_base_types/constants.py
+        let test_vectors: Vec<(&str, &str)> = vec![
+            (
+                "c85ef7d79691fe79573b1a7064c19c1a9819ebdbd1faaab1a8ec92344438aaf4",
+                "cd2a3d9f938e13cd947ec05abc7fe734df8dd826",
+            ),
+            (
+                "c87f65ff3f271bf5dc8643484f66b200109caffe4bf98c4cb393dc35740b28c0",
+                "13978aee95f38490e9769c39b2773ed763d9cd5f",
+            ),
+            (
+                "45A915E4D060149EB4365960E6A7A45F334393093061116B197E3240065FF2D8",
+                "a94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            ),
+            (
+                "9E7645D0CFD9C3A04EB7A9DB59A4EB7D359F2E75C9164A9D6B9A7D54E1B6A36F",
+                "8a0a19589531694250d570040a0c4b74576919b8",
+            ),
+        ];
+
+        for (key_bytes_hex, expected_addr_hex) in test_vectors {
+            let sk_bytes = hex::decode(key_bytes_hex).unwrap();
+            let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+            let address = address_from_sk(&sk);
+            assert_eq!(address.0.to_vec(), hex::decode(expected_addr_hex).unwrap());
+        }
+    }
 }

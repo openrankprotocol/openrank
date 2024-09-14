@@ -151,11 +151,13 @@ impl Tx {
         let sig = EcdsaSignature::try_from(bytes.as_slice())?;
         let rec_id = RecoveryId::from_byte(self.signature.r_id).ok_or(EcdsaError::new())?;
         let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id)?;
-        let vk_bytes = verifying_key.to_sec1_bytes();
 
-        let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+        let uncompressed_point = verifying_key.to_encoded_point(false);
+        let vk_bytes = uncompressed_point.as_bytes();
+
+        let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[..20]);
+        address_bytes.copy_from_slice(&hash.0[12..]);
 
         if Address(address_bytes) != address {
             return Err(EcdsaError::new());
@@ -175,10 +177,12 @@ impl Tx {
         let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id)?;
         verifying_key.verify_prehash(&message, &sig)?;
 
-        let vk_bytes = verifying_key.to_sec1_bytes();
-        let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+        let uncompressed_point = verifying_key.to_encoded_point(false);
+        let vk_bytes = uncompressed_point.as_bytes();
+
+        let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[..20]);
+        address_bytes.copy_from_slice(&hash.0[12..]);
         let address = Address(address_bytes);
 
         Ok(address)
