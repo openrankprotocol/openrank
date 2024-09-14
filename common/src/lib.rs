@@ -109,7 +109,9 @@ mod test {
 
     #[test]
     fn test_address_from_sk() {
-        // Ref: https://github.com/ethereum/tests/blob/develop/BasicTests/keyaddrtest.json
+        // reference:
+        //  https://github.com/ethereum/tests/blob/develop/BasicTests/keyaddrtest.json
+        //  https://github.com/ethereum/execution-spec-tests/blob/main/src/ethereum_test_base_types/constants.py
         let test_vectors: Vec<(&str, &str)> = vec![
             (
                 "c85ef7d79691fe79573b1a7064c19c1a9819ebdbd1faaab1a8ec92344438aaf4",
@@ -118,6 +120,14 @@ mod test {
             (
                 "c87f65ff3f271bf5dc8643484f66b200109caffe4bf98c4cb393dc35740b28c0",
                 "13978aee95f38490e9769c39b2773ed763d9cd5f",
+            ),
+            (
+                "45A915E4D060149EB4365960E6A7A45F334393093061116B197E3240065FF2D8",
+                "a94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            ),
+            (
+                "9E7645D0CFD9C3A04EB7A9DB59A4EB7D359F2E75C9164A9D6B9A7D54E1B6A36F",
+                "8a0a19589531694250d570040a0c4b74576919b8",
             ),
         ];
 
