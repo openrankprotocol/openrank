@@ -1,9 +1,14 @@
-use openrank_verifier::{self, VerifierNode};
+use dotenv::dotenv;
+use env_logger;
+use openrank_relayer::{self, SQLRelayer};
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let mut vn = VerifierNode::init().await?;
-    vn.node_recovery()?;
-    vn.run().await
+    dotenv().ok();
+    env_logger::init();
+    let mut relayer = SQLRelayer::init("../verifier/local-storage").await;
+    relayer.start().await;
+
+    Ok(())
 }

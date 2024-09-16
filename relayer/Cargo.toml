@@ -1,6 +1,6 @@
 [package]
 name = "openrank-relayer"
-description = "OpenRank - Relayer Node"
+description = "OpenRank - Relayer"
 license.workspace = true
 version.workspace = true
 authors.workspace = true
@@ -23,6 +23,7 @@ libp2p = { workspace = true, features = [
     "identify",
 ] }
 tokio = { workspace = true, features = ["full", "macros"] }
+tokio-postgres = "0.7"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 hex = { workspace = true, features = ["serde"] }
@@ -34,3 +35,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha3 = { workspace = true }
 k256 = { workspace = true }
+rocksdb = { workspace = true, features = ["multi-threaded-cf"] }
+postgres = { version = "0.19", features = ["with-serde_json-1"] }
+log = "0.4"
+env_logger = "0.10"
