@@ -7,7 +7,7 @@ members = [
     "computer",
     "da",
     "openrank-sdk",
-    "verifier",
+    "verifier", "relayer-client",
 ]
 
 [workspace.package]
