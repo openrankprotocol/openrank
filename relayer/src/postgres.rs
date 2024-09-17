@@ -71,4 +71,34 @@ impl SQLDatabase {
             },
         }
     }
+
+    pub async fn load_last_processed_key(&self, key_name: &str) -> Result<Option<usize>, Error> {
+        let row = self
+            .client
+            .query_opt(
+                "SELECT last_processed_key FROM state WHERE key_name = $1",
+                &[&key_name],
+            )
+            .await?;
+
+        if let Some(row) = row {
+            let last_processed_key: usize = row.get::<usize, i32>(0) as usize;
+            Ok(Some(last_processed_key))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn save_last_processed_key(&self, key_name: &str, key: i32) -> Result<(), Error> {
+        self.client
+            .execute(
+                "INSERT INTO state (key_name, last_processed_key, updated_at) 
+                 VALUES ($1, $2, NOW()) 
+                 ON CONFLICT (key_name) 
+                 DO UPDATE SET last_processed_key = $2, updated_at = NOW()",
+                &[&key_name, &key],
+            )
+            .await?;
+        Ok(())
+    }
 }

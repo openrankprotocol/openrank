@@ -39,3 +39,7 @@ rocksdb = { workspace = true, features = ["multi-threaded-cf"] }
 postgres = { version = "0.19", features = ["with-serde_json-1"] }
 log = "0.4"
 env_logger = "0.10"
+warp = "0.3" # or actix-web?
+async-graphql = "5.0" # or juniper for GraphQL?
+sqlx = { version = "0.6", features = ["postgres", "runtime-tokio-native-tls"] }
+async-graphql-warp = "5.0"

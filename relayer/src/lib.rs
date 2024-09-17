@@ -17,6 +17,11 @@ impl SQLRelayer {
     pub async fn init(db_path: &str) -> Self {
         let target_db = postgres::SQLDatabase::connect().await.expect("Connect to Postgres db");
 
+        let last_processed_key = target_db
+            .load_last_processed_key("relayer_last_key")
+            .await
+            .expect("Failed to load last processed key");
+
         let path = Path::new(db_path);
         let mut opts = Options::default();
         opts.create_if_missing(false);
@@ -27,7 +32,16 @@ impl SQLRelayer {
         let db = DBWithThreadMode::<MultiThreaded>::open_cf_descriptors(&opts, path, cfs)
             .expect("Failed to open RocksDB with column families");
 
-        SQLRelayer { db: Some(db), last_processed_key: None, target_db }
+        SQLRelayer { db: Some(db), last_processed_key, target_db }
+    }
+
+    async fn save_last_processed_key(&self) {
+        if let Some(last_processed_key) = self.last_processed_key {
+            self.target_db
+                .save_last_processed_key("relayer_last_key", last_processed_key as i32)
+                .await
+                .expect("Failed to save last processed key");
+        }
     }
 
     async fn index(&mut self) {
@@ -36,7 +50,6 @@ impl SQLRelayer {
             let iter = db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
 
             let mut count = 0;
-            let mut indexed = true;
 
             log::debug!("last_processed_key {:?}", self.last_processed_key);
 
@@ -53,7 +66,9 @@ impl SQLRelayer {
                             debug!("New Key: {}, Value length: {}", key_str, value_str.len());
                             self.target_db.insert_events(&key_str, &value_str).await;
 
+                            // Update the last processed key
                             self.last_processed_key = Some(count);
+                            self.save_last_processed_key().await;
                         }
                     },
                     Err(e) => {

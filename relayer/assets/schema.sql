@@ -12,5 +12,12 @@ CREATE TABLE events (
     compute VARCHAR
 );
 
+CREATE TABLE state (
+    id SERIAL PRIMARY KEY,
+    key_name VARCHAR UNIQUE NOT NULL,  
+    last_processed_key INTEGER,        
+    updated_at TIMESTAMP DEFAULT NOW() 
+);
+
 CREATE INDEX idx_event_id_hash ON events USING HASH (event_id);
 CREATE INDEX idx_event_hash ON events USING HASH (hash);
