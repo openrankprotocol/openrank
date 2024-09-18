@@ -65,3 +65,51 @@ impl JobManagerClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloy::{network::EthereumWallet, node_bindings::Anvil, signers::local::PrivateKeySigner};
+    use alloy_rlp::encode;
+
+    use openrank_common::txs::JobRunRequest;
+
+    use super::*;
+
+    // #[tokio::test]
+    async fn test() -> Result<()> {
+        // Spin up a local Anvil node.
+        // Ensure `anvil` is available in $PATH.
+        let anvil = Anvil::new().try_spawn()?;
+
+        // Set up signer from the first default Anvil account (Alice).
+        let signer: PrivateKeySigner = anvil.keys()[0].clone().into();
+        let wallet = EthereumWallet::from(signer);
+
+        // Create a provider with the wallet.
+        let rpc_url: Url = anvil.endpoint().parse()?;
+        let provider = ProviderBuilder::new()
+            .with_recommended_fillers()
+            .wallet(wallet)
+            .on_http(rpc_url.clone());
+
+        println!("Anvil running at `{}`", anvil.endpoint());
+
+        // Deploy the `Counter` contract.
+        let contract = JobManager::deploy(&provider, vec![], vec![], vec![]).await?;
+
+        println!("Deployed contract at address: {}", contract.address());
+
+        // create a contract instance.
+        let contract_address = format!("{}", contract.address());
+        let rpc_url_str = rpc_url.as_str();
+        let client =
+            JobManagerClient::new(&contract_address, rpc_url_str);
+        client
+            .call_function(Tx::default_with(
+                TxKind::JobRunRequest,
+                encode(JobRunRequest::default()),
+            ))
+            .await?;
+        Ok(())
+    }
+}
