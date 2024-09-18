@@ -30,7 +30,7 @@ impl JobManagerClient {
         }
     }
 
-    pub async fn call_function(&self, tx: Tx) -> Result<()> {
+    pub async fn call_with_openrank_tx(&self, tx: Tx) -> Result<()> {
         let provider = ProviderBuilder::new().on_http(self.rpc_url.clone());
         let contract = JobManager::new(self.contract_address, provider);
 
@@ -47,21 +47,23 @@ impl JobManagerClient {
             },
             sequence_number: 0,
         };
-        match tx.kind() {
+
+        let _tx_hash = match tx.kind() {
             TxKind::JobRunRequest => {
-                let _ = contract.sendJobRunRequest(converted_tx).send().await?;
+                contract.sendJobRunRequest(converted_tx).send().await?.watch().await?
             },
             TxKind::JobRunAssignment => {
-                let _ = contract.submitJobRunAssignment(converted_tx).send().await?;
+                contract.submitJobRunAssignment(converted_tx).send().await?.watch().await?
             },
             TxKind::CreateCommitment => {
-                let _ = contract.submitCreateCommitment(converted_tx).send().await?;
+                contract.submitCreateCommitment(converted_tx).send().await?.watch().await?
             },
             TxKind::JobVerification => {
-                let _ = contract.submitJobVerification(converted_tx).send().await?;
+                contract.submitJobVerification(converted_tx).send().await?.watch().await?
             },
-            _ => {},
-        }
+            _ => unreachable!(),
+        };
+
         Ok(())
     }
 }
@@ -76,7 +78,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_call_function() -> Result<()> {
+    async fn test_call_with_openrank_tx() -> Result<()> {
         // Spin up a local Anvil node.
         // Ensure `anvil` is available in $PATH.
         let anvil = Anvil::new().try_spawn()?;
@@ -106,7 +108,7 @@ mod tests {
 
         // Call the `submitJobRunRequest` function for testing.
         let _ = client
-            .call_function(Tx::default_with(
+            .call_with_openrank_tx(Tx::default_with(
                 TxKind::JobRunRequest,
                 encode(JobRunRequest::default()),
             ))
