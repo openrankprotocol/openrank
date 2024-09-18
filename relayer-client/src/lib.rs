@@ -17,7 +17,7 @@ sol!(
 );
 
 #[derive(Debug)]
-struct JobManagerClient {
+pub struct JobManagerClient {
     contract_address: Address,
     rpc_url: Url,
 }
