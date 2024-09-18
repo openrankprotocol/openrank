@@ -75,8 +75,8 @@ mod tests {
 
     use super::*;
 
-    // #[tokio::test]
-    async fn test() -> Result<()> {
+    #[tokio::test]
+    async fn test_call_function() -> Result<()> {
         // Spin up a local Anvil node.
         // Ensure `anvil` is available in $PATH.
         let anvil = Anvil::new().try_spawn()?;
@@ -94,22 +94,24 @@ mod tests {
 
         println!("Anvil running at `{}`", anvil.endpoint());
 
-        // Deploy the `Counter` contract.
+        // Deploy the `JobManager` contract.
         let contract = JobManager::deploy(&provider, vec![], vec![], vec![]).await?;
 
         println!("Deployed contract at address: {}", contract.address());
 
-        // create a contract instance.
+        // Create a contract instance.
         let contract_address = format!("{}", contract.address());
         let rpc_url_str = rpc_url.as_str();
-        let client =
-            JobManagerClient::new(&contract_address, rpc_url_str);
-        client
+        let client = JobManagerClient::new(&contract_address, rpc_url_str);
+
+        // Call the `submitJobRunRequest` function for testing.
+        let _ = client
             .call_function(Tx::default_with(
                 TxKind::JobRunRequest,
                 encode(JobRunRequest::default()),
             ))
             .await?;
+
         Ok(())
     }
 }
