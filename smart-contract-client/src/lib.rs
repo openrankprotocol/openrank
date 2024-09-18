@@ -1,5 +1,3 @@
-//! Example of generating code from ABI file using the `sol!` macro to interact with the contract.
-
 use std::str::FromStr;
 
 use alloy::{primitives::Address, providers::ProviderBuilder, sol, transports::http::reqwest::Url};
