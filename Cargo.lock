@@ -4670,18 +4670,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 
 [[package]]
-name = "relayer-client"
-version = "0.0.1"
-dependencies = [
- "alloy",
- "alloy-rlp",
- "eyre",
- "openrank-common",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "reqwest"
 version = "0.12.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5227,6 +5215,18 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+
+[[package]]
+name = "smart-contract-client"
+version = "0.0.1"
+dependencies = [
+ "alloy",
+ "alloy-rlp",
+ "eyre",
+ "openrank-common",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "smol"
