@@ -89,9 +89,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_with_openrank_tx() -> Result<()> {
+        let test_mnemonic = String::from("work man father plunge mystery proud hollow address reunion sauce theory bonus");
+
         // Spin up a local Anvil node.
         // Ensure `anvil` is available in $PATH.
-        let anvil = Anvil::new().try_spawn()?;
+        let anvil = Anvil::new().mnemonic(&test_mnemonic).try_spawn()?;
 
         // Set up signer from the first default Anvil account (Alice).
         let signer: PrivateKeySigner = anvil.keys()[0].clone().into();
@@ -114,7 +116,7 @@ mod tests {
         // Create a contract instance.
         let contract_address = format!("{}", contract.address());
         let rpc_url_str = rpc_url.as_str();
-        let client = JobManagerClient::new(&contract_address, rpc_url_str);
+        let client = JobManagerClient::new(&contract_address, rpc_url_str, &test_mnemonic).expect("Failed to create client");
 
         // Call the `submitJobRunRequest` function for testing.
         let _ = client
