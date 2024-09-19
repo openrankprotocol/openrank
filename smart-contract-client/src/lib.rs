@@ -1,6 +1,16 @@
 use std::str::FromStr;
 
-use alloy::{network::EthereumWallet, primitives::Address, providers::ProviderBuilder, signers::{k256::{ecdsa::SigningKey, Secp256k1}, local::{coins_bip39::English, LocalSigner, MnemonicBuilder}}, sol, transports::http::reqwest::Url};
+use alloy::{
+    network::EthereumWallet,
+    primitives::Address,
+    providers::ProviderBuilder,
+    signers::{
+        k256::{ecdsa::SigningKey, Secp256k1},
+        local::{coins_bip39::English, LocalSigner, MnemonicBuilder},
+    },
+    sol,
+    transports::http::reqwest::Url,
+};
 use eyre::Result;
 
 use openrank_common::txs::{Tx, TxKind};
@@ -23,25 +33,19 @@ pub struct JobManagerClient {
 
 impl JobManagerClient {
     pub fn new(contract_address: &str, rpc_url: &str, mnemonic: &str) -> Result<Self> {
-        let signer = MnemonicBuilder::<English>::default()
-            .phrase(mnemonic)
-            .index(0)?
-            .build()?;
-
-        println!("signer: {:?}", signer);
+        let signer = MnemonicBuilder::<English>::default().phrase(mnemonic).index(0)?.build()?;
         let contract_address = Address::from_str(contract_address)?;
         let rpc_url = Url::parse(rpc_url)?;
 
-        Ok(Self {
-            contract_address,
-            rpc_url,
-            signer,
-        })
+        Ok(Self { contract_address, rpc_url, signer })
     }
 
     pub async fn call_with_openrank_tx(&self, tx: Tx) -> Result<()> {
         let wallet = EthereumWallet::from(self.signer.clone());
-        let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(self.rpc_url.clone());
+        let provider = ProviderBuilder::new()
+            .with_recommended_fillers()
+            .wallet(wallet)
+            .on_http(self.rpc_url.clone());
         let contract = JobManager::new(self.contract_address, provider);
 
         let converted_tx = OpenrankTx {
@@ -89,7 +93,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_with_openrank_tx() -> Result<()> {
-        let test_mnemonic = String::from("work man father plunge mystery proud hollow address reunion sauce theory bonus");
+        let test_mnemonic = String::from(
+            "work man father plunge mystery proud hollow address reunion sauce theory bonus",
+        );
 
         // Spin up a local Anvil node.
         // Ensure `anvil` is available in $PATH.
@@ -106,17 +112,14 @@ mod tests {
             .wallet(wallet)
             .on_http(rpc_url.clone());
 
-        println!("Anvil running at `{}`", anvil.endpoint());
-
         // Deploy the `JobManager` contract.
         let contract = JobManager::deploy(&provider, vec![], vec![], vec![]).await?;
-
-        println!("Deployed contract at address: {}", contract.address());
 
         // Create a contract instance.
         let contract_address = format!("{}", contract.address());
         let rpc_url_str = rpc_url.as_str();
-        let client = JobManagerClient::new(&contract_address, rpc_url_str, &test_mnemonic).expect("Failed to create client");
+        let client = JobManagerClient::new(&contract_address, rpc_url_str, &test_mnemonic)
+            .expect("Failed to create client");
 
         // Call the `submitJobRunRequest` function for testing.
         let _ = client
