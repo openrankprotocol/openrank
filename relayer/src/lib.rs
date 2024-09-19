@@ -1,86 +1,100 @@
 use log::{debug, error, info};
 use rocksdb::{ColumnFamilyDescriptor, DBWithThreadMode, MultiThreaded, Options, DB};
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::collections::HashMap;
 use std::path::Path;
 use tokio::time::{sleep, Duration};
 
 mod postgres;
 
 pub struct SQLRelayer {
-    db: Option<DBWithThreadMode<MultiThreaded>>,
-    last_processed_key: Option<usize>,
+    dbs: HashMap<String, (DBWithThreadMode<MultiThreaded>, String)>, // Store multiple databases with paths and topics
+    last_processed_keys: HashMap<String, Option<usize>>, // Track last processed key per database
     target_db: postgres::SQLDatabase,
 }
 
 impl SQLRelayer {
-    pub async fn init(db_path: &str) -> Self {
+    pub async fn init(db_configs: Vec<(&str, &str)>) -> Self {
         let target_db = postgres::SQLDatabase::connect().await.expect("Connect to Postgres db");
 
-        let last_processed_key = target_db
-            .load_last_processed_key("relayer_last_key")
-            .await
-            .expect("Failed to load last processed key");
+        let mut dbs = HashMap::new();
+        let mut last_processed_keys = HashMap::new();
 
-        let path = Path::new(db_path);
-        let mut opts = Options::default();
-        opts.create_if_missing(false);
-        opts.create_missing_column_families(true);
+        for (db_path, topic) in db_configs {
+            let last_processed_key = target_db
+                .load_last_processed_key(&format!("relayer_last_key_{}_{}", db_path, topic))
+                .await
+                .expect("Failed to load last processed key");
 
-        let cfs = vec![ColumnFamilyDescriptor::new("tx", Options::default())];
+            let path = Path::new(db_path);
+            let mut opts = Options::default();
+            opts.create_if_missing(false);
+            opts.create_missing_column_families(true);
 
-        let db = DBWithThreadMode::<MultiThreaded>::open_cf_descriptors(&opts, path, cfs)
-            .expect("Failed to open RocksDB with column families");
+            let cfs = vec![ColumnFamilyDescriptor::new(topic, Options::default())];
 
-        SQLRelayer { db: Some(db), last_processed_key, target_db }
+            let db = DBWithThreadMode::<MultiThreaded>::open_cf_descriptors(&opts, path, cfs)
+                .expect("Failed to open RocksDB with column families");
+
+            dbs.insert(db_path.to_string(), (db, topic.to_string()));
+            last_processed_keys.insert(db_path.to_string(), last_processed_key);
+        }
+
+        SQLRelayer { dbs, last_processed_keys, target_db }
     }
 
-    async fn save_last_processed_key(&self) {
-        if let Some(last_processed_key) = self.last_processed_key {
-            self.target_db
-                .save_last_processed_key("relayer_last_key", last_processed_key as i32)
-                .await
-                .expect("Failed to save last processed key");
-        }
+    async fn save_last_processed_key(&self, db_path: &str, topic: &str, last_processed_key: usize) {
+        self.target_db
+            .save_last_processed_key(
+                &format!("relayer_last_key_{}_{}", db_path, topic),
+                last_processed_key as i32,
+            )
+            .await
+            .expect("Failed to save last processed key");
     }
 
     async fn index(&mut self) {
-        if let Some(ref db) = self.db {
-            let cf = db.cf_handle("tx").expect("Column family 'tx' not found");
+        for (db_path, (db, topic)) in &self.dbs {
+            let cf = db.cf_handle(topic).expect(&format!("Column family '{}' not found", topic));
             let iter = db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
 
             let mut count = 0;
 
-            log::debug!("last_processed_key {:?}", self.last_processed_key);
+            debug!(
+                "last_processed_key for {} and topic {}: {:?}",
+                db_path, topic, self.last_processed_keys[db_path]
+            );
 
             for item in iter {
                 match item {
                     Ok((key, value)) => {
                         let key_index = key.to_vec();
 
-                        if self.last_processed_key.is_none()
-                            || self.last_processed_key.unwrap() < count
+                        if self.last_processed_keys[db_path].is_none()
+                            || self.last_processed_keys[db_path].unwrap() < count
                         {
                             let key_str = String::from_utf8_lossy(&key);
                             let value_str = String::from_utf8_lossy(&value);
                             debug!("New Key: {}, Value length: {}", key_str, value_str.len());
                             self.target_db.insert_events(&key_str, &value_str).await;
 
-                            // Update the last processed key
-                            self.last_processed_key = Some(count);
-                            self.save_last_processed_key().await;
+                            self.last_processed_keys.insert(db_path.clone(), Some(count));
+                            self.save_last_processed_key(db_path, topic, count).await;
                         }
                     },
                     Err(e) => {
-                        error!("Error iterating over DB: {}", e);
+                        error!(
+                            "Error iterating over DB {} and topic {}: {}",
+                            db_path, topic, e
+                        );
                     },
                 }
                 count += 1;
             }
 
-            info!("Total records processed: {}", count);
-        } else {
-            error!("No connection to RocksDB.");
+            info!(
+                "Total records processed for {} and topic {}: {}",
+                db_path, topic, count
+            );
         }
     }
 

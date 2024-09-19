@@ -11,7 +11,8 @@ pub mod api;
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
     env_logger::init();
-    let mut relayer = SQLRelayer::init("../verifier/local-storage").await;
+    let dbs = vec![("../verifier/local-storage", "tx")];
+    let mut relayer = SQLRelayer::init(dbs).await;
     let server_task = tokio::spawn(async {
         serve().await;
     });
