@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use alloy::{primitives::Address, providers::ProviderBuilder, sol, transports::http::reqwest::Url};
+use alloy::{network::EthereumWallet, primitives::Address, providers::ProviderBuilder, signers::{k256::{ecdsa::SigningKey, Secp256k1}, local::{coins_bip39::English, LocalSigner, MnemonicBuilder}}, sol, transports::http::reqwest::Url};
 use eyre::Result;
 
 use openrank_common::txs::{Tx, TxKind};
@@ -18,18 +18,30 @@ sol!(
 pub struct JobManagerClient {
     contract_address: Address,
     rpc_url: Url,
+    signer: LocalSigner<SigningKey>,
 }
 
 impl JobManagerClient {
-    pub fn new(contract_address: &str, rpc_url: &str) -> Self {
-        Self {
-            contract_address: Address::from_str(contract_address).unwrap(),
-            rpc_url: Url::parse(rpc_url).unwrap(),
-        }
+    pub fn new(contract_address: &str, rpc_url: &str, mnemonic: &str) -> Result<Self> {
+        let signer = MnemonicBuilder::<English>::default()
+            .phrase(mnemonic)
+            .index(0)?
+            .build()?;
+
+        println!("signer: {:?}", signer);
+        let contract_address = Address::from_str(contract_address)?;
+        let rpc_url = Url::parse(rpc_url)?;
+
+        Ok(Self {
+            contract_address,
+            rpc_url,
+            signer,
+        })
     }
 
     pub async fn call_with_openrank_tx(&self, tx: Tx) -> Result<()> {
-        let provider = ProviderBuilder::new().on_http(self.rpc_url.clone());
+        let wallet = EthereumWallet::from(self.signer.clone());
+        let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_http(self.rpc_url.clone());
         let contract = JobManager::new(self.contract_address, provider);
 
         let converted_tx = OpenrankTx {
