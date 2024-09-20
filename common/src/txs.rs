@@ -112,6 +112,7 @@ impl Tx {
         self.body.clone()
     }
 
+    /// Returns the hash of the transaction
     pub fn hash(&self) -> TxHash {
         let mut hasher = Keccak256::new();
         hasher.update(&self.nonce.to_be_bytes());
@@ -134,6 +135,7 @@ impl Tx {
         prefix
     }
 
+    /// Signs the transaction with the given private key
     pub fn sign(&mut self, sk: &SigningKey) -> Result<(), EcdsaError> {
         let (sig, rec) = sk.sign_prehash_recoverable(self.hash().as_bytes())?;
         let s: [u8; 32] = sig.s().to_bytes().into();
@@ -142,6 +144,7 @@ impl Tx {
         Ok(())
     }
 
+    /// Verifies the transaction signature against the given address
     pub fn verify_against(&self, address: Address) -> Result<(), EcdsaError> {
         let mut bytes = Vec::new();
         bytes.extend(self.signature.r);
@@ -164,6 +167,7 @@ impl Tx {
         verifying_key.verify_prehash(&message, &sig)
     }
 
+    /// Verifies the transaction signature
     pub fn verify(&self) -> Result<Address, EcdsaError> {
         let mut bytes = Vec::new();
         bytes.extend(self.signature.r);

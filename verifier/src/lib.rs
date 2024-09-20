@@ -260,6 +260,11 @@ pub struct VerifierNode {
 }
 
 impl VerifierNode {
+    /// Initialize the node:
+    /// - Load the config from config.toml
+    /// - Initialize the Swarm
+    /// - Initialize the DB
+    /// - Initialize the JobRunner
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -346,6 +351,11 @@ impl VerifierNode {
         Ok(())
     }
 
+    /// Run the node:
+    /// - Listen on all interfaces and whatever port the OS assigns
+    /// - subscribe to all the topics
+    /// - Handle gossipsub events
+    /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let topics_trust_update: Vec<Topic> = self
             .config

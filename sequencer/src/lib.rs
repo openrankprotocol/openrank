@@ -274,6 +274,11 @@ pub struct SequencerNode {
 }
 
 impl SequencerNode {
+    /// Initialize the node:
+    /// - Load the config from config.toml
+    /// - Initialize the Swarm
+    /// - Initialize the DB
+    /// - Initialize the Sequencer JsonRPC server
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         let swarm = build_node().await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -291,6 +296,11 @@ impl SequencerNode {
         Ok(Self { swarm, server, receiver })
     }
 
+    /// Run the node:
+    /// - Listen on all interfaces and whatever port the OS assigns
+    /// - Subscribe to all the topics
+    /// - Handle gossipsub events
+    /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         // Listen on all interfaces and whatever port the OS assigns
         self.swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;

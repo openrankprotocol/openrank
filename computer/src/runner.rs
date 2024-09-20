@@ -58,7 +58,7 @@ impl ComputeJobRunner {
         }
     }
 
-    /// Update the state of trees for certain domain, with the given trust entries
+    /// Update the state of trees for certain domain, with the given trust entries.
     pub fn update_trust(
         &mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
     ) -> Result<(), JobRunnerError> {

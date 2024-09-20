@@ -51,14 +51,17 @@ impl Domain {
         Self { trust_owner, trust_id, seed_owner, seed_id, algo_id }
     }
 
+    /// Returns the trust namespace of the domain
     pub fn trust_namespace(&self) -> OwnedNamespace {
         OwnedNamespace::new(self.trust_owner.clone(), self.trust_id)
     }
 
+    /// Returns the seed namespace of the domain
     pub fn seed_namespace(&self) -> OwnedNamespace {
         OwnedNamespace::new(self.seed_owner.clone(), self.seed_id)
     }
 
+    /// Returns the domain hash, created from the trust and seed namespace + algo id
     pub fn to_hash(&self) -> DomainHash {
         let mut s = DefaultHasher::new();
         s.write(&self.trust_owner.0);

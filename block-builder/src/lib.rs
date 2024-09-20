@@ -208,6 +208,12 @@ pub struct BlockBuilderNode {
 }
 
 impl BlockBuilderNode {
+    /// Initialize the node:
+    /// - Load the config from config.toml
+    /// - Initialize the Swarm
+    /// - Initialize the DB
+    /// - Initialize the JobRunner
+    /// - Initialize the Secret Key
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -224,6 +230,11 @@ impl BlockBuilderNode {
         Ok(Self { swarm, config, db, secret_key })
     }
 
+    /// Run the node:
+    /// - Listen on all interfaces and whatever port the OS assigns
+    /// - Subscribe to all the topics
+    /// - Handle gossipsub events
+    /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         // Listen on all interfaces and whatever port the OS assigns
         self.swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
