@@ -4,7 +4,10 @@ use std::{collections::HashMap, marker::PhantomData};
 use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
 
 #[derive(Clone, Debug)]
-/// MerkleTree structure
+/// Dense Incremental Merkle Tree implementation
+/// The dense tree is a tree where leaf nodes are compressed to be next to each other
+/// which makes it more efficient to store and traverse
+/// The tree is built incrementally, the nodes are added to the tree one by one.
 pub struct DenseIncrementalMerkleTree<H>
 where
     H: Digest,

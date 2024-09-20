@@ -7,10 +7,10 @@ use std::{
     hash::{DefaultHasher, Hasher},
 };
 
-/// Hash(u64) of the [Domain]
 #[derive(
     Clone, Debug, Default, Hash, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize,
 )]
+/// Hash of the [Domain]
 pub struct DomainHash(u64);
 
 impl DomainHash {
@@ -36,11 +36,17 @@ impl From<u64> for DomainHash {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+/// Domain of the openrank network. Consists of a trust namespace and a seed namespace + algorithm id
 pub struct Domain {
+    /// Address of the trust namespace owner
     trust_owner: Address,
+    /// ID of the trust namespace
     trust_id: u32,
+    /// Address of the seed namespace owner
     seed_owner: Address,
+    /// ID of the seed namespace
     seed_id: u32,
+    /// ID of the algorithm used for the domain
     algo_id: u64,
 }
 
@@ -73,6 +79,7 @@ impl Domain {
         DomainHash(res)
     }
 
+    /// Returns the topics for the domain
     pub fn topics(&self) -> Vec<Topic> {
         vec![
             Topic::NamespaceTrustUpdate(self.trust_namespace()),
@@ -85,14 +92,23 @@ impl Domain {
 /// Topics for openrank p2p node gossipsub events
 #[derive(Clone, Debug)]
 pub enum Topic {
+    /// Topic for the trust namespace update
     NamespaceTrustUpdate(OwnedNamespace),
+    /// Topic for the seed namespace update
     NamespaceSeedUpdate(OwnedNamespace),
+    /// Topic for the domain request
     DomainRequest(DomainHash),
+    /// Topic for the domain assignent
     DomainAssignent(DomainHash),
+    /// Topic for the domain commitment
     DomainCommitment(DomainHash),
+    /// Topic for the domain scores
     DomainScores(DomainHash),
+    /// Topic for the domain verification
     DomainVerification(DomainHash),
+    /// Topic for the proposed block
     ProposedBlock,
+    /// Topic for the finalised block
     FinalisedBlock,
 }
 

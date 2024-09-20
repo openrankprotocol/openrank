@@ -135,18 +135,12 @@ pub fn positive_run<const NUM_ITER: usize>(
 pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>) -> bool {
     // Initialize a boolean flag to track if the scores have converged.
     let mut is_converged = true;
-    // Initialize a counter to track the number of scores that have not converged.
-    let mut count = 0;
     // Iterate over the scores and check if they have converged.
     for (i, v) in scores {
         // Get the next score of the node.
         let next_score = next_scores.get(i).unwrap_or(&0.0);
         // Check if the score has converged.
         let curr_converged = (next_score - v).abs() < DELTA;
-        // If the score has not converged, increment the counter and set the flag to false.
-        if !curr_converged {
-            count += 1;
-        }
         is_converged &= curr_converged;
     }
     // Return the convergence flag.

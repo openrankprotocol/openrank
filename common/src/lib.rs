@@ -22,14 +22,15 @@ use tracing::info;
 use tx_event::TxEvent;
 use txs::{Address, Tx, TxKind};
 
-// We create a custom network behaviour.
 #[derive(NetworkBehaviour)]
+/// We create a custom network behaviour.
 pub struct MyBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
     // pub identify: identify::Behaviour,
 }
 
+/// Builds a libp2p swarm with the custom behaviour.
 pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
     let swarm = libp2p::SwarmBuilder::with_new_identity()
         .with_tokio()
@@ -72,6 +73,7 @@ pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
     Ok(swarm)
 }
 
+/// Broadcasts a default transaction event to the given topic.
 pub fn broadcast_default_event(
     swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: Topic,
 ) -> Result<MessageId, PublishError> {
@@ -82,6 +84,7 @@ pub fn broadcast_default_event(
     swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))
 }
 
+/// Broadcasts a transaction event to the given topic.
 pub fn broadcast_event(
     swarm: &mut Swarm<MyBehaviour>, tx: Tx, topic: Topic,
 ) -> Result<MessageId, PublishError> {
@@ -91,6 +94,10 @@ pub fn broadcast_event(
     swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))
 }
 
+/// Generates an address from a signing key.
+/// The address is the first 20 bytes of the keccak256 hash of the public key,
+/// which is compatible with Ethereum addresses.
+// TODO: Update to a new method that correctly matches the Ethereum address format
 pub fn address_from_sk(sk: &SigningKey) -> Address {
     let vk = sk.verifying_key();
     let vk_bytes = vk.to_sec1_bytes();

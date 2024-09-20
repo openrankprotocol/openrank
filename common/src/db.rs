@@ -6,10 +6,15 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::usize;
 
 #[derive(Debug)]
+/// Error type for database
 pub enum DbError {
+    /// Error when interacting with RocksDB
     RocksDB(RocksDBError),
+    /// Error when decoding entries from RocksDB
     Serde(SerdeError),
+    /// Error when column family is not found
     CfNotFound,
+    /// Error when entry is not found
     NotFound,
 }
 
@@ -62,6 +67,8 @@ impl Db {
         Ok(Self { connection: db })
     }
 
+    /// Creates new secondary database connection, given info of primary and secondary file paths and column families.
+    /// Secondary database is used for read-only queries, and should be explicitly refreshed.
     pub fn new_secondary(
         primary_path: &str, secondary_path: &str, cfs: &[&str],
     ) -> Result<Self, DbError> {
@@ -72,6 +79,7 @@ impl Db {
         Ok(Self { connection: db })
     }
 
+    /// Refreshes secondary database connection, by catching up with primary database.
     pub fn refresh(&self) -> Result<(), DbError> {
         self.connection.try_catch_up_with_primary().map_err(|e| DbError::RocksDB(e))
     }
