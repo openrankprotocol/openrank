@@ -3,7 +3,7 @@ use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
 #[derive(Clone, Debug)]
-/// Dense Merkle Tree implementation
+/// Dense Merkle tree.
 /// The dense tree is a tree where leaf nodes are compressed to be next to each other
 /// which makes it more efficient to store and traverse
 /// The tree is built from the fixed vector of leaves in the order they are given,
@@ -29,7 +29,7 @@ where
         self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(MerkleError::RootNotFound)
     }
 
-    /// Build a MerkleTree from given leaf nodes
+    /// Builds a Merkle tree from the given leaf nodes.
     pub fn new(mut leaves: Vec<Hash>) -> Result<Self, MerkleError> {
         let next_power_of_two = leaves.len().next_power_of_two();
         if leaves.len() < next_power_of_two {

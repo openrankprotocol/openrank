@@ -23,7 +23,7 @@ use tx_event::TxEvent;
 use txs::{Address, Tx, TxKind};
 
 #[derive(NetworkBehaviour)]
-/// We create a custom network behaviour.
+/// A custom libp2p [network behavior](libp2p::swarm::NetworkBehaviour) used by OpenRank nodes.
 pub struct MyBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,

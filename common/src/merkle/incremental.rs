@@ -4,7 +4,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
 
 #[derive(Clone, Debug)]
-/// Dense Incremental Merkle Tree implementation
+/// Dense incremental Merkle tree.
 /// The dense tree is a tree where leaf nodes are compressed to be next to each other
 /// which makes it more efficient to store and traverse
 /// The tree is built incrementally, the nodes are added to the tree one by one.
@@ -31,7 +31,7 @@ where
         self.nodes.get(&(self.num_levels, 0)).map(|h| h.clone()).ok_or(MerkleError::RootNotFound)
     }
 
-    /// Build a MerkleTree from given height(num_levels)
+    /// Builds a Merkle tree from given height (`num_levels`).
     pub fn new(num_levels: u8) -> Self {
         let mut default: HashMap<(u8, u32), Hash> = HashMap::new();
         default.insert((0, 0), Hash::default());

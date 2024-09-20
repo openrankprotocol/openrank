@@ -213,7 +213,7 @@ impl BlockBuilderNode {
     /// - Initialize the Swarm
     /// - Initialize the DB
     /// - Initialize the JobRunner
-    /// - Initialize the Secret Key
+    /// - Initialize the secret key
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -231,7 +231,7 @@ impl BlockBuilderNode {
     }
 
     /// Run the node:
-    /// - Listen on all interfaces and whatever port the OS assigns
+    /// - Listen on all interfaces, on OS-assigned ephemeral ports
     /// - Subscribe to all the topics
     /// - Handle gossipsub events
     /// - Handle mDNS events

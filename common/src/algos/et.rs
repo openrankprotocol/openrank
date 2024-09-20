@@ -11,13 +11,9 @@ const PRE_TRUST_WEIGHT: f32 = 0.5;
 /// less than `DELTA`, the score has converged.
 const DELTA: f32 = 0.01;
 
-/// Remove self-trust from local trust matrix. This is necessary to prevent circular
-/// reasoning, where a node trusts itself and therefore trusts all nodes it
-/// connected to.
+/// Pre-processes a mutable local trust matrix `lt` by modifying it in-place:
 ///
-/// # Arguments
-///
-/// * `lt` - A mutable reference to the local trust matrix.
+/// - Removes self-trust (diagonal entries), as prohibited by EigenTrust.
 fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
     // Set the trust value to 0 for all self-trust entries in the local trust matrix.
     for ((from, to), value) in lt {
@@ -27,7 +23,7 @@ fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
     }
 }
 
-/// Normalises the local trust matrix by dividing each element by the sum of its row.
+/// Normalizes the local trust matrix by dividing each element by the sum of its row.
 ///
 /// # Arguments
 ///

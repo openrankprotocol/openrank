@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 pub mod et;
 
 #[derive(Debug)]
-/// Error type for EigenTrust algorithm
+/// Errors that can arise in EigenTrust algorithm.
 pub enum AlgoError {
     /// Error when the sum of the trust values is zero
     ZeroSum,

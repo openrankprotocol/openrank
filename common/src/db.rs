@@ -6,9 +6,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::usize;
 
 #[derive(Debug)]
-/// Error type for database
+/// Errors that can arise while using database.
 pub enum DbError {
-    /// Error when interacting with RocksDB
+    /// RocksDB failed.
     RocksDB(RocksDBError),
     /// Error when decoding entries from RocksDB
     Serde(SerdeError),
