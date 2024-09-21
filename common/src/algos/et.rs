@@ -17,7 +17,7 @@ const DELTA: f32 = 0.01;
 fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
     // Set the trust value to 0 for all self-trust entries in the local trust matrix.
     for ((from, to), value) in lt {
-        if *from == *to {
+        if from == to {
             *value = 0.;
         }
     }

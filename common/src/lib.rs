@@ -97,8 +97,8 @@ pub fn broadcast_event(
 /// Generates an address from a signing key.
 /// The address is the first 20 bytes of the keccak256 hash of the public key,
 /// which is compatible with Ethereum addresses.
-// TODO: Update to a new method that correctly matches the Ethereum address format
 pub fn address_from_sk(sk: &SigningKey) -> Address {
+    // TODO: Update to a new method that correctly matches the Ethereum address format
     let vk = sk.verifying_key();
     let vk_bytes = vk.to_sec1_bytes();
 

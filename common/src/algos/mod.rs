@@ -6,7 +6,7 @@ pub mod et;
 #[derive(Debug)]
 /// Errors that can arise in EigenTrust algorithm.
 pub enum AlgoError {
-    /// Error when the sum of the trust values is zero
+    /// The sum of the trust values is zero.
     ZeroSum,
 }
 
