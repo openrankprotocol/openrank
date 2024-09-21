@@ -24,15 +24,20 @@ use tokio::{
 use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The whitelist for the Sequencer.
 pub struct Whitelist {
+    /// The list of addresses that are allowed to call the Sequencer.
     pub users: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Sequencer.
 pub struct Config {
+    /// The whitelist for the Sequencer.
     pub whitelist: Whitelist,
 }
 
+/// The Sequencer node. It contains the sender, the whitelisted users, and the database connection.
 pub struct Sequencer {
     sender: Sender<(Vec<u8>, Topic)>,
     whitelisted_users: Vec<Address>,
@@ -47,8 +52,8 @@ impl Sequencer {
 
 #[rpc_impl]
 impl Sequencer {
-    /// Handle incoming `TrustUpdate` transactions from the network,
-    /// and forward them to the `Computer` node for processing
+    /// Handles incoming `TrustUpdate` transactions from the network,
+    /// and forward them to the network for processing.
     async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -85,8 +90,8 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    /// Handle incoming `SeedUpdate` transactions from the network,
-    /// and forward them to the `Computer` node for processing
+    /// Handles incoming `SeedUpdate` transactions from the network,
+    /// and forward them to the network node for processing.
     async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -123,8 +128,8 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    /// Handle incoming `JobRunRequest` transactions from the network,
-    /// and forward them to the `Computer` node for processing
+    /// Handles incoming `JobRunRequest` transactions from the network,
+    /// and forward them to the network node for processing
     async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -163,7 +168,7 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    /// Get the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash.
+    /// Gets the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash.
     async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
         self.db.refresh().map_err(|e| {
             error!("{}", e);
@@ -267,6 +272,7 @@ impl Sequencer {
     }
 }
 
+/// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
 pub struct SequencerNode {
     swarm: Swarm<MyBehaviour>,
     server: Arc<Server>,

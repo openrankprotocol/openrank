@@ -4,11 +4,17 @@ use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug)]
+/// Errors that can arise while using the block builder node.
 pub enum BlockBuilderNodeError {
+    /// The decode error. This can arise when decoding a transaction.
     DecodeError(alloy_rlp::Error),
+    /// The database error. The error can occur when interacting with the database.
     DbError(DbError),
+    /// The p2p error. This can arise when sending or receiving messages over the p2p network.
     P2PError(String),
+    /// The signature error. This can arise when verifying a transaction signature.
     SignatureError(EcdsaError),
+    /// The invalid tx kind error. This can arise when the transaction kind is not valid.
     InvalidTxKind,
 }
 

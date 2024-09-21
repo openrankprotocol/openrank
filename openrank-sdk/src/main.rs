@@ -22,18 +22,26 @@ const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
+/// The method to call.
 enum Method {
+    /// Trust update. The method takes a list of trust entries and updates the trust graph.
     TrustUpdate,
+    /// Seed update. The method takes a list of seed entries and updates the seed vector.
     SeedUpdate,
+    /// The method creates a job run request transaction.
     JobRunRequest,
+    /// The method takes a job run request transaction hash and returns the computed results.
     GetResults,
+    /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
+    /// The method shows the address of the node, given the private key.
     ShowAddress,
 }
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
+/// The command line arguments.
 struct Args {
     #[arg(value_enum)]
     method: Method,
@@ -42,17 +50,21 @@ struct Args {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Sequencer.
 pub struct Sequencer {
     endpoint: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the SDK.
 pub struct Config {
+    /// The domain to be updated.
     pub domain: Domain,
+    /// The Sequencer configuration. It contains the endpoint of the Sequencer.
     pub sequencer: Sequencer,
 }
 
-/// Create a new `Config` from a local TOML file, given file path
+/// Creates a new `Config` from a local TOML file, given file path.
 fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
     let mut f = File::open(path)?;
     let mut toml_config = String::new();
@@ -61,9 +73,9 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
-/// 1. Read a CSV file and get a list of `TrustEntry`
-/// 2. Create a new `Client`, which can be used to call the Sequencer
-/// 3. Send the list of `TrustEntry` to the Sequencer
+/// 1. Reads a CSV file and get a list of `TrustEntry`.
+/// 2. Creates a new `Client`, which can be used to call the Sequencer.
+/// 3. Sends the list of `TrustEntry` to the Sequencer.
 async fn update_trust(sk: SigningKey, path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
     let f = File::open(path)?;
     let mut rdr = csv::Reader::from_reader(f);
@@ -97,9 +109,9 @@ async fn update_trust(sk: SigningKey, path: &str, config_path: &str) -> Result<(
     Ok(())
 }
 
-/// 1. Read a CSV file and get a list of `ScoreEntry`
-/// 2. Create a new `Client`, which can be used to call the Sequencer
-/// 3. Send the list of `ScoreEntry` to the Sequencer
+/// 1. Reads a CSV file and get a list of `ScoreEntry`.
+/// 2. Creates a new `Client`, which can be used to call the Sequencer.
+/// 3. Sends the list of `ScoreEntry` to the Sequencer.
 async fn update_seed(sk: SigningKey, path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
     let f = File::open(path)?;
     let mut rdr = csv::Reader::from_reader(f);
@@ -132,8 +144,8 @@ async fn update_seed(sk: SigningKey, path: &str, config_path: &str) -> Result<()
     Ok(())
 }
 
-/// 1. Create a new `Client`, which can be used to call the Sequencer
-/// 2. Send a `JobRunRequest` to the Sequencer
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Sends a `JobRunRequest` transaction to the Sequencer.
 async fn job_run_request(sk: SigningKey, path: &str) -> Result<(), Box<dyn Error>> {
     let config = read_config(path)?;
     // Creates a new client
@@ -156,8 +168,8 @@ async fn job_run_request(sk: SigningKey, path: &str) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-/// 1. Create a new `Client`, which can be used to call the Sequencer
-/// 2. Call the Sequencer to get the EigenTrust scores(`ScoreEntry`s)
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
 async fn get_results(
     arg: String, path: &str,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
@@ -169,12 +181,14 @@ async fn get_results(
     Ok(scores)
 }
 
+/// Generates a new ECDSA keypair and returns the address and the private key.
 fn generate_keypair<R: CryptoRngCore>(rng: &mut R) -> (SigningKey, Address) {
     let sk = SigningKey::random(rng);
     let addr = address_from_sk(&sk);
     (sk, addr)
 }
 
+/// Returns the secret key from the environment variable.
 fn get_secret_key() -> Result<SigningKey, Box<dyn Error>> {
     let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
     let secret_key_bytes = hex::decode(secret_key_hex)?;

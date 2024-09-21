@@ -6,19 +6,19 @@ use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
 #[derive(Clone, Debug)]
 /// Dense incremental Merkle tree.
 /// The dense tree is a tree where leaf nodes are compressed to be next to each other
-/// which makes it more efficient to store and traverse
+/// which makes it more efficient to store and traverse.
 /// The tree is built incrementally, the nodes are added to the tree one by one.
 pub struct DenseIncrementalMerkleTree<H>
 where
     H: Digest,
 {
-    /// HashMap to keep the level and index of the nodes
+    /// HashMap to keep the level and index of the nodes.
     pub(crate) nodes: HashMap<(u8, u32), Hash>,
-    /// Default nodes
+    /// Default nodes.
     default: HashMap<(u8, u32), Hash>,
-    // Number of levels
+    /// Number of levels.
     num_levels: u8,
-    /// PhantomData for the hasher
+    /// PhantomData for the hasher.
     _h: PhantomData<H>,
 }
 
@@ -26,7 +26,7 @@ impl<H> DenseIncrementalMerkleTree<H>
 where
     H: Digest,
 {
-    /// Get the root of the tree
+    /// Returns the root of the tree.
     pub fn root(&self) -> Result<Hash, MerkleError> {
         self.nodes.get(&(self.num_levels, 0)).map(|h| h.clone()).ok_or(MerkleError::RootNotFound)
     }

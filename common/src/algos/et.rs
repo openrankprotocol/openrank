@@ -23,11 +23,7 @@ fn pre_process(lt: &mut HashMap<(u32, u32), f32>) {
     }
 }
 
-/// Normalizes the local trust matrix by dividing each element by the sum of its row.
-///
-/// # Arguments
-///
-/// * `lt` - A mutable reference to the local trust matrix.
+/// Normalizes the `lt` matrix by dividing each element by the sum of its row.
 fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
     // Calculate the sum of each row in the local trust matrix.
     let mut sum_map: HashMap<u32, f32> = HashMap::new();
@@ -47,11 +43,7 @@ fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
     Ok(())
 }
 
-/// Normalises the seed trust values by dividing each value by the sum of all seed trust values.
-///
-/// # Arguments
-///
-/// * `seed` - A mutable reference to the HashMap containing the seed trust values.
+/// Normalizes the seed trust (`seed`) values by dividing each value by the sum of all seed trust values.
 fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
     // Calculate the sum of all seed trust values.
     let sum: f32 = seed.iter().map(|(_, v)| v).sum();
@@ -66,18 +58,9 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
     Ok(())
 }
 
-/// Run the positive run EigenTrust algorithm on the given local trust matrix and seed trust values.
-///
+/// Performs the positive EigenTrust algorithm on the given local trust matrix (`lt`) and seed trust values (`seed`).
 /// The algorithm iteratively updates the scores of each node until convergence.
-///
-/// # Arguments
-///
-/// * `lt` - A mutable reference to the local trust matrix.
-/// * `seed` - A mutable reference to the HashMap containing the seed trust values.
-///
-/// # Returns
-///
-/// A vector of tuples containing the node ID and the final score.
+/// It returns a vector of tuples containing the node ID and the final score.
 pub fn positive_run<const NUM_ITER: usize>(
     mut lt: HashMap<(u32, u32), f32>, mut seed: HashMap<u32, f32>,
 ) -> Result<Vec<(u32, f32)>, AlgoError> {
@@ -118,16 +101,8 @@ pub fn positive_run<const NUM_ITER: usize>(
     Ok(scores.into_iter().collect())
 }
 
-/// Checks if the scores have converged.
-///
-/// # Arguments
-///
-/// * `scores`: The previous scores of the nodes.
-/// * `next_scores`: The next scores of the nodes.
-///
-/// # Returns
-///
-/// `true` if the scores have converged and `false` otherwise.
+/// Given the previous scores (`scores`) and the next scores (`next_scores`), checks if the scores have converged.
+/// It returns `true` if the scores have converged and `false` otherwise.
 pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>) -> bool {
     // Initialize a boolean flag to track if the scores have converged.
     let mut is_converged = true;
@@ -143,17 +118,9 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
     is_converged
 }
 
-/// Checks if the scores have converged after a single iteration of the algorithm.
-///
-/// # Arguments
-///
-/// * `lt` - The local trust matrix.
-/// * `seed` - The seed trust values.
-/// * `scores` - The previous scores of the nodes.
-///
-/// # Returns
-///
-/// `true` if the scores have converged and `false` otherwise.
+/// It performs a single iteration of the positive run EigenTrust algorithm on the given local trust matrix (`lt`),
+/// seed trust values (`seed`), and previous scores (`scores`).
+/// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
     mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
 ) -> Result<bool, AlgoError> {

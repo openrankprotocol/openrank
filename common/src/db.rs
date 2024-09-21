@@ -10,11 +10,11 @@ use std::usize;
 pub enum DbError {
     /// RocksDB failed.
     RocksDB(RocksDBError),
-    /// Error when decoding entries from RocksDB
+    /// Error when decoding entries from RocksDB.
     Serde(SerdeError),
-    /// Error when column family is not found
+    /// Error when column family is not found.
     CfNotFound,
-    /// Error when entry is not found
+    /// Error when entry is not found.
     NotFound,
 }
 
@@ -43,7 +43,7 @@ pub trait DbItem {
     }
 }
 
-/// Wrapper for database connection
+/// Wrapper for database connection.
 pub struct Db {
     connection: DB,
 }
@@ -84,7 +84,7 @@ impl Db {
         self.connection.try_catch_up_with_primary().map_err(|e| DbError::RocksDB(e))
     }
 
-    /// Puts value into database
+    /// Puts value into database.
     pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
         let key = item.get_full_key();
@@ -92,7 +92,7 @@ impl Db {
         self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
     }
 
-    /// Gets value from database
+    /// Gets value from database.
     pub fn get<I: DbItem + DeserializeOwned>(&self, key: Vec<u8>) -> Result<I, DbError> {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
         let item_res = self.connection.get_cf(&cf, key).map_err(|e| DbError::RocksDB(e))?;

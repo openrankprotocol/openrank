@@ -5,14 +5,14 @@ use std::{collections::HashMap, marker::PhantomData};
 #[derive(Clone, Debug)]
 /// Dense Merkle tree.
 /// The dense tree is a tree where leaf nodes are compressed to be next to each other
-/// which makes it more efficient to store and traverse
+/// which makes it more efficient to store and traverse.
 /// The tree is built from the fixed vector of leaves in the order they are given,
 /// and cannot be modified after creation.
 pub struct DenseMerkleTree<H>
 where
     H: Digest,
 {
-    /// HashMap to keep the level and index of the nodes
+    /// HashMap to keep the level and index of the nodes.
     pub(crate) nodes: HashMap<u8, Vec<Hash>>,
     // Number of levels
     num_levels: u8,
@@ -24,7 +24,7 @@ impl<H> DenseMerkleTree<H>
 where
     H: Digest,
 {
-    /// Get the root of the tree
+    /// Returns the root of the tree.
     pub fn root(&self) -> Result<Hash, MerkleError> {
         self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(MerkleError::RootNotFound)
     }
