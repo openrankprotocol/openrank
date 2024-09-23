@@ -29,15 +29,10 @@ sol!(
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Whitelist {
+pub struct Config {
     pub contract_address: String,
     pub rpc_url: String,
     pub mnemonic: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-    pub whitelist: Whitelist,
 }
 
 pub struct JobManagerClient {
@@ -50,8 +45,7 @@ pub struct JobManagerClient {
 impl JobManagerClient {
     pub fn init() -> Result<Self, Box<dyn Error>> {
         let config: Config = toml::from_str(include_str!("../config.toml"))?;
-        let Whitelist { contract_address, rpc_url, mnemonic } = config.whitelist;
-        let client = match Self::new(&contract_address, &rpc_url, &mnemonic) {
+        let client = match Self::new(&config.contract_address, &config.rpc_url, &config.mnemonic) {
             Ok(client) => client,
             Err(e) => {
                 eprintln!("{}", e);
