@@ -5,7 +5,7 @@ use alloy::{
     primitives::Address,
     providers::ProviderBuilder,
     signers::{
-        k256::{ecdsa::SigningKey, Secp256k1},
+        k256::ecdsa::SigningKey,
         local::{coins_bip39::English, LocalSigner, MnemonicBuilder},
     },
     sol,
@@ -24,11 +24,11 @@ sol!(
     "./abi/JobManager.json"
 );
 
-#[derive(Debug)]
 pub struct JobManagerClient {
     contract_address: Address,
     rpc_url: Url,
     signer: LocalSigner<SigningKey>,
+    db: Db,
 }
 
 impl JobManagerClient {
@@ -36,8 +36,13 @@ impl JobManagerClient {
         let signer = MnemonicBuilder::<English>::default().phrase(mnemonic).index(0)?.build()?;
         let contract_address = Address::from_str(contract_address)?;
         let rpc_url = Url::parse(rpc_url)?;
+        let db = Db::new_secondary(
+            "./local-storage",
+            "./local-secondary-storage",
+            &[&Tx::get_cf()],
+        ).map_err(|e| eyre::eyre!(e))?;
 
-        Ok(Self { contract_address, rpc_url, signer })
+        Ok(Self { contract_address, rpc_url, signer, db })
     }
 
     pub async fn call_with_openrank_tx(&self, tx: Tx) -> Result<()> {
