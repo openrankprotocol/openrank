@@ -1,4 +1,5 @@
-use std::str::FromStr;
+use std::{error::Error, str::FromStr};
+use serde::{Deserialize, Serialize};
 
 use alloy::{
     network::EthereumWallet,
@@ -13,7 +14,7 @@ use alloy::{
 };
 use eyre::Result;
 
-use openrank_common::{db::{Db, DbItem, DbError}, txs::{Tx, TxKind}};
+use openrank_common::{db::{Db, DbItem}, txs::{Tx, TxKind}};
 use JobManager::{OpenrankTx, Signature};
 
 // Codegen from ABI file to interact with the contract.
@@ -24,6 +25,18 @@ sol!(
     "./abi/JobManager.json"
 );
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Whitelist {
+    pub contract_address: String,
+    pub rpc_url: String,
+    pub mnemonic: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub whitelist: Whitelist,
+}
+
 pub struct JobManagerClient {
     contract_address: Address,
     rpc_url: Url,
@@ -32,6 +45,19 @@ pub struct JobManagerClient {
 }
 
 impl JobManagerClient {
+    pub fn init() -> Result<Self, Box<dyn Error>> {
+        let config: Config = toml::from_str(include_str!("../config.toml"))?;
+        let Whitelist { contract_address, rpc_url, mnemonic } = config.whitelist;
+        let client = match Self::new(&contract_address, &rpc_url, &mnemonic) {
+            Ok(client) => client,
+            Err(e) => {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+        };
+        Ok(client)
+    }
+
     pub fn new(contract_address: &str, rpc_url: &str, mnemonic: &str) -> Result<Self> {
         let signer = MnemonicBuilder::<English>::default().phrase(mnemonic).index(0)?.build()?;
         let contract_address = Address::from_str(contract_address)?;

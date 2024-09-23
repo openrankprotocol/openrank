@@ -5304,8 +5304,10 @@ dependencies = [
  "alloy-rlp",
  "eyre",
  "openrank-common",
+ "serde",
  "serde_json",
  "tokio",
+ "toml",
 ]
 
 [[package]]

@@ -7,11 +7,7 @@ use std::error::Error;
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut bb = BlockBuilderNode::init().await?;
     let mut sequencer = SequencerNode::init().await?;
-    let smc = JobManagerClient::new(
-        "",
-        "",
-        "",
-    );
+    let smc = JobManagerClient::init()?;
     let block_builder_task = tokio::spawn(async move {
         let res = bb.run().await;
         if let Err(e) = res {
