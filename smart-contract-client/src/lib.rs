@@ -13,7 +13,7 @@ use alloy::{
 };
 use eyre::Result;
 
-use openrank_common::txs::{Tx, TxKind};
+use openrank_common::{db::{Db, DbItem, DbError}, txs::{Tx, TxKind}};
 use JobManager::{OpenrankTx, Signature};
 
 // Codegen from ABI file to interact with the contract.
@@ -45,7 +45,7 @@ impl JobManagerClient {
         Ok(Self { contract_address, rpc_url, signer, db })
     }
 
-    pub async fn call_with_openrank_tx(&self, tx: Tx) -> Result<()> {
+    pub async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {
         let wallet = EthereumWallet::from(self.signer.clone());
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
@@ -85,6 +85,51 @@ impl JobManagerClient {
 
         Ok(())
     }
+
+    fn read_txs(&self) -> Result<Vec<Tx>> {
+        // collect all txs
+        let mut txs = Vec::new();
+        let mut job_run_request_txs: Vec<Tx> = self
+            .db
+            .read_from_end(TxKind::JobRunRequest.into(), None)
+            .map_err(|e| eyre::eyre!(e))?;
+        txs.append(&mut job_run_request_txs);
+        drop(job_run_request_txs);
+
+        let mut job_run_assignment_txs: Vec<Tx> = self
+            .db
+            .read_from_end(TxKind::JobRunAssignment.into(), None)
+            .map_err(|e| eyre::eyre!(e))?;
+        txs.append(&mut job_run_assignment_txs);
+        drop(job_run_assignment_txs);
+
+        let mut create_commitment_txs: Vec<Tx> = self
+            .db
+            .read_from_end(TxKind::CreateCommitment.into(), None)
+            .map_err(|e| eyre::eyre!(e))?;
+        txs.append(&mut create_commitment_txs);
+        drop(create_commitment_txs);
+
+        let mut job_verification_txs: Vec<Tx> = self
+            .db
+            .read_from_end(TxKind::JobVerification.into(), None)
+            .map_err(|e| eyre::eyre!(e))?;
+        txs.append(&mut job_verification_txs);
+        drop(job_verification_txs);
+
+        // sort txs by sequence_number
+        txs.sort_unstable_by_key(|tx| tx.sequence_number());
+
+        Ok(txs)
+    }
+
+    pub async fn run(&self) -> Result<()> {
+        let txs = self.read_txs()?;
+        for tx in txs {
+            self.submit_openrank_tx(tx).await?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -97,7 +142,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_call_with_openrank_tx() -> Result<()> {
+    async fn test_submit_openrank_tx() -> Result<()> {
         let test_mnemonic = String::from(
             "work man father plunge mystery proud hollow address reunion sauce theory bonus",
         );
@@ -128,7 +173,7 @@ mod tests {
 
         // Call the `submitJobRunRequest` function for testing.
         let _ = client
-            .call_with_openrank_tx(Tx::default_with(
+            .submit_openrank_tx(Tx::default_with(
                 TxKind::JobRunRequest,
                 encode(JobRunRequest::default()),
             ))
