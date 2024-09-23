@@ -1,5 +1,5 @@
-use std::{error::Error, str::FromStr};
 use serde::{Deserialize, Serialize};
+use std::{error::Error, str::FromStr};
 
 use alloy::{
     network::EthereumWallet,
@@ -14,7 +14,10 @@ use alloy::{
 };
 use eyre::Result;
 
-use openrank_common::{db::{Db, DbItem}, txs::{Tx, TxKind}};
+use openrank_common::{
+    db::{Db, DbItem},
+    txs::{Tx, TxKind},
+};
 use JobManager::{OpenrankTx, Signature};
 
 // Codegen from ABI file to interact with the contract.
@@ -53,7 +56,7 @@ impl JobManagerClient {
             Err(e) => {
                 eprintln!("{}", e);
                 std::process::exit(1);
-            }
+            },
         };
         Ok(client)
     }
@@ -66,7 +69,8 @@ impl JobManagerClient {
             "./local-storage",
             "./local-secondary-storage",
             &[&Tx::get_cf()],
-        ).map_err(|e| eyre::eyre!(e))?;
+        )
+        .map_err(|e| eyre::eyre!(e))?;
 
         Ok(Self { contract_address, rpc_url, signer, db })
     }
