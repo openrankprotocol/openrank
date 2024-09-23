@@ -4023,6 +4023,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "smart-contract-client",
  "tokio",
  "toml",
  "tracing",
