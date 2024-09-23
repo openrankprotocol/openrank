@@ -2,13 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr};
 
 use alloy::{
-    hex, network::EthereumWallet, primitives::Address, providers::ProviderBuilder, signers::{
-        k256::ecdsa::SigningKey,
-        local::LocalSigner,
-    }, sol, transports::http::reqwest::Url
+    hex,
+    network::EthereumWallet,
+    primitives::Address,
+    providers::ProviderBuilder,
+    signers::{k256::ecdsa::SigningKey, local::LocalSigner},
+    sol,
+    transports::http::reqwest::Url,
 };
-use eyre::Result;
 use dotenv::dotenv;
+use eyre::Result;
 
 use openrank_common::{
     db::{Db, DbItem},
@@ -43,7 +46,7 @@ impl JobManagerClient {
         let secret_key_hex = std::env::var("SMC_SECRET_KEY")?;
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
-        
+
         let config: Config = toml::from_str(include_str!("../config.toml"))?;
 
         let contract_address = Address::from_str(&config.contract_address)?;
@@ -57,7 +60,9 @@ impl JobManagerClient {
         Ok(client)
     }
 
-    pub fn new(contract_address: Address, rpc_url: Url, signer: LocalSigner<SigningKey>, db: Db) -> Self {
+    pub fn new(
+        contract_address: Address, rpc_url: Url, signer: LocalSigner<SigningKey>, db: Db,
+    ) -> Self {
         Self { contract_address, rpc_url, signer, db }
     }
 
