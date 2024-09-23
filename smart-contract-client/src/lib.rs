@@ -2,17 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr};
 
 use alloy::{
-    network::EthereumWallet,
-    primitives::Address,
-    providers::ProviderBuilder,
-    signers::{
+    hex, network::EthereumWallet, primitives::Address, providers::ProviderBuilder, signers::{
         k256::ecdsa::SigningKey,
-        local::{coins_bip39::English, LocalSigner, MnemonicBuilder},
-    },
-    sol,
-    transports::http::reqwest::Url,
+        local::LocalSigner,
+    }, sol, transports::http::reqwest::Url
 };
 use eyre::Result;
+use dotenv::dotenv;
 
 use openrank_common::{
     db::{Db, DbItem},
@@ -32,7 +28,6 @@ sol!(
 pub struct Config {
     pub contract_address: String,
     pub rpc_url: String,
-    pub mnemonic: String,
 }
 
 pub struct JobManagerClient {
@@ -44,29 +39,26 @@ pub struct JobManagerClient {
 
 impl JobManagerClient {
     pub fn init() -> Result<Self, Box<dyn Error>> {
+        dotenv().ok();
+        let secret_key_hex = std::env::var("SMC_SECRET_KEY")?;
+        let secret_key_bytes = hex::decode(secret_key_hex)?;
+        let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
+        
         let config: Config = toml::from_str(include_str!("../config.toml"))?;
-        let client = match Self::new(&config.contract_address, &config.rpc_url, &config.mnemonic) {
-            Ok(client) => client,
-            Err(e) => {
-                eprintln!("{}", e);
-                std::process::exit(1);
-            },
-        };
-        Ok(client)
-    }
 
-    pub fn new(contract_address: &str, rpc_url: &str, mnemonic: &str) -> Result<Self> {
-        let signer = MnemonicBuilder::<English>::default().phrase(mnemonic).index(0)?.build()?;
-        let contract_address = Address::from_str(contract_address)?;
-        let rpc_url = Url::parse(rpc_url)?;
+        let contract_address = Address::from_str(&config.contract_address)?;
+        let rpc_url = Url::parse(&config.rpc_url)?;
         let db = Db::new_secondary(
             "./local-storage",
             "./local-secondary-storage",
             &[&Tx::get_cf()],
-        )
-        .map_err(|e| eyre::eyre!(e))?;
+        )?;
+        let client = Self::new(contract_address, rpc_url, secret_key.into(), db);
+        Ok(client)
+    }
 
-        Ok(Self { contract_address, rpc_url, signer, db })
+    pub fn new(contract_address: Address, rpc_url: Url, signer: LocalSigner<SigningKey>, db: Db) -> Self {
+        Self { contract_address, rpc_url, signer, db }
     }
 
     pub async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {
@@ -177,7 +169,7 @@ mod tests {
 
         // Set up signer from the first default Anvil account (Alice).
         let signer: PrivateKeySigner = anvil.keys()[0].clone().into();
-        let wallet = EthereumWallet::from(signer);
+        let wallet = EthereumWallet::from(signer.clone());
 
         // Create a provider with the wallet.
         let rpc_url: Url = anvil.endpoint().parse()?;
@@ -190,10 +182,9 @@ mod tests {
         let contract = JobManager::deploy(&provider, vec![], vec![], vec![]).await?;
 
         // Create a contract instance.
-        let contract_address = format!("{}", contract.address());
-        let rpc_url_str = rpc_url.as_str();
-        let client = JobManagerClient::new(&contract_address, rpc_url_str, &test_mnemonic)
-            .expect("Failed to create client");
+        let contract_address = contract.address().clone();
+        let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
+        let client = JobManagerClient::new(contract_address, rpc_url, signer, db);
 
         // Call the `submitJobRunRequest` function for testing.
         let _ = client

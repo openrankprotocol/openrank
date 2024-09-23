@@ -10,9 +10,10 @@ tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+dotenv = { workspace = true }
 
 openrank-common = { path = "../common" }
 
-alloy = { version = "0.3", features = ["full", "node-bindings", "signer-mnemonic", "signer-mnemonic-all-languages"] }
+alloy = { version = "0.3", features = ["full", "node-bindings"] }
 eyre = "0.6.12"
 alloy-rlp = "0.3.8"
