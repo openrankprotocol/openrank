@@ -67,6 +67,7 @@ impl JobManagerClient {
     }
 
     pub async fn submit_openrank_tx(&self, tx: Tx) -> Result<()> {
+        // create a contract instance
         let wallet = EthereumWallet::from(self.signer.clone());
         let provider = ProviderBuilder::new()
             .with_recommended_fillers()
@@ -74,6 +75,13 @@ impl JobManagerClient {
             .on_http(self.rpc_url.clone());
         let contract = JobManager::new(self.contract_address, provider);
 
+        // check if tx already exists
+        let is_tx_exists = contract.hasTx(tx.hash().0.into()).call().await?._0;
+        if is_tx_exists {
+            return Ok(());
+        }
+
+        // submit tx
         let converted_tx = OpenrankTx {
             nonce: tx.nonce(),
             from: tx.from().0.into(),
