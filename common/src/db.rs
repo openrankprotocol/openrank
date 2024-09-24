@@ -108,7 +108,7 @@ impl Db {
     ) -> Result<Vec<I>, DbError> {
         let num_elements = num_elements.unwrap_or(usize::MAX);
 
-        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?; 
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
         let mut readopts = ReadOptions::default();
         readopts.set_total_order_seek(true);
         if let Some(key) = key {
@@ -116,7 +116,7 @@ impl Db {
         }
         let mode = IteratorMode::Start;
         let iter = self.connection.iterator_cf_opt(&cf, readopts, mode);
-        
+
         let mut elements = Vec::new();
         for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
             let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
