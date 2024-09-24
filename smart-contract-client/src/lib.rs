@@ -19,6 +19,9 @@ use openrank_common::{
 };
 use JobManager::{OpenrankTx, Signature};
 
+// TODO: Set the value as temporary. NEED TO REVIEW.
+const DEFAULT_NUM_TXS: usize = 100;
+
 // Codegen from ABI file to interact with the contract.
 sol!(
     #[allow(missing_docs)]
@@ -115,36 +118,9 @@ impl JobManagerClient {
         Ok(())
     }
 
-    fn read_txs(&self) -> Result<Vec<Tx>> {
-        // collect all txs
-        let mut txs = Vec::new();
-        let mut job_run_request_txs: Vec<Tx> = self
-            .db
-            .read_from_end(TxKind::JobRunRequest.into(), None)
-            .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut job_run_request_txs);
-        drop(job_run_request_txs);
-
-        let mut job_run_assignment_txs: Vec<Tx> = self
-            .db
-            .read_from_end(TxKind::JobRunAssignment.into(), None)
-            .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut job_run_assignment_txs);
-        drop(job_run_assignment_txs);
-
-        let mut create_commitment_txs: Vec<Tx> = self
-            .db
-            .read_from_end(TxKind::CreateCommitment.into(), None)
-            .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut create_commitment_txs);
-        drop(create_commitment_txs);
-
-        let mut job_verification_txs: Vec<Tx> = self
-            .db
-            .read_from_end(TxKind::JobVerification.into(), None)
-            .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut job_verification_txs);
-        drop(job_verification_txs);
+    fn read_txs(&self, key: Option<Vec<u8>>) -> Result<Vec<Tx>> {
+        // fetch txs from db
+        let mut txs: Vec<Tx> = self.db.read_from_start_with_key(key, Some(DEFAULT_NUM_TXS))?;
 
         // sort txs by sequence_number
         txs.sort_unstable_by_key(|tx| tx.sequence_number());
@@ -153,8 +129,13 @@ impl JobManagerClient {
     }
 
     pub async fn run(&self) -> Result<()> {
+        let mut next_start_key = None;
         loop {
-            let txs = self.read_txs()?;
+            let txs = self.read_txs(next_start_key.clone())?;
+            next_start_key = match txs.last() {
+                Some(tx) => Some(Tx::construct_full_key(tx.kind(), tx.hash())),
+                None => continue,
+            };
             for tx in txs {
                 self.submit_openrank_tx(tx).await?;
             }
