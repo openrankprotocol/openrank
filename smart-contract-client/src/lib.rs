@@ -145,11 +145,13 @@ impl JobManagerClient {
     }
 
     pub async fn run(&self) -> Result<()> {
-        let txs = self.read_txs()?;
-        for tx in txs {
-            self.submit_openrank_tx(tx).await?;
+        loop {
+            let txs = self.read_txs()?;
+            for tx in txs {
+                self.submit_openrank_tx(tx).await?;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
         }
-        Ok(())
     }
 }
 
