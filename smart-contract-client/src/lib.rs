@@ -142,7 +142,7 @@ impl JobManagerClient {
             for tx in txs {
                 self.submit_openrank_tx(tx).await?;
             }
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         }
     }
 }
