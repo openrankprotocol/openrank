@@ -129,6 +129,9 @@ impl JobManagerClient {
     }
 
     pub async fn run(&self) -> Result<()> {
+        // TODO: We should think of mechanism to store/fetch `next_start_key` from db.
+        //       Otherwise, we always fetch the txs from start whenever client restarts.
+        //       Hence, it is needed to store the `next_start_key` periodically, in db.
         let mut next_start_key = None;
         loop {
             let txs = self.read_txs(next_start_key.clone())?;

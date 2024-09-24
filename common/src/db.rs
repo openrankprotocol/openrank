@@ -106,6 +106,9 @@ impl Db {
     pub fn read_from_start_with_key<I: DbItem + DeserializeOwned>(
         &self, key: Option<Vec<u8>>, num_elements: Option<usize>,
     ) -> Result<Vec<I>, DbError> {
+        // TODO: Should caller be responsible for setting `num_elements`?
+        //       If not, should we use certain limit for `num_elements` here?
+        //       Anyway, using `usize::MAX` is probably a bad idea.
         let num_elements = num_elements.unwrap_or(usize::MAX);
 
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
