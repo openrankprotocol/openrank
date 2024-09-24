@@ -6,7 +6,7 @@ use openrank_common::{
     },
     topics::{Domain, DomainHash},
     txs::{
-        job::{JobCommitment, JobScores},
+        job::{ComputeCommitment, ComputeScores},
         trust::{ScoreEntry, TrustEntry},
         Address, TxHash,
     },
@@ -17,20 +17,20 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
-pub struct VerificationJobRunner {
+pub struct VerificationRunner {
     count: HashMap<DomainHash, u32>,
     indices: HashMap<DomainHash, HashMap<Address, u32>>,
     local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
     seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
-    job_scores: HashMap<DomainHash, HashMap<TxHash, JobScores>>,
+    job_scores: HashMap<DomainHash, HashMap<TxHash, ComputeScores>>,
     compute_tree: HashMap<DomainHash, HashMap<TxHash, DenseMerkleTree<Keccak256>>>,
     active_assignments: HashMap<DomainHash, Vec<TxHash>>,
-    commitments: HashMap<TxHash, JobCommitment>,
+    commitments: HashMap<TxHash, ComputeCommitment>,
 }
 
-impl VerificationJobRunner {
+impl VerificationRunner {
     pub fn new(domains: Vec<DomainHash>) -> Self {
         let mut count = HashMap::new();
         let mut indices = HashMap::new();
@@ -73,29 +73,28 @@ impl VerificationJobRunner {
 
     pub fn update_trust(
         &mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
-    ) -> Result<(), JobRunnerError> {
+    ) -> Result<(), VerificationRunnerError> {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::IndicesNotFound(domain.to_hash()))?;
+            .ok_or(VerificationRunnerError::IndicesNotFound(domain.to_hash()))?;
         let count = self
             .count
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::CountNotFound(domain.to_hash()))?;
+            .ok_or(VerificationRunnerError::CountNotFound(domain.to_hash()))?;
         let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
         )?;
         let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
+            VerificationRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
         )?;
-        let lt = self
-            .local_trust
-            .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::LocalTrustNotFound(domain.to_hash()))?;
+        let lt = self.local_trust.get_mut(&domain.to_hash()).ok_or(
+            VerificationRunnerError::LocalTrustNotFound(domain.to_hash()),
+        )?;
         let seed = self
             .seed_trust
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+            .ok_or(VerificationRunnerError::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(&entry.from) {
@@ -120,14 +119,14 @@ impl VerificationJobRunner {
             if !lt_sub_trees.contains_key(&from_index) {
                 lt_sub_trees.insert(from_index, default_sub_tree.clone());
             }
-            let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
-                JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index),
-            )?;
+            let sub_tree = lt_sub_trees
+                .get_mut(&from_index)
+                .ok_or(VerificationRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
             let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
             let sub_tree_root =
-                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+                sub_tree.root().map_err(|e| VerificationRunnerError::MerkleError(e))?;
             let seed_value = seed.get(&to_index).unwrap_or(&0.0);
             let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -139,25 +138,25 @@ impl VerificationJobRunner {
 
     pub fn update_seed(
         &mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
-    ) -> Result<(), JobRunnerError> {
+    ) -> Result<(), VerificationRunnerError> {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::IndicesNotFound(domain.to_hash()))?;
+            .ok_or(VerificationRunnerError::IndicesNotFound(domain.to_hash()))?;
         let count = self
             .count
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::CountNotFound(domain.to_hash()))?;
+            .ok_or(VerificationRunnerError::CountNotFound(domain.to_hash()))?;
         let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
         )?;
         let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
+            VerificationRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
         )?;
         let seed = self
             .seed_trust
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+            .ok_or(VerificationRunnerError::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
             let index = if let Some(i) = domain_indices.get(&entry.id) {
@@ -174,9 +173,9 @@ impl VerificationJobRunner {
             }
             let sub_tree = lt_sub_trees
                 .get_mut(&index)
-                .ok_or(JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
+                .ok_or(VerificationRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
             let sub_tree_root =
-                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+                sub_tree.root().map_err(|e| VerificationRunnerError::MerkleError(e))?;
             let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
@@ -188,10 +187,10 @@ impl VerificationJobRunner {
     }
 
     pub fn check_scores_tx_hashes(
-        &self, domain: Domain, commitment: JobCommitment,
-    ) -> Result<bool, JobRunnerError> {
+        &self, domain: Domain, commitment: ComputeCommitment,
+    ) -> Result<bool, VerificationRunnerError> {
         let job_scores_txs = self.job_scores.get(&domain.clone().to_hash()).ok_or(
-            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
         )?;
         for score_tx in commitment.scores_tx_hashes {
             let res = job_scores_txs.contains_key(&score_tx);
@@ -204,11 +203,10 @@ impl VerificationJobRunner {
 
     pub fn check_finished_jobs(
         &mut self, domain: Domain,
-    ) -> Result<Vec<(TxHash, bool)>, JobRunnerError> {
-        let assignments = self
-            .active_assignments
-            .get(&domain.clone().to_hash())
-            .ok_or(JobRunnerError::ActiveAssignmentsNotFound(domain.to_hash()))?;
+    ) -> Result<Vec<(TxHash, bool)>, VerificationRunnerError> {
+        let assignments = self.active_assignments.get(&domain.clone().to_hash()).ok_or(
+            VerificationRunnerError::ActiveAssignmentsNotFound(domain.to_hash()),
+        )?;
         let mut results = Vec::new();
         let mut completed = Vec::new();
         for assignment_id in assignments.clone().into_iter() {
@@ -231,19 +229,18 @@ impl VerificationJobRunner {
                 }
             }
         }
-        let active_assignments = self
-            .active_assignments
-            .get_mut(&domain.clone().to_hash())
-            .ok_or(JobRunnerError::ActiveAssignmentsNotFound(domain.to_hash()))?;
+        let active_assignments = self.active_assignments.get_mut(&domain.clone().to_hash()).ok_or(
+            VerificationRunnerError::ActiveAssignmentsNotFound(domain.to_hash()),
+        )?;
         active_assignments.retain(|x| !completed.contains(x));
         Ok(results)
     }
 
     pub fn update_scores(
-        &mut self, domain: Domain, tx_hash: TxHash, job_scores: JobScores,
-    ) -> Result<(), JobRunnerError> {
+        &mut self, domain: Domain, tx_hash: TxHash, job_scores: ComputeScores,
+    ) -> Result<(), VerificationRunnerError> {
         let score_values = self.job_scores.get_mut(&domain.clone().to_hash()).ok_or(
-            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
         )?;
         score_values.insert(tx_hash, job_scores);
         Ok(())
@@ -251,18 +248,17 @@ impl VerificationJobRunner {
 
     pub fn update_assigment(
         &mut self, domain: Domain, job_assignment_tx_hash: TxHash,
-    ) -> Result<(), JobRunnerError> {
-        let active_assignments = self
-            .active_assignments
-            .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::ActiveAssignmentsNotFound(domain.to_hash()))?;
+    ) -> Result<(), VerificationRunnerError> {
+        let active_assignments = self.active_assignments.get_mut(&domain.to_hash()).ok_or(
+            VerificationRunnerError::ActiveAssignmentsNotFound(domain.to_hash()),
+        )?;
         if !active_assignments.contains(&job_assignment_tx_hash) {
             active_assignments.push(job_assignment_tx_hash);
         }
         Ok(())
     }
 
-    pub fn update_commitment(&mut self, commitment: JobCommitment) {
+    pub fn update_commitment(&mut self, commitment: ComputeCommitment) {
         self.commitments.insert(
             commitment.job_assignment_tx_hash.clone(),
             commitment.clone(),
@@ -271,25 +267,22 @@ impl VerificationJobRunner {
 
     pub fn create_compute_tree(
         &mut self, domain: Domain, assignment_id: TxHash,
-    ) -> Result<(), JobRunnerError> {
+    ) -> Result<(), VerificationRunnerError> {
         let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::ComputeTreeNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::ComputeTreeNotFoundWithDomain(domain.to_hash()),
         )?;
-        let commitment = self
-            .commitments
-            .get(&assignment_id)
-            .ok_or(JobRunnerError::CommitmentNotFound(assignment_id.clone()))?;
+        let commitment = self.commitments.get(&assignment_id).ok_or(
+            VerificationRunnerError::ComputeCommitmentNotFound(assignment_id.clone()),
+        )?;
         let job_scores = self.job_scores.get(&domain.to_hash()).ok_or(
-            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
         )?;
-        let scores: Vec<&JobScores> = {
+        let scores: Vec<&ComputeScores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(
-                    job_scores
-                        .get(&tx_hash)
-                        .ok_or(JobRunnerError::JobScoresNotFoundWithTxHash(tx_hash.clone()))?,
-                )
+                scores.push(job_scores.get(&tx_hash).ok_or(
+                    VerificationRunnerError::ComputeScoresNotFoundWithTxHash(tx_hash.clone()),
+                )?)
             }
             scores
         };
@@ -300,7 +293,7 @@ impl VerificationJobRunner {
             .map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
             .collect();
         let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
-            .map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            .map_err(|e| VerificationRunnerError::MerkleError(e))?;
         compute_tree_map.insert(assignment_id.clone(), compute_tree);
 
         Ok(())
@@ -308,34 +301,30 @@ impl VerificationJobRunner {
 
     pub fn compute_verification(
         &mut self, domain: Domain, assignment_id: TxHash,
-    ) -> Result<bool, JobRunnerError> {
-        let commitment = self
-            .commitments
-            .get(&assignment_id)
-            .ok_or(JobRunnerError::CommitmentNotFound(assignment_id.clone()))?;
+    ) -> Result<bool, VerificationRunnerError> {
+        let commitment = self.commitments.get(&assignment_id).ok_or(
+            VerificationRunnerError::ComputeCommitmentNotFound(assignment_id.clone()),
+        )?;
         let job_scores = self.job_scores.get(&domain.to_hash()).ok_or(
-            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
         )?;
         let domain_indices = self
             .indices
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::IndicesNotFound(domain.to_hash()))?;
-        let lt = self
-            .local_trust
-            .get(&domain.to_hash())
-            .ok_or(JobRunnerError::LocalTrustNotFound(domain.to_hash()))?;
+            .ok_or(VerificationRunnerError::IndicesNotFound(domain.to_hash()))?;
+        let lt = self.local_trust.get(&domain.to_hash()).ok_or(
+            VerificationRunnerError::LocalTrustNotFound(domain.to_hash()),
+        )?;
         let seed = self
             .seed_trust
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
-        let scores: Vec<&JobScores> = {
+            .ok_or(VerificationRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+        let scores: Vec<&ComputeScores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(
-                    job_scores
-                        .get(&tx_hash)
-                        .ok_or(JobRunnerError::JobScoresNotFoundWithTxHash(tx_hash.clone()))?,
-                )
+                scores.push(job_scores.get(&tx_hash).ok_or(
+                    VerificationRunnerError::ComputeScoresNotFoundWithTxHash(tx_hash.clone()),
+                )?)
             }
             scores
         };
@@ -345,38 +334,38 @@ impl VerificationJobRunner {
 
             let mut score_entries_map: HashMap<u32, f32> = HashMap::new();
             for entry in score_entries_vec {
-                let i = domain_indices
-                    .get(&entry.id)
-                    .ok_or(JobRunnerError::DomainIndiceNotFound(entry.id.clone()))?;
+                let i = domain_indices.get(&entry.id).ok_or(
+                    VerificationRunnerError::DomainIndiceNotFound(entry.id.clone()),
+                )?;
                 score_entries_map.insert(*i, entry.value);
             }
             score_entries_map
         };
         convergence_check(lt.clone(), seed, &score_entries)
-            .map_err(|e| JobRunnerError::ComputeAlgoError(e))
+            .map_err(|e| VerificationRunnerError::AlgoError(e))
     }
 
     pub fn get_root_hashes(
         &self, domain: Domain, assignment_id: TxHash,
-    ) -> Result<(Hash, Hash), JobRunnerError> {
+    ) -> Result<(Hash, Hash), VerificationRunnerError> {
         let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
+            VerificationRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
         )?;
         let compute_tree_map = self.compute_tree.get(&domain.to_hash()).ok_or(
-            JobRunnerError::ComputeTreeNotFoundWithDomain(domain.to_hash()),
+            VerificationRunnerError::ComputeTreeNotFoundWithDomain(domain.to_hash()),
         )?;
         let compute_tree = compute_tree_map.get(&assignment_id).ok_or(
-            JobRunnerError::ComputeTreeNotFoundWithTxHash(assignment_id.clone()),
+            VerificationRunnerError::ComputeTreeNotFoundWithTxHash(assignment_id.clone()),
         )?;
-        let lt_tree_root = lt_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+        let lt_tree_root = lt_tree.root().map_err(|e| VerificationRunnerError::MerkleError(e))?;
         let ct_tree_root =
-            compute_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            compute_tree.root().map_err(|e| VerificationRunnerError::MerkleError(e))?;
         Ok((lt_tree_root, ct_tree_root))
     }
 }
 
 #[derive(Debug)]
-pub enum JobRunnerError {
+pub enum VerificationRunnerError {
     IndicesNotFound(DomainHash),
     CountNotFound(DomainHash),
 
@@ -392,18 +381,18 @@ pub enum JobRunnerError {
     ComputeTreeNotFoundWithDomain(DomainHash),
     ComputeTreeNotFoundWithTxHash(TxHash),
 
-    JobScoresNotFoundWithDomain(DomainHash),
-    JobScoresNotFoundWithTxHash(TxHash),
+    ComputeScoresNotFoundWithDomain(DomainHash),
+    ComputeScoresNotFoundWithTxHash(TxHash),
 
     ActiveAssignmentsNotFound(DomainHash),
-    CommitmentNotFound(TxHash),
+    ComputeCommitmentNotFound(TxHash),
     DomainIndiceNotFound(Address),
 
-    ComputeMerkleError(MerkleError),
-    ComputeAlgoError(AlgoError),
+    MerkleError(MerkleError),
+    AlgoError(AlgoError),
 }
 
-impl Display for JobRunnerError {
+impl Display for VerificationRunnerError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::IndicesNotFound(domain) => {
@@ -441,17 +430,17 @@ impl Display for JobRunnerError {
                 write!(f, "compute_tree not found for tx_hash: {:?}", tx_hash)
             },
 
-            Self::JobScoresNotFoundWithDomain(domain) => {
+            Self::ComputeScoresNotFoundWithDomain(domain) => {
                 write!(f, "job_scores not found for domain: {:?}", domain)
             },
-            Self::JobScoresNotFoundWithTxHash(tx_hash) => {
+            Self::ComputeScoresNotFoundWithTxHash(tx_hash) => {
                 write!(f, "job_scores not found for tx_hash: {:?}", tx_hash)
             },
 
             Self::ActiveAssignmentsNotFound(domain) => {
                 write!(f, "active_assignments not found for domain: {:?}", domain)
             },
-            Self::CommitmentNotFound(assigment_id) => {
+            Self::ComputeCommitmentNotFound(assigment_id) => {
                 write!(
                     f,
                     "commitment not found for assignment_id: {:?}",
@@ -461,8 +450,8 @@ impl Display for JobRunnerError {
             Self::DomainIndiceNotFound(address) => {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
-            Self::ComputeMerkleError(err) => err.fmt(f),
-            Self::ComputeAlgoError(err) => err.fmt(f),
+            Self::MerkleError(err) => err.fmt(f),
+            Self::AlgoError(err) => err.fmt(f),
         }
     }
 }

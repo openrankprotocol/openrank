@@ -1,9 +1,8 @@
+use crate::runner::ComputeRunnerError;
 use k256::ecdsa::Error as EcdsaError;
 use openrank_common::db::DbError;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::runner::JobRunnerError;
 
 #[derive(Debug)]
 pub enum ComputeNodeError {
@@ -11,7 +10,7 @@ pub enum ComputeNodeError {
     DbError(DbError),
     DomainNotFound(String),
     P2PError(String),
-    ComputeInternalError(JobRunnerError),
+    ComputeInternalError(ComputeRunnerError),
     SignatureError(EcdsaError),
     InvalidTxKind,
 }
@@ -32,7 +31,7 @@ impl Display for ComputeNodeError {
     }
 }
 
-impl Into<ComputeNodeError> for JobRunnerError {
+impl Into<ComputeNodeError> for ComputeRunnerError {
     fn into(self) -> ComputeNodeError {
         ComputeNodeError::ComputeInternalError(self)
     }

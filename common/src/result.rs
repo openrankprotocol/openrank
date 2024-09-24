@@ -3,13 +3,13 @@ use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
-pub struct JobResult {
+pub struct ComputeResult {
     pub job_commitment_tx_hash: TxHash,
     pub job_verification_tx_hashes: Vec<TxHash>,
     job_request_tx_hash: TxHash,
 }
 
-impl JobResult {
+impl ComputeResult {
     pub fn new(
         job_commitment_tx_hash: TxHash, job_verification_tx_hashes: Vec<TxHash>,
         job_request_tx_hash: TxHash,
@@ -24,7 +24,7 @@ impl JobResult {
     }
 }
 
-impl DbItem for JobResult {
+impl DbItem for ComputeResult {
     fn get_key(&self) -> Vec<u8> {
         self.job_request_tx_hash.0.to_vec()
     }

@@ -9,13 +9,13 @@ use openrank_common::{
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        job::{JobAssignment, JobCommitment, JobScores, JobVerification},
+        job::{ComputeAssignment, ComputeCommitment, ComputeScores, ComputeVerification},
         trust::{SeedUpdate, TrustUpdate},
         Address, Tx, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
-use runner::VerificationJobRunner;
+use runner::VerificationRunner;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
@@ -39,7 +39,7 @@ pub struct Config {
 }
 
 fn handle_gossipsub_events(
-    swarm: &mut Swarm<MyBehaviour>, job_runner: &mut VerificationJobRunner, db: &Db,
+    swarm: &mut Swarm<MyBehaviour>, verification_runner: &mut VerificationRunner, db: &Db,
     event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>, sk: &SigningKey,
     whitelist: Whitelist,
 ) -> Result<(), VerifierNodeError> {
@@ -68,7 +68,7 @@ fn handle_gossipsub_events(
                             domains.iter().find(|x| &x.trust_namespace() == namespace).ok_or(
                                 VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
                             )?;
-                        job_runner
+                        verification_runner
                             .update_trust(domain.clone(), trust_update.entries.clone())
                             .map_err(Into::into)?;
                         info!(
@@ -98,7 +98,7 @@ fn handle_gossipsub_events(
                             domains.iter().find(|x| &x.trust_namespace() == namespace).ok_or(
                                 VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
                             )?;
-                        job_runner
+                        verification_runner
                             .update_seed(domain.clone(), seed_update.entries.clone())
                             .map_err(Into::into)?;
                         info!(
@@ -114,7 +114,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::JobAssignment {
+                        if tx.kind() != TxKind::ComputeAssignment {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
                         let address =
@@ -123,7 +123,7 @@ fn handle_gossipsub_events(
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
                         // Not checking if this node is assigned for the job
-                        let job_assignment = JobAssignment::decode(&mut tx.body().as_slice())
+                        let job_assignment = ComputeAssignment::decode(&mut tx.body().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let computer_address = address_from_sk(sk);
                         assert_eq!(computer_address, job_assignment.assigned_verifier_node);
@@ -132,15 +132,19 @@ fn handle_gossipsub_events(
                         let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                             VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                         )?;
-                        job_runner
+                        verification_runner
                             .update_assigment(domain.clone(), tx.hash())
                             .map_err(Into::into)?;
-                        let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
+                        let res = verification_runner
+                            .check_finished_jobs(domain.clone())
+                            .map_err(Into::into)?;
                         for (tx_hash, verification_res) in res {
-                            let verification_res = JobVerification::new(tx_hash, verification_res);
-                            let mut tx =
-                                Tx::default_with(TxKind::JobVerification, encode(verification_res));
+                            let verification_res =
+                                ComputeVerification::new(tx_hash, verification_res);
+                            let mut tx = Tx::default_with(
+                                TxKind::ComputeVerification,
+                                encode(verification_res),
+                            );
                             tx.sign(sk).map_err(|e| VerifierNodeError::SignatureError(e))?;
                             broadcast_event(
                                 swarm,
@@ -162,7 +166,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::JobScores {
+                        if tx.kind() != TxKind::ComputeScores {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
                         let address =
@@ -170,21 +174,25 @@ fn handle_gossipsub_events(
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
-                        let create_scores = JobScores::decode(&mut tx.body().as_slice())
+                        let create_scores = ComputeScores::decode(&mut tx.body().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
 
                         let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                             VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                         )?;
-                        let _ = job_runner
+                        let _ = verification_runner
                             .update_scores(domain.clone(), tx.hash(), create_scores.clone())
                             .map_err(Into::into)?;
-                        let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
+                        let res = verification_runner
+                            .check_finished_jobs(domain.clone())
+                            .map_err(Into::into)?;
                         for (tx_hash, verification_res) in res {
-                            let verification_res = JobVerification::new(tx_hash, verification_res);
-                            let mut tx =
-                                Tx::default_with(TxKind::JobVerification, encode(verification_res));
+                            let verification_res =
+                                ComputeVerification::new(tx_hash, verification_res);
+                            let mut tx = Tx::default_with(
+                                TxKind::ComputeVerification,
+                                encode(verification_res),
+                            );
                             tx.sign(sk).map_err(|e| VerifierNodeError::SignatureError(e))?;
                             broadcast_event(
                                 swarm,
@@ -206,7 +214,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::JobCommitment {
+                        if tx.kind() != TxKind::ComputeCommitment {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
                         let address =
@@ -214,19 +222,24 @@ fn handle_gossipsub_events(
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
-                        let create_commitment = JobCommitment::decode(&mut tx.body().as_slice())
-                            .map_err(|e| VerifierNodeError::DecodeError(e))?;
+                        let create_commitment =
+                            ComputeCommitment::decode(&mut tx.body().as_slice())
+                                .map_err(|e| VerifierNodeError::DecodeError(e))?;
 
                         let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                             VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                         )?;
-                        job_runner.update_commitment(create_commitment.clone());
-                        let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
+                        verification_runner.update_commitment(create_commitment.clone());
+                        let res = verification_runner
+                            .check_finished_jobs(domain.clone())
+                            .map_err(Into::into)?;
                         for (tx_hash, verification_res) in res {
-                            let verification_res = JobVerification::new(tx_hash, verification_res);
-                            let mut tx =
-                                Tx::default_with(TxKind::JobVerification, encode(verification_res));
+                            let verification_res =
+                                ComputeVerification::new(tx_hash, verification_res);
+                            let mut tx = Tx::default_with(
+                                TxKind::ComputeVerification,
+                                encode(verification_res),
+                            );
                             tx.sign(sk).map_err(|e| VerifierNodeError::SignatureError(e))?;
                             broadcast_event(
                                 swarm,
@@ -253,7 +266,7 @@ pub struct VerifierNode {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
-    job_runner: VerificationJobRunner,
+    verification_runner: VerificationRunner,
     secret_key: SigningKey,
 }
 
@@ -272,16 +285,16 @@ impl VerifierNode {
         let config: Config = toml::from_str(include_str!("../config.toml"))?;
         let db = Db::new("./local-storage", &[&Tx::get_cf()])?;
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
-        let job_runner = VerificationJobRunner::new(domain_hashes);
+        let verification_runner = VerificationRunner::new(domain_hashes);
 
-        Ok(Self { swarm, config, db, job_runner, secret_key })
+        Ok(Self { swarm, config, db, verification_runner, secret_key })
     }
 
-    /// Recover JobRunner state from DB.
+    /// Recover VerificationRunner state from DB.
     ///
     /// - Load all the TXs from the DB
     /// - Just take TrustUpdate and SeedUpdate transactions
-    /// - Update JobRunner using functions update_trust, update_seed
+    /// - Update VerificationRunner using functions update_trust, update_seed
     pub fn node_recovery(&mut self) -> Result<(), VerifierNodeError> {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
@@ -317,9 +330,9 @@ impl VerifierNode {
                         .ok_or(VerifierNodeError::DomainNotFound(
                             namespace.clone().to_hex(),
                         ))?;
-                    self.job_runner
+                    self.verification_runner
                         .update_trust(domain.clone(), trust_update.entries.clone())
-                        .map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
+                        .map_err(|e| VerifierNodeError::InternalError(e))?;
                 },
                 TxKind::SeedUpdate => {
                     let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
@@ -333,9 +346,9 @@ impl VerifierNode {
                         .ok_or(VerifierNodeError::DomainNotFound(
                             namespace.clone().to_hex(),
                         ))?;
-                    self.job_runner
+                    self.verification_runner
                         .update_seed(domain.clone(), seed_update.entries.clone())
-                        .map_err(|e| VerifierNodeError::ComputeInternalError(e))?;
+                        .map_err(|e| VerifierNodeError::InternalError(e))?;
                 },
                 _ => (),
             }
@@ -423,7 +436,7 @@ impl VerifierNode {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
                         let res = handle_gossipsub_events(
                             &mut self.swarm,
-                            &mut self.job_runner,
+                            &mut self.verification_runner,
                             &self.db,
                             event,
                             iter_chain.clone().collect(),

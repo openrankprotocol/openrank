@@ -10,7 +10,7 @@ use openrank_common::{
     topics::Domain,
     tx_event::TxEvent,
     txs::{
-        job::JobRequest,
+        job::ComputeRequest,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
         Address, Tx, TxKind,
     },
@@ -29,7 +29,7 @@ const SEED_CHUNK_SIZE: usize = 1000;
 enum Method {
     TrustUpdate,
     SeedUpdate,
-    JobRequest,
+    ComputeRequest,
     GetResults,
     GenerateKeypair,
     ShowAddress,
@@ -137,12 +137,12 @@ async fn job_request(sk: SigningKey, path: &str) -> Result<(), Box<dyn Error>> {
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(JobRequest::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(TxKind::JobRequest, data);
+    let data = encode(ComputeRequest::new(domain_id, 0, hash));
+    let mut tx = Tx::default_with(TxKind::ComputeRequest, data);
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
     let hex_encoded_tx_hash = hex::encode(tx_hash.0);
-    println!("JobRequest TX_HASH: {}", hex_encoded_tx_hash);
+    println!("ComputeRequest TX_HASH: {}", hex_encoded_tx_hash);
 
     let result: Value = client.call("Sequencer.job_request", hex::encode(encode(tx))).await?;
     let tx_event: TxEvent = serde_json::from_value(result)?;
@@ -205,7 +205,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             });
             update_seed(secret_key, arg1.as_str(), arg2.as_str()).await?;
         },
-        Method::JobRequest => {
+        Method::ComputeRequest => {
             let secret_key = get_secret_key()?;
             let arg1 = cli.arg1.unwrap_or_else(|| {
                 eprintln!("Missing argument");

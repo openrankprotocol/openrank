@@ -5,11 +5,11 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     build_node,
     db::{Db, DbItem},
-    result::JobResult,
+    result::ComputeResult,
     topics::Topic,
     tx_event::TxEvent,
     txs::{
-        job::{JobCommitment, JobRequest, JobScores, JobVerification},
+        job::{ComputeCommitment, ComputeRequest, ComputeScores, ComputeVerification},
         trust::{ScoreEntry, SeedUpdate, TrustUpdate},
         Address, Tx, TxHash, TxKind,
     },
@@ -133,7 +133,7 @@ impl Sequencer {
             error!("{}", e);
             RPCError::ParseError("Failed to parse TX data".to_string())
         })?;
-        if tx.kind() != TxKind::JobRequest {
+        if tx.kind() != TxKind::ComputeRequest {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -142,7 +142,7 @@ impl Sequencer {
         if !self.whitelisted_users.contains(&address) {
             return Err(RPCError::InvalidRequest("Invalid tx signature"));
         }
-        let body = JobRequest::decode(&mut tx.body().as_slice())
+        let body = ComputeRequest::decode(&mut tx.body().as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 
         // Build Tx Event
@@ -172,24 +172,24 @@ impl Sequencer {
         })?;
         let tx_hash = TxHash::from_bytes(tx_hash_bytes);
 
-        let key = JobResult::construct_full_key(tx_hash);
-        let result = self.db.get::<JobResult>(key).map_err(|e| {
+        let key = ComputeResult::construct_full_key(tx_hash);
+        let result = self.db.get::<ComputeResult>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let key = Tx::construct_full_key(TxKind::JobCommitment, result.job_commitment_tx_hash);
+        let key = Tx::construct_full_key(TxKind::ComputeCommitment, result.job_commitment_tx_hash);
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let commitment = JobCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
+        let commitment = ComputeCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
         let job_scores_tx: Vec<Tx> = {
             let mut job_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
-                let key = Tx::construct_full_key(TxKind::JobScores, tx_hash);
+                let key = Tx::construct_full_key(TxKind::ComputeScores, tx_hash);
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
@@ -198,13 +198,15 @@ impl Sequencer {
             }
             job_scores_tx
         };
-        let job_scores: Vec<JobScores> = {
+        let job_scores: Vec<ComputeScores> = {
             let mut job_scores = Vec::new();
             for tx in job_scores_tx.into_iter() {
-                job_scores.push(JobScores::decode(&mut tx.body().as_slice()).map_err(|e| {
-                    error!("{}", e);
-                    RPCError::InternalError
-                })?);
+                job_scores.push(
+                    ComputeScores::decode(&mut tx.body().as_slice()).map_err(|e| {
+                        error!("{}", e);
+                        RPCError::InternalError
+                    })?,
+                );
             }
             job_scores
         };
@@ -226,7 +228,7 @@ impl Sequencer {
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
             for tx_hash in result.job_verification_tx_hashes.iter() {
-                let key = Tx::construct_full_key(TxKind::JobVerification, tx_hash.clone());
+                let key = Tx::construct_full_key(TxKind::ComputeVerification, tx_hash.clone());
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
@@ -235,13 +237,14 @@ impl Sequencer {
             }
             verification_resutls_tx
         };
-        let verification_results: Vec<JobVerification> = {
+        let verification_results: Vec<ComputeVerification> = {
             let mut verification_results = Vec::new();
             for tx in verificarion_results_tx.into_iter() {
-                let result = JobVerification::decode(&mut tx.body().as_slice()).map_err(|e| {
-                    error!("{}", e);
-                    RPCError::InternalError
-                })?;
+                let result =
+                    ComputeVerification::decode(&mut tx.body().as_slice()).map_err(|e| {
+                        error!("{}", e);
+                        RPCError::InternalError
+                    })?;
                 verification_results.push(result);
             }
             verification_results
@@ -273,7 +276,7 @@ impl SequencerNode {
         let db = Db::new_secondary(
             "./local-storage",
             "./local-secondary-storage",
-            &[&Tx::get_cf(), &JobResult::get_cf()],
+            &[&Tx::get_cf(), &ComputeResult::get_cf()],
         )?;
         let (sender, receiver) = mpsc::channel(100);
         let sequencer = Arc::new(Sequencer::new(sender.clone(), config.whitelist.users, db));

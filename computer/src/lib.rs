@@ -9,13 +9,13 @@ use openrank_common::{
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        job::{JobAssignment, JobCommitment},
+        job::{ComputeAssignment, ComputeCommitment},
         trust::{SeedUpdate, TrustUpdate},
         Address, Tx, TxHash, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
-use runner::ComputeJobRunner;
+use runner::ComputeRunner;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
@@ -39,7 +39,7 @@ pub struct Config {
 }
 
 fn handle_gossipsub_events(
-    swarm: &mut Swarm<MyBehaviour>, job_runner: &mut ComputeJobRunner, db: &Db,
+    swarm: &mut Swarm<MyBehaviour>, job_runner: &mut ComputeRunner, db: &Db,
     event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>, sk: &SigningKey,
     whitelist: &Whitelist,
 ) -> Result<(), ComputeNodeError> {
@@ -114,7 +114,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| ComputeNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| ComputeNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::JobAssignment {
+                        if tx.kind() != TxKind::ComputeAssignment {
                             return Err(ComputeNodeError::InvalidTxKind);
                         }
                         let address =
@@ -123,8 +123,9 @@ fn handle_gossipsub_events(
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| ComputeNodeError::DbError(e))?;
                         // Not checking if we are assigned for the job, for now
-                        let job_run_assignment = JobAssignment::decode(&mut tx.body().as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                        let job_run_assignment =
+                            ComputeAssignment::decode(&mut tx.body().as_slice())
+                                .map_err(|e| ComputeNodeError::DecodeError(e))?;
                         let computer_address = address_from_sk(sk);
                         assert_eq!(computer_address, job_run_assignment.assigned_compute_node);
                         assert!(whitelist
@@ -144,7 +145,7 @@ fn handle_gossipsub_events(
 
                         let job_scores_tx_res: Result<Vec<Tx>, ComputeNodeError> = job_scores
                             .iter()
-                            .map(|tx_body| Tx::default_with(TxKind::JobScores, encode(tx_body)))
+                            .map(|tx_body| Tx::default_with(TxKind::ComputeScores, encode(tx_body)))
                             .map(|mut tx| {
                                 tx.sign(sk).map_err(|e| ComputeNodeError::SignatureError(e))?;
                                 Ok(tx)
@@ -155,14 +156,14 @@ fn handle_gossipsub_events(
                             job_scores_tx.iter().map(|x| x.hash()).collect();
                         let job_scores_topic = Topic::DomainScores(domain_id.clone());
                         let commitment_topic = Topic::DomainCommitment(domain_id.clone());
-                        let job_commitment = JobCommitment::new(
+                        let job_commitment = ComputeCommitment::new(
                             tx.hash(),
                             lt_root,
                             compute_root,
                             job_scores_tx_hashes,
                         );
                         let mut job_commitment_tx =
-                            Tx::default_with(TxKind::JobCommitment, encode(job_commitment));
+                            Tx::default_with(TxKind::ComputeCommitment, encode(job_commitment));
                         job_commitment_tx
                             .sign(sk)
                             .map_err(|e| ComputeNodeError::SignatureError(e))?;
@@ -190,7 +191,7 @@ pub struct ComputerNode {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
-    job_runner: ComputeJobRunner,
+    job_runner: ComputeRunner,
     secret_key: SigningKey,
 }
 
@@ -209,7 +210,7 @@ impl ComputerNode {
         let db = Db::new("./local-storage", &[&Tx::get_cf()])?;
 
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
-        let job_runner = ComputeJobRunner::new(domain_hashes);
+        let job_runner = ComputeRunner::new(domain_hashes);
 
         Ok(Self { swarm, config, db, job_runner, secret_key })
     }
@@ -295,11 +296,11 @@ impl ComputerNode {
         }
     }
 
-    /// Recover JobRunner state from DB.
+    /// Recover ComputeRunner state from DB.
     ///
     /// - Load all the TXs from the DB
     /// - Just take TrustUpdate and SeedUpdate transactions
-    /// - Update JobRunner using functions update_trust, update_seed
+    /// - Update ComputeRunner using functions update_trust, update_seed
     pub fn node_recovery(&mut self) -> Result<(), ComputeNodeError> {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();

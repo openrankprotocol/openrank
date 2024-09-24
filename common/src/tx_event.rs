@@ -52,15 +52,15 @@ mod test {
     use super::TxEvent;
     use crate::{
         db::DbItem,
-        txs::{job::JobRequest, Tx, TxKind},
+        txs::{job::ComputeRequest, Tx, TxKind},
     };
     use alloy_rlp::encode;
 
     #[test]
     fn test_tx_event_db_item() {
         let tx_event = TxEvent::default_with_data(encode(Tx::default_with(
-            TxKind::JobRequest,
-            encode(JobRequest::default()),
+            TxKind::ComputeRequest,
+            encode(ComputeRequest::default()),
         )));
 
         let key = tx_event.get_key();

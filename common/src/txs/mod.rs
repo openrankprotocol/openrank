@@ -21,11 +21,11 @@ pub mod trust;
 pub enum TxKind {
     TrustUpdate,
     SeedUpdate,
-    JobRequest,
-    JobAssignment,
-    JobScores,
-    JobCommitment,
-    JobVerification,
+    ComputeRequest,
+    ComputeAssignment,
+    ComputeScores,
+    ComputeCommitment,
+    ComputeVerification,
     ProposedBlock,
     FinalisedBlock,
 }
@@ -53,11 +53,11 @@ impl TxKind {
         match byte {
             0 => Self::TrustUpdate,
             1 => Self::SeedUpdate,
-            2 => Self::JobRequest,
-            3 => Self::JobAssignment,
-            4 => Self::JobScores,
-            5 => Self::JobCommitment,
-            6 => Self::JobVerification,
+            2 => Self::ComputeRequest,
+            3 => Self::ComputeAssignment,
+            4 => Self::ComputeScores,
+            5 => Self::ComputeCommitment,
+            6 => Self::ComputeVerification,
             7 => Self::ProposedBlock,
             8 => Self::FinalisedBlock,
             _ => panic!("Invalid message type"),
@@ -70,11 +70,11 @@ impl Into<String> for TxKind {
         match self {
             Self::TrustUpdate => "trust_update".to_string(),
             Self::SeedUpdate => "seed_update".to_string(),
-            Self::JobRequest => "job_request".to_string(),
-            Self::JobAssignment => "job_assignment".to_string(),
-            Self::JobScores => "job_scores".to_string(),
-            Self::JobCommitment => "job_commitment".to_string(),
-            Self::JobVerification => "job_verification".to_string(),
+            Self::ComputeRequest => "job_request".to_string(),
+            Self::ComputeAssignment => "job_assignment".to_string(),
+            Self::ComputeScores => "job_scores".to_string(),
+            Self::ComputeCommitment => "job_commitment".to_string(),
+            Self::ComputeVerification => "job_verification".to_string(),
             Self::ProposedBlock => "proposed_block".to_string(),
             Self::FinalisedBlock => "finalised_block".to_string(),
         }
@@ -300,7 +300,7 @@ mod test {
         let res = TxKind::decode(&mut [0].as_slice()).unwrap();
         assert_eq!(res, TxKind::TrustUpdate);
         let res = TxKind::decode(&mut [3].as_slice()).unwrap();
-        assert_eq!(res, TxKind::JobAssignment);
+        assert_eq!(res, TxKind::ComputeAssignment);
         let res = TxKind::decode(&mut [8].as_slice()).unwrap();
         assert_eq!(res, TxKind::FinalisedBlock);
     }

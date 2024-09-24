@@ -3,14 +3,14 @@ use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct JobCommitment {
+pub struct ComputeCommitment {
     pub job_assignment_tx_hash: TxHash,
     pub lt_root_hash: Hash,
     pub compute_root_hash: Hash,
     pub scores_tx_hashes: Vec<TxHash>,
 }
 
-impl JobCommitment {
+impl ComputeCommitment {
     pub fn new(
         job_assignment_tx_hash: TxHash, lt_root_hash: Hash, compute_root_hash: Hash,
         scores_tx_hashes: Vec<TxHash>,
@@ -20,37 +20,37 @@ impl JobCommitment {
 }
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct JobScores {
+pub struct ComputeScores {
     pub entries: Vec<ScoreEntry>,
 }
 
-impl JobScores {
+impl ComputeScores {
     pub fn new(entries: Vec<ScoreEntry>) -> Self {
         Self { entries }
     }
 }
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct JobRequest {
+pub struct ComputeRequest {
     pub domain_id: DomainHash,
     pub block_height: u32,
     pub job_id: Hash,
 }
 
-impl JobRequest {
+impl ComputeRequest {
     pub fn new(domain_id: DomainHash, block_height: u32, job_id: Hash) -> Self {
         Self { domain_id, block_height, job_id }
     }
 }
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct JobAssignment {
+pub struct ComputeAssignment {
     pub job_request_tx_hash: TxHash,
     pub assigned_compute_node: Address,
     pub assigned_verifier_node: Address,
 }
 
-impl JobAssignment {
+impl ComputeAssignment {
     pub fn new(
         job_request_tx_hash: TxHash, assigned_compute_node: Address,
         assigned_verifier_node: Address,
@@ -60,18 +60,18 @@ impl JobAssignment {
 }
 
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
-pub struct JobVerification {
+pub struct ComputeVerification {
     pub job_assignment_tx_hash: TxHash,
     pub verification_result: bool,
 }
 
-impl JobVerification {
+impl ComputeVerification {
     pub fn new(job_assignment_tx_hash: TxHash, verification_result: bool) -> Self {
         Self { job_assignment_tx_hash, verification_result }
     }
 }
 
-impl Default for JobVerification {
+impl Default for ComputeVerification {
     fn default() -> Self {
         Self { job_assignment_tx_hash: TxHash::default(), verification_result: true }
     }

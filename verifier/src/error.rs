@@ -3,7 +3,7 @@ use openrank_common::db::DbError;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use crate::runner::JobRunnerError;
+use crate::runner::VerificationRunnerError;
 
 #[derive(Debug)]
 pub enum VerifierNodeError {
@@ -11,7 +11,7 @@ pub enum VerifierNodeError {
     DbError(DbError),
     DomainNotFound(String),
     P2PError(String),
-    ComputeInternalError(JobRunnerError),
+    InternalError(VerificationRunnerError),
     SignatureError(EcdsaError),
     InvalidTxKind,
 }
@@ -25,15 +25,15 @@ impl Display for VerifierNodeError {
             Self::DbError(err) => err.fmt(f),
             Self::DomainNotFound(domain) => write!(f, "Domain not found: {}", domain),
             Self::P2PError(err) => write!(f, "p2p error: {}", err),
-            Self::ComputeInternalError(err) => write!(f, "internal error: {}", err),
+            Self::InternalError(err) => write!(f, "internal error: {}", err),
             Self::SignatureError(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
         }
     }
 }
 
-impl Into<VerifierNodeError> for JobRunnerError {
+impl Into<VerifierNodeError> for VerificationRunnerError {
     fn into(self) -> VerifierNodeError {
-        VerifierNodeError::ComputeInternalError(self)
+        VerifierNodeError::InternalError(self)
     }
 }
