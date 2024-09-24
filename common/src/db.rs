@@ -106,15 +106,18 @@ impl Db {
 #[cfg(test)]
 mod test {
     use super::{Db, DbItem};
-    use crate::txs::{JobRunAssignment, JobRunRequest, JobVerification, Tx, TxKind};
+    use crate::txs::{
+        job::{JobAssignment, JobRequest, JobVerification},
+        Tx, TxKind,
+    };
     use alloy_rlp::encode;
 
     #[test]
     fn test_put_get() {
         let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
-        let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
+        let tx = Tx::default_with(TxKind::JobRequest, encode(JobRequest::default()));
         db.put(tx.clone()).unwrap();
-        let key = Tx::construct_full_key(TxKind::JobRunRequest, tx.hash());
+        let key = Tx::construct_full_key(TxKind::JobRequest, tx.hash());
         let item = db.get::<Tx>(key).unwrap();
         assert_eq!(tx, item);
     }
@@ -122,19 +125,16 @@ mod test {
     #[test]
     fn test_read_from_end() {
         let db = Db::new("test-rfs-storage", &[&Tx::get_cf()]).unwrap();
-        let tx1 = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
-        let tx2 = Tx::default_with(
-            TxKind::JobRunAssignment,
-            encode(JobRunAssignment::default()),
-        );
+        let tx1 = Tx::default_with(TxKind::JobRequest, encode(JobRequest::default()));
+        let tx2 = Tx::default_with(TxKind::JobAssignment, encode(JobAssignment::default()));
         let tx3 = Tx::default_with(TxKind::JobVerification, encode(JobVerification::default()));
         db.put(tx1.clone()).unwrap();
         db.put(tx2.clone()).unwrap();
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>(TxKind::JobRunRequest.into(), Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>(TxKind::JobRunAssignment.into(), Some(1)).unwrap();
+        let items1 = db.read_from_end::<Tx>(TxKind::JobRequest.into(), Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(TxKind::JobAssignment.into(), Some(1)).unwrap();
         let items3 = db.read_from_end::<Tx>(TxKind::JobVerification.into(), Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);

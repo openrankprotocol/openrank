@@ -5,7 +5,11 @@ use openrank_common::{
         MerkleError,
     },
     topics::{Domain, DomainHash},
-    txs::{Address, CreateScores, ScoreEntry, TrustEntry},
+    txs::{
+        job::JobScores,
+        trust::{ScoreEntry, TrustEntry},
+        Address,
+    },
 };
 use sha3::Keccak256;
 use std::{
@@ -201,7 +205,7 @@ impl ComputeJobRunner {
         Ok(())
     }
 
-    pub fn get_create_scores(&self, domain: Domain) -> Result<Vec<CreateScores>, JobRunnerError> {
+    pub fn get_job_scores(&self, domain: Domain) -> Result<Vec<JobScores>, JobRunnerError> {
         let domain_indices = self
             .indices
             .get(&domain.to_hash())
@@ -212,7 +216,7 @@ impl ComputeJobRunner {
             .ok_or(JobRunnerError::ComputeResultsNotFound(domain.to_hash()))?;
         let index_to_address: HashMap<&u32, &Address> =
             domain_indices.iter().map(|(k, v)| (v, k)).collect();
-        let mut create_scores_txs = Vec::new();
+        let mut job_scores_txs = Vec::new();
         for chunk in scores.chunks(1000) {
             let mut entries = Vec::new();
             for (index, val) in chunk {
@@ -222,10 +226,10 @@ impl ComputeJobRunner {
                 let score_entry = ScoreEntry::new((*address).clone(), *val);
                 entries.push(score_entry);
             }
-            let create_scores = CreateScores::new(entries);
-            create_scores_txs.push(create_scores);
+            let job_scores = JobScores::new(entries);
+            job_scores_txs.push(job_scores);
         }
-        Ok(create_scores_txs)
+        Ok(job_scores_txs)
     }
 
     pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), JobRunnerError> {

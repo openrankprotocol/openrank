@@ -4,17 +4,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct JobResult {
-    pub create_commitment_tx_hash: TxHash,
+    pub job_commitment_tx_hash: TxHash,
     pub job_verification_tx_hashes: Vec<TxHash>,
-    job_run_request_tx_hash: TxHash,
+    job_request_tx_hash: TxHash,
 }
 
 impl JobResult {
     pub fn new(
-        create_commitment_tx_hash: TxHash, job_verification_tx_hashes: Vec<TxHash>,
-        job_run_request_tx_hash: TxHash,
+        job_commitment_tx_hash: TxHash, job_verification_tx_hashes: Vec<TxHash>,
+        job_request_tx_hash: TxHash,
     ) -> Self {
-        Self { create_commitment_tx_hash, job_verification_tx_hashes, job_run_request_tx_hash }
+        Self { job_commitment_tx_hash, job_verification_tx_hashes, job_request_tx_hash }
     }
 
     pub fn construct_full_key(tx_hash: TxHash) -> Vec<u8> {
@@ -26,7 +26,7 @@ impl JobResult {
 
 impl DbItem for JobResult {
     fn get_key(&self) -> Vec<u8> {
-        self.job_run_request_tx_hash.0.to_vec()
+        self.job_request_tx_hash.0.to_vec()
     }
 
     fn get_cf() -> String {

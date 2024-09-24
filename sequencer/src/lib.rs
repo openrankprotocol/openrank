@@ -9,8 +9,9 @@ use openrank_common::{
     topics::Topic,
     tx_event::TxEvent,
     txs::{
-        Address, CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry,
-        SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
+        job::{JobCommitment, JobRequest, JobScores, JobVerification},
+        trust::{ScoreEntry, SeedUpdate, TrustUpdate},
+        Address, Tx, TxHash, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -119,7 +120,7 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
+    async fn job_request(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
         ))?;
@@ -132,7 +133,7 @@ impl Sequencer {
             error!("{}", e);
             RPCError::ParseError("Failed to parse TX data".to_string())
         })?;
-        if tx.kind() != TxKind::JobRunRequest {
+        if tx.kind() != TxKind::JobRequest {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -141,7 +142,7 @@ impl Sequencer {
         if !self.whitelisted_users.contains(&address) {
             return Err(RPCError::InvalidRequest("Invalid tx signature"));
         }
-        let body = JobRunRequest::decode(&mut tx.body().as_slice())
+        let body = JobRequest::decode(&mut tx.body().as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 
         // Build Tx Event
@@ -157,12 +158,12 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
+    async fn get_results(&self, job_tx_hash: Value) -> Result<Value, RPCError> {
         self.db.refresh().map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
+        let tx_hash_str = job_tx_hash.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX hash data as string".to_string(),
         ))?;
         let tx_hash_bytes = hex::decode(tx_hash_str).map_err(|e| {
@@ -176,42 +177,39 @@ impl Sequencer {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let key =
-            Tx::construct_full_key(TxKind::CreateCommitment, result.create_commitment_tx_hash);
+        let key = Tx::construct_full_key(TxKind::JobCommitment, result.job_commitment_tx_hash);
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let commitment = CreateCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
+        let commitment = JobCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let create_scores_tx: Vec<Tx> = {
-            let mut create_scores_tx = Vec::new();
+        let job_scores_tx: Vec<Tx> = {
+            let mut job_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
-                let key = Tx::construct_full_key(TxKind::CreateScores, tx_hash);
+                let key = Tx::construct_full_key(TxKind::JobScores, tx_hash);
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
                 })?;
-                create_scores_tx.push(tx);
+                job_scores_tx.push(tx);
             }
-            create_scores_tx
+            job_scores_tx
         };
-        let create_scores: Vec<CreateScores> = {
-            let mut create_scores = Vec::new();
-            for tx in create_scores_tx.into_iter() {
-                create_scores.push(CreateScores::decode(&mut tx.body().as_slice()).map_err(
-                    |e| {
-                        error!("{}", e);
-                        RPCError::InternalError
-                    },
-                )?);
+        let job_scores: Vec<JobScores> = {
+            let mut job_scores = Vec::new();
+            for tx in job_scores_tx.into_iter() {
+                job_scores.push(JobScores::decode(&mut tx.body().as_slice()).map_err(|e| {
+                    error!("{}", e);
+                    RPCError::InternalError
+                })?);
             }
-            create_scores
+            job_scores
         };
         let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().map(|x| x.entries).flatten().collect();
+            job_scores.into_iter().map(|x| x.entries).flatten().collect();
         score_entries.sort_by(|a, b| match a.value.partial_cmp(&b.value) {
             Some(ordering) => ordering,
             None => {

@@ -9,7 +9,9 @@ use openrank_common::{
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        Address, CreateCommitment, JobRunAssignment, SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
+        job::{JobAssignment, JobCommitment},
+        trust::{SeedUpdate, TrustUpdate},
+        Address, Tx, TxHash, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -112,7 +114,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| ComputeNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| ComputeNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::JobRunAssignment {
+                        if tx.kind() != TxKind::JobAssignment {
                             return Err(ComputeNodeError::InvalidTxKind);
                         }
                         let address =
@@ -121,9 +123,8 @@ fn handle_gossipsub_events(
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| ComputeNodeError::DbError(e))?;
                         // Not checking if we are assigned for the job, for now
-                        let job_run_assignment =
-                            JobRunAssignment::decode(&mut tx.body().as_slice())
-                                .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                        let job_run_assignment = JobAssignment::decode(&mut tx.body().as_slice())
+                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
                         let computer_address = address_from_sk(sk);
                         assert_eq!(computer_address, job_run_assignment.assigned_compute_node);
                         assert!(whitelist
@@ -136,40 +137,40 @@ fn handle_gossipsub_events(
                             .ok_or(ComputeNodeError::DomainNotFound(domain_id.clone().to_hex()))?;
                         job_runner.compute(domain.clone()).map_err(Into::into)?;
                         job_runner.create_compute_tree(domain.clone()).map_err(Into::into)?;
-                        let create_scores =
-                            job_runner.get_create_scores(domain.clone()).map_err(Into::into)?;
+                        let job_scores =
+                            job_runner.get_job_scores(domain.clone()).map_err(Into::into)?;
                         let (lt_root, compute_root) =
                             job_runner.get_root_hashes(domain.clone()).map_err(Into::into)?;
 
-                        let create_scores_tx_res: Result<Vec<Tx>, ComputeNodeError> = create_scores
+                        let job_scores_tx_res: Result<Vec<Tx>, ComputeNodeError> = job_scores
                             .iter()
-                            .map(|tx_body| Tx::default_with(TxKind::CreateScores, encode(tx_body)))
+                            .map(|tx_body| Tx::default_with(TxKind::JobScores, encode(tx_body)))
                             .map(|mut tx| {
                                 tx.sign(sk).map_err(|e| ComputeNodeError::SignatureError(e))?;
                                 Ok(tx)
                             })
                             .collect();
-                        let create_scores_tx = create_scores_tx_res?;
-                        let create_scores_tx_hashes: Vec<TxHash> =
-                            create_scores_tx.iter().map(|x| x.hash()).collect();
-                        let create_scores_topic = Topic::DomainScores(domain_id.clone());
+                        let job_scores_tx = job_scores_tx_res?;
+                        let job_scores_tx_hashes: Vec<TxHash> =
+                            job_scores_tx.iter().map(|x| x.hash()).collect();
+                        let job_scores_topic = Topic::DomainScores(domain_id.clone());
                         let commitment_topic = Topic::DomainCommitment(domain_id.clone());
-                        let create_commitment = CreateCommitment::default_with(
+                        let job_commitment = JobCommitment::new(
                             tx.hash(),
                             lt_root,
                             compute_root,
-                            create_scores_tx_hashes,
+                            job_scores_tx_hashes,
                         );
-                        let mut create_commitment_tx =
-                            Tx::default_with(TxKind::CreateCommitment, encode(create_commitment));
-                        create_commitment_tx
+                        let mut job_commitment_tx =
+                            Tx::default_with(TxKind::JobCommitment, encode(job_commitment));
+                        job_commitment_tx
                             .sign(sk)
                             .map_err(|e| ComputeNodeError::SignatureError(e))?;
-                        for scores in create_scores_tx {
-                            broadcast_event(swarm, scores, create_scores_topic.clone())
+                        for scores in job_scores_tx {
+                            broadcast_event(swarm, scores, job_scores_topic.clone())
                                 .map_err(|e| ComputeNodeError::P2PError(e.to_string()))?;
                         }
-                        broadcast_event(swarm, create_commitment_tx, commitment_topic)
+                        broadcast_event(swarm, job_commitment_tx, commitment_topic)
                             .map_err(|e| ComputeNodeError::P2PError(e.to_string()))?;
                         info!(
                             "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",

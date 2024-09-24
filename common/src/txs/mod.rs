@@ -1,6 +1,5 @@
+use crate::db::DbItem;
 use crate::merkle::hash_leaf;
-use crate::topics::DomainHash;
-use crate::{db::DbItem, merkle::Hash};
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
@@ -13,15 +12,19 @@ use sha3::{Digest, Keccak256};
 use std::fmt::Display;
 use std::io::Read;
 
+pub mod block;
+pub mod job;
+pub mod trust;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TxKind {
     TrustUpdate,
     SeedUpdate,
-    JobRunRequest,
-    JobRunAssignment,
-    CreateScores,
-    CreateCommitment,
+    JobRequest,
+    JobAssignment,
+    JobScores,
+    JobCommitment,
     JobVerification,
     ProposedBlock,
     FinalisedBlock,
@@ -50,10 +53,10 @@ impl TxKind {
         match byte {
             0 => Self::TrustUpdate,
             1 => Self::SeedUpdate,
-            2 => Self::JobRunRequest,
-            3 => Self::JobRunAssignment,
-            4 => Self::CreateScores,
-            5 => Self::CreateCommitment,
+            2 => Self::JobRequest,
+            3 => Self::JobAssignment,
+            4 => Self::JobScores,
+            5 => Self::JobCommitment,
             6 => Self::JobVerification,
             7 => Self::ProposedBlock,
             8 => Self::FinalisedBlock,
@@ -67,10 +70,10 @@ impl Into<String> for TxKind {
         match self {
             Self::TrustUpdate => "trust_update".to_string(),
             Self::SeedUpdate => "seed_update".to_string(),
-            Self::JobRunRequest => "job_run_request".to_string(),
-            Self::JobRunAssignment => "job_run_assignment".to_string(),
-            Self::CreateScores => "create_scores".to_string(),
-            Self::CreateCommitment => "create_commitment".to_string(),
+            Self::JobRequest => "job_request".to_string(),
+            Self::JobAssignment => "job_assignment".to_string(),
+            Self::JobScores => "job_scores".to_string(),
+            Self::JobCommitment => "job_commitment".to_string(),
             Self::JobVerification => "job_verification".to_string(),
             Self::ProposedBlock => "proposed_block".to_string(),
             Self::FinalisedBlock => "finalised_block".to_string(),
@@ -212,38 +215,6 @@ impl DbItem for Tx {
 }
 
 #[derive(
-    Debug, Clone, Hash, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
-)]
-pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 24]);
-
-impl OwnedNamespace {
-    pub fn new(owner: Address, id: u32) -> Self {
-        let mut bytes = [0; 24];
-        bytes[..20].copy_from_slice(&owner.0);
-        bytes[20..24].copy_from_slice(&id.to_be_bytes());
-        Self(bytes)
-    }
-
-    pub fn to_hex(self) -> String {
-        hex::encode(self.0)
-    }
-
-    pub fn owner(&self) -> Address {
-        let mut bytes = [0; 20];
-        bytes.copy_from_slice(&self.0[..20]);
-        Address(bytes)
-    }
-}
-
-impl FromHex for OwnedNamespace {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        Ok(OwnedNamespace(<[u8; 24]>::from_hex(hex)?))
-    }
-}
-
-#[derive(
     Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize, Hash,
 )]
 pub struct Address(#[serde(with = "hex")] pub [u8; 20]);
@@ -316,227 +287,12 @@ impl Signature {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct ScoreEntry {
-    pub id: Address,
-    pub value: f32,
-}
-
-impl ScoreEntry {
-    pub fn new(id: Address, value: f32) -> Self {
-        Self { id, value }
-    }
-}
-
-impl Encodable for ScoreEntry {
-    fn encode(&self, out: &mut dyn BufMut) {
-        self.id.encode(out);
-        out.put_f32(self.value);
-    }
-}
-
-impl Decodable for ScoreEntry {
-    fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-        let id = Address::decode(buf)?;
-        let mut value_bytes = [0; 4];
-        let size =
-            buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
-        if size != 4 {
-            return RlpResult::Err(RlpError::UnexpectedLength);
-        }
-        let value = f32::from_be_bytes(value_bytes);
-        Ok(ScoreEntry { id, value })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct TrustEntry {
-    pub from: Address,
-    pub to: Address,
-    pub value: f32,
-}
-
-impl TrustEntry {
-    pub fn new(from: Address, to: Address, value: f32) -> Self {
-        Self { from, to, value }
-    }
-}
-
-impl Encodable for TrustEntry {
-    fn encode(&self, out: &mut dyn BufMut) {
-        self.from.encode(out);
-        self.to.encode(out);
-        out.put_f32(self.value);
-    }
-}
-
-impl Decodable for TrustEntry {
-    fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-        let from = Address::decode(buf)?;
-        let to = Address::decode(buf)?;
-        let mut value_bytes = [0; 4];
-        let size =
-            buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
-        if size != 4 {
-            return RlpResult::Err(RlpError::UnexpectedLength);
-        }
-        let value = f32::from_be_bytes(value_bytes);
-        Ok(TrustEntry { from, to, value })
-    }
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct CreateCommitment {
-    pub job_run_assignment_tx_hash: TxHash,
-    pub lt_root_hash: Hash,
-    pub compute_root_hash: Hash,
-    pub scores_tx_hashes: Vec<TxHash>,
-    new_trust_tx_hashes: Vec<TxHash>,
-    new_seed_tx_hashes: Vec<TxHash>,
-}
-
-impl CreateCommitment {
-    pub fn default_with(
-        job_run_assignment_tx_hash: TxHash, lt_root_hash: Hash, compute_root_hash: Hash,
-        scores_tx_hashes: Vec<TxHash>,
-    ) -> Self {
-        Self {
-            job_run_assignment_tx_hash,
-            lt_root_hash,
-            compute_root_hash,
-            scores_tx_hashes,
-            new_trust_tx_hashes: Vec::new(),
-            new_seed_tx_hashes: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct CreateScores {
-    pub entries: Vec<ScoreEntry>,
-}
-
-impl CreateScores {
-    pub fn new(entries: Vec<ScoreEntry>) -> Self {
-        Self { entries }
-    }
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct JobRunRequest {
-    pub domain_id: DomainHash,
-    pub block_height: u32,
-    pub job_id: Hash,
-}
-
-impl JobRunRequest {
-    pub fn new(domain_id: DomainHash, block_height: u32, job_id: Hash) -> Self {
-        Self { domain_id, block_height, job_id }
-    }
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct JobRunAssignment {
-    pub job_run_request_tx_hash: TxHash,
-    pub assigned_compute_node: Address,
-    pub assigned_verifier_node: Address,
-}
-
-impl JobRunAssignment {
-    pub fn default_with(job_run_request_tx_hash: TxHash) -> Self {
-        Self {
-            job_run_request_tx_hash,
-            assigned_compute_node: Address::default(),
-            assigned_verifier_node: Address::default(),
-        }
-    }
-
-    pub fn new(
-        job_run_request_tx_hash: TxHash, assigned_compute_node: Address,
-        assigned_verifier_node: Address,
-    ) -> Self {
-        Self { job_run_request_tx_hash, assigned_compute_node, assigned_verifier_node }
-    }
-}
-
-#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
-pub struct JobVerification {
-    pub job_run_assignment_tx_hash: TxHash,
-    pub verification_result: bool,
-}
-
-impl JobVerification {
-    pub fn new(job_run_assignment_tx_hash: TxHash, verification_result: bool) -> Self {
-        Self { job_run_assignment_tx_hash, verification_result }
-    }
-}
-
-impl Default for JobVerification {
-    fn default() -> Self {
-        Self { job_run_assignment_tx_hash: TxHash::default(), verification_result: true }
-    }
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-struct PendingDomainUpdate {
-    domain_id: DomainHash,
-    commitment_tx_hash: TxHash,
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-struct DomainUpdate {
-    domain_id: DomainHash,
-    commitment_tx_hash: TxHash,
-    verification_results_tx_hashes: Vec<TxHash>,
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct ProposedBlock {
-    previous_block_hash: TxHash,
-    state_root: Hash,
-    pending_domain_updates: Vec<PendingDomainUpdate>,
-    timestamp: u32,
-    block_height: u32,
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct FinalisedBlock {
-    previous_block_hash: TxHash,
-    state_root: Hash,
-    domain_updates: Vec<DomainUpdate>,
-    timestamp: u32,
-    block_height: u32,
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct TrustUpdate {
-    pub trust_id: OwnedNamespace,
-    pub entries: Vec<TrustEntry>,
-}
-
-impl TrustUpdate {
-    pub fn new(trust_id: OwnedNamespace, entries: Vec<TrustEntry>) -> Self {
-        Self { trust_id, entries }
-    }
-}
-
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
-pub struct SeedUpdate {
-    pub seed_id: OwnedNamespace,
-    pub entries: Vec<ScoreEntry>,
-}
-
-impl SeedUpdate {
-    pub fn new(seed_id: OwnedNamespace, entries: Vec<ScoreEntry>) -> Self {
-        Self { seed_id, entries }
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use crate::txs::TrustEntry;
-
-    use super::{ScoreEntry, TrustUpdate, Tx, TxKind};
+    use super::{
+        trust::{ScoreEntry, TrustEntry, TrustUpdate},
+        Tx, TxKind,
+    };
     use alloy_rlp::{encode, Decodable};
 
     #[test]
@@ -544,7 +300,7 @@ mod test {
         let res = TxKind::decode(&mut [0].as_slice()).unwrap();
         assert_eq!(res, TxKind::TrustUpdate);
         let res = TxKind::decode(&mut [3].as_slice()).unwrap();
-        assert_eq!(res, TxKind::JobRunAssignment);
+        assert_eq!(res, TxKind::JobAssignment);
         let res = TxKind::decode(&mut [8].as_slice()).unwrap();
         assert_eq!(res, TxKind::FinalisedBlock);
     }

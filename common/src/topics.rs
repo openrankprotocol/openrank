@@ -1,4 +1,4 @@
-use crate::txs::{Address, OwnedNamespace};
+use crate::txs::{trust::OwnedNamespace, Address};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};

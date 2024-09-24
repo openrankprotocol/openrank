@@ -5,7 +5,11 @@ use openrank_common::{
         MerkleError,
     },
     topics::{Domain, DomainHash},
-    txs::{Address, CreateCommitment, CreateScores, ScoreEntry, TrustEntry, TxHash},
+    txs::{
+        job::{JobCommitment, JobScores},
+        trust::{ScoreEntry, TrustEntry},
+        Address, TxHash,
+    },
 };
 use sha3::Keccak256;
 use std::{
@@ -20,10 +24,10 @@ pub struct VerificationJobRunner {
     seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
-    create_scores: HashMap<DomainHash, HashMap<TxHash, CreateScores>>,
+    job_scores: HashMap<DomainHash, HashMap<TxHash, JobScores>>,
     compute_tree: HashMap<DomainHash, HashMap<TxHash, DenseMerkleTree<Keccak256>>>,
     active_assignments: HashMap<DomainHash, Vec<TxHash>>,
-    commitments: HashMap<TxHash, CreateCommitment>,
+    commitments: HashMap<TxHash, JobCommitment>,
 }
 
 impl VerificationJobRunner {
@@ -35,7 +39,7 @@ impl VerificationJobRunner {
         let mut lt_sub_trees = HashMap::new();
         let mut lt_master_tree = HashMap::new();
         let mut compute_results = HashMap::new();
-        let mut create_scores = HashMap::new();
+        let mut job_scores = HashMap::new();
         let mut compute_tree = HashMap::new();
         let mut active_assignments = HashMap::new();
         for domain in domains {
@@ -49,7 +53,7 @@ impl VerificationJobRunner {
                 DenseIncrementalMerkleTree::<Keccak256>::new(32),
             );
             compute_results.insert(domain.clone(), Vec::<f32>::new());
-            create_scores.insert(domain.clone(), HashMap::new());
+            job_scores.insert(domain.clone(), HashMap::new());
             compute_tree.insert(domain.clone(), HashMap::new());
             active_assignments.insert(domain.clone(), Vec::new());
         }
@@ -60,7 +64,7 @@ impl VerificationJobRunner {
             seed_trust,
             lt_sub_trees,
             lt_master_tree,
-            create_scores,
+            job_scores,
             compute_tree,
             active_assignments,
             commitments: HashMap::new(),
@@ -184,13 +188,13 @@ impl VerificationJobRunner {
     }
 
     pub fn check_scores_tx_hashes(
-        &self, domain: Domain, commitment: CreateCommitment,
+        &self, domain: Domain, commitment: JobCommitment,
     ) -> Result<bool, JobRunnerError> {
-        let create_scores_txs = self.create_scores.get(&domain.clone().to_hash()).ok_or(
-            JobRunnerError::CreateScoresNotFoundWithDomain(domain.to_hash()),
+        let job_scores_txs = self.job_scores.get(&domain.clone().to_hash()).ok_or(
+            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
         )?;
         for score_tx in commitment.scores_tx_hashes {
-            let res = create_scores_txs.contains_key(&score_tx);
+            let res = job_scores_txs.contains_key(&score_tx);
             if !res {
                 return Ok(false);
             }
@@ -236,31 +240,31 @@ impl VerificationJobRunner {
     }
 
     pub fn update_scores(
-        &mut self, domain: Domain, tx_hash: TxHash, create_scores: CreateScores,
+        &mut self, domain: Domain, tx_hash: TxHash, job_scores: JobScores,
     ) -> Result<(), JobRunnerError> {
-        let score_values = self.create_scores.get_mut(&domain.clone().to_hash()).ok_or(
-            JobRunnerError::CreateScoresNotFoundWithDomain(domain.to_hash()),
+        let score_values = self.job_scores.get_mut(&domain.clone().to_hash()).ok_or(
+            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
         )?;
-        score_values.insert(tx_hash, create_scores);
+        score_values.insert(tx_hash, job_scores);
         Ok(())
     }
 
     pub fn update_assigment(
-        &mut self, domain: Domain, job_run_assignment_tx_hash: TxHash,
+        &mut self, domain: Domain, job_assignment_tx_hash: TxHash,
     ) -> Result<(), JobRunnerError> {
         let active_assignments = self
             .active_assignments
             .get_mut(&domain.to_hash())
             .ok_or(JobRunnerError::ActiveAssignmentsNotFound(domain.to_hash()))?;
-        if !active_assignments.contains(&job_run_assignment_tx_hash) {
-            active_assignments.push(job_run_assignment_tx_hash);
+        if !active_assignments.contains(&job_assignment_tx_hash) {
+            active_assignments.push(job_assignment_tx_hash);
         }
         Ok(())
     }
 
-    pub fn update_commitment(&mut self, commitment: CreateCommitment) {
+    pub fn update_commitment(&mut self, commitment: JobCommitment) {
         self.commitments.insert(
-            commitment.job_run_assignment_tx_hash.clone(),
+            commitment.job_assignment_tx_hash.clone(),
             commitment.clone(),
         );
     }
@@ -275,15 +279,17 @@ impl VerificationJobRunner {
             .commitments
             .get(&assignment_id)
             .ok_or(JobRunnerError::CommitmentNotFound(assignment_id.clone()))?;
-        let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
-            JobRunnerError::CreateScoresNotFoundWithDomain(domain.to_hash()),
+        let job_scores = self.job_scores.get(&domain.to_hash()).ok_or(
+            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
         )?;
-        let scores: Vec<&CreateScores> = {
+        let scores: Vec<&JobScores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(create_scores.get(&tx_hash).ok_or(
-                    JobRunnerError::CreateScoresNotFoundWithTxHash(tx_hash.clone()),
-                )?)
+                scores.push(
+                    job_scores
+                        .get(&tx_hash)
+                        .ok_or(JobRunnerError::JobScoresNotFoundWithTxHash(tx_hash.clone()))?,
+                )
             }
             scores
         };
@@ -307,8 +313,8 @@ impl VerificationJobRunner {
             .commitments
             .get(&assignment_id)
             .ok_or(JobRunnerError::CommitmentNotFound(assignment_id.clone()))?;
-        let create_scores = self.create_scores.get(&domain.to_hash()).ok_or(
-            JobRunnerError::CreateScoresNotFoundWithDomain(domain.to_hash()),
+        let job_scores = self.job_scores.get(&domain.to_hash()).ok_or(
+            JobRunnerError::JobScoresNotFoundWithDomain(domain.to_hash()),
         )?;
         let domain_indices = self
             .indices
@@ -322,12 +328,14 @@ impl VerificationJobRunner {
             .seed_trust
             .get(&domain.to_hash())
             .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
-        let scores: Vec<&CreateScores> = {
+        let scores: Vec<&JobScores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(create_scores.get(&tx_hash).ok_or(
-                    JobRunnerError::CreateScoresNotFoundWithTxHash(tx_hash.clone()),
-                )?)
+                scores.push(
+                    job_scores
+                        .get(&tx_hash)
+                        .ok_or(JobRunnerError::JobScoresNotFoundWithTxHash(tx_hash.clone()))?,
+                )
             }
             scores
         };
@@ -384,8 +392,8 @@ pub enum JobRunnerError {
     ComputeTreeNotFoundWithDomain(DomainHash),
     ComputeTreeNotFoundWithTxHash(TxHash),
 
-    CreateScoresNotFoundWithDomain(DomainHash),
-    CreateScoresNotFoundWithTxHash(TxHash),
+    JobScoresNotFoundWithDomain(DomainHash),
+    JobScoresNotFoundWithTxHash(TxHash),
 
     ActiveAssignmentsNotFound(DomainHash),
     CommitmentNotFound(TxHash),
@@ -433,11 +441,11 @@ impl Display for JobRunnerError {
                 write!(f, "compute_tree not found for tx_hash: {:?}", tx_hash)
             },
 
-            Self::CreateScoresNotFoundWithDomain(domain) => {
-                write!(f, "create_scores not found for domain: {:?}", domain)
+            Self::JobScoresNotFoundWithDomain(domain) => {
+                write!(f, "job_scores not found for domain: {:?}", domain)
             },
-            Self::CreateScoresNotFoundWithTxHash(tx_hash) => {
-                write!(f, "create_scores not found for tx_hash: {:?}", tx_hash)
+            Self::JobScoresNotFoundWithTxHash(tx_hash) => {
+                write!(f, "job_scores not found for tx_hash: {:?}", tx_hash)
             },
 
             Self::ActiveAssignmentsNotFound(domain) => {

@@ -9,8 +9,9 @@ use openrank_common::{
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        Address, CreateCommitment, CreateScores, JobRunAssignment, JobVerification, SeedUpdate,
-        TrustUpdate, Tx, TxKind,
+        job::{JobAssignment, JobCommitment, JobScores, JobVerification},
+        trust::{SeedUpdate, TrustUpdate},
+        Address, Tx, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -113,7 +114,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::JobRunAssignment {
+                        if tx.kind() != TxKind::JobAssignment {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
                         let address =
@@ -122,14 +123,11 @@ fn handle_gossipsub_events(
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
                         // Not checking if this node is assigned for the job
-                        let job_run_assignment =
-                            JobRunAssignment::decode(&mut tx.body().as_slice())
-                                .map_err(|e| VerifierNodeError::DecodeError(e))?;
+                        let job_assignment = JobAssignment::decode(&mut tx.body().as_slice())
+                            .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let computer_address = address_from_sk(sk);
-                        assert_eq!(computer_address, job_run_assignment.assigned_verifier_node);
-                        assert!(whitelist
-                            .computer
-                            .contains(&job_run_assignment.assigned_compute_node));
+                        assert_eq!(computer_address, job_assignment.assigned_verifier_node);
+                        assert!(whitelist.computer.contains(&job_assignment.assigned_compute_node));
 
                         let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                             VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
@@ -164,7 +162,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::CreateScores {
+                        if tx.kind() != TxKind::JobScores {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
                         let address =
@@ -172,7 +170,7 @@ fn handle_gossipsub_events(
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
-                        let create_scores = CreateScores::decode(&mut tx.body().as_slice())
+                        let create_scores = JobScores::decode(&mut tx.body().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
 
                         let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
@@ -208,7 +206,7 @@ fn handle_gossipsub_events(
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
-                        if tx.kind() != TxKind::CreateCommitment {
+                        if tx.kind() != TxKind::JobCommitment {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
                         let address =
@@ -216,7 +214,7 @@ fn handle_gossipsub_events(
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(|e| VerifierNodeError::DbError(e))?;
-                        let create_commitment = CreateCommitment::decode(&mut tx.body().as_slice())
+                        let create_commitment = JobCommitment::decode(&mut tx.body().as_slice())
                             .map_err(|e| VerifierNodeError::DecodeError(e))?;
 
                         let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
