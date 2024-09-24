@@ -44,6 +44,48 @@ fn handle_gossipsub_events(
     if let gossipsub::Event::Message { message_id, message, propagation_source } = event {
         for topic in topics {
             match topic {
+                Topic::NamespaceTrustUpdate(namespace) => {
+                    let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                    if message.topic == topic_wrapper.hash() {
+                        let tx_event = TxEvent::decode(&mut message.data.as_slice())
+                            .map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+                        let mut tx = Tx::decode(&mut tx_event.data().as_slice())
+                            .map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+                        if tx.kind() != TxKind::TrustUpdate {
+                            return Err(BlockBuilderNodeError::InvalidTxKind);
+                        }
+                        tx.verify_against(namespace.owner())
+                            .map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
+                        // Add Tx to db
+                        tx.set_sequence_number(message.sequence_number.unwrap_or_default());
+                        db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+                        info!(
+                            "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
+                            message.topic.as_str(),
+                        );
+                    }
+                },
+                Topic::NamespaceSeedUpdate(namespace) => {
+                    let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                    if message.topic == topic_wrapper.hash() {
+                        let tx_event = TxEvent::decode(&mut message.data.as_slice())
+                            .map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+                        let mut tx = Tx::decode(&mut tx_event.data().as_slice())
+                            .map_err(|e| BlockBuilderNodeError::DecodeError(e))?;
+                        if tx.kind() != TxKind::SeedUpdate {
+                            return Err(BlockBuilderNodeError::InvalidTxKind);
+                        }
+                        tx.verify_against(namespace.owner())
+                            .map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
+                        // Add Tx to db
+                        tx.set_sequence_number(message.sequence_number.unwrap_or_default());
+                        db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
+                        info!(
+                            "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
+                            message.topic.as_str(),
+                        );
+                    }
+                },
                 Topic::DomainRequest(domain_id) => {
                     let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                     if message.topic == topic_wrapper.hash() {
@@ -71,8 +113,10 @@ fn handle_gossipsub_events(
                             Tx::default_with(TxKind::JobRunAssignment, encode(job_assignment));
                         tx.sign(sk).map_err(|e| BlockBuilderNodeError::SignatureError(e))?;
                         db.put(tx.clone()).map_err(|e| BlockBuilderNodeError::DbError(e))?;
-                        broadcast_event(&mut swarm, tx, assignment_topic)
+                        broadcast_event(&mut swarm, tx.clone(), assignment_topic)
                             .map_err(|e| BlockBuilderNodeError::P2PError(e.to_string()))?;
+                        // After broadcasting JobAssignment, save to db
+                        db.put(tx).map_err(|e| BlockBuilderNodeError::DbError(e))?;
                         info!(
                             "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                             message.topic.as_str(),
@@ -229,6 +273,20 @@ impl BlockBuilderNode {
         self.swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
         self.swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
 
+        let topics_trust_updates: Vec<Topic> = self
+            .config
+            .domains
+            .clone()
+            .into_iter()
+            .map(|domain| Topic::NamespaceTrustUpdate(domain.trust_namespace()))
+            .collect();
+        let topics_seed_updates: Vec<Topic> = self
+            .config
+            .domains
+            .clone()
+            .into_iter()
+            .map(|domain| Topic::NamespaceTrustUpdate(domain.trust_namespace()))
+            .collect();
         let topics_requests: Vec<Topic> = self
             .config
             .domains
@@ -267,6 +325,8 @@ impl BlockBuilderNode {
             .chain(&topics_commitment)
             .chain(&topics_scores)
             .chain(&topics_requests)
+            .chain(&topics_trust_updates)
+            .chain(&topics_seed_updates)
         {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());
@@ -291,7 +351,13 @@ impl BlockBuilderNode {
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-                        let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification);
+                        let iter_chain = topics_requests
+                            .iter()
+                            .chain(&topics_commitment)
+                            .chain(&topics_scores)
+                            .chain(&topics_verification)
+                            .chain(&topics_trust_updates)
+                            .chain(&topics_seed_updates);
                         let res = handle_gossipsub_events(
                             &mut self.swarm,
                             &self.db,

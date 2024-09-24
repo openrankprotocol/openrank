@@ -80,7 +80,7 @@ fn handle_gossipsub_events(
                     if message.topic == topic_wrapper.hash() {
                         let tx_event = TxEvent::decode(&mut message.data.as_slice())
                             .map_err(|e| ComputeNodeError::DecodeError(e))?;
-                        let tx = Tx::decode(&mut tx_event.data().as_slice())
+                        let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                             .map_err(|e| ComputeNodeError::DecodeError(e))?;
                         if tx.kind() != TxKind::SeedUpdate {
                             return Err(ComputeNodeError::InvalidTxKind);
@@ -88,6 +88,7 @@ fn handle_gossipsub_events(
                         tx.verify_against(namespace.owner())
                             .map_err(|e| ComputeNodeError::SignatureError(e))?;
                         // Add Tx to db
+                        tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                         db.put(tx.clone()).map_err(|e| ComputeNodeError::DbError(e))?;
                         let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
                             .map_err(|e| ComputeNodeError::DecodeError(e))?;
