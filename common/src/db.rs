@@ -1,4 +1,4 @@
-use rocksdb::{Error as RocksDBError, Options, DB};
+use rocksdb::{Error as RocksDBError, IteratorMode, Options, ReadOptions, DB};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
@@ -94,6 +94,29 @@ impl Db {
         let num_elements = num_elements.unwrap_or(usize::MAX);
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
         let iter = self.connection.prefix_iterator_cf(&cf, prefix);
+        let mut elements = Vec::new();
+        for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
+            let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
+            elements.push(tx);
+        }
+        Ok(elements)
+    }
+
+    /// Read the values from the start of the db, up to `num_elements`.
+    pub fn read_from_start_with_key<I: DbItem + DeserializeOwned>(
+        &self, key: Option<Vec<u8>>, num_elements: Option<usize>,
+    ) -> Result<Vec<I>, DbError> {
+        let num_elements = num_elements.unwrap_or(usize::MAX);
+
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?; 
+        let mut readopts = ReadOptions::default();
+        readopts.set_total_order_seek(true);
+        if let Some(key) = key {
+            readopts.set_iterate_lower_bound(key);
+        }
+        let mode = IteratorMode::Start;
+        let iter = self.connection.iterator_cf_opt(&cf, readopts, mode);
+        
         let mut elements = Vec::new();
         for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
             let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
