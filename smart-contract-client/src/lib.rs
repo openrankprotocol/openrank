@@ -154,6 +154,7 @@ impl JobManagerClient {
     }
 
     pub async fn run(&self) -> Result<()> {
+        // Sync up the db first
         self.db.refresh()?;
         let txs = self.read_txs()?;
         for tx in txs {
