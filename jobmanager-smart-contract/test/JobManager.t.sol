@@ -93,11 +93,15 @@ contract JobManagerTest is Test {
     }
 
     function test_sendJobRunRequest() public {
+        bytes20 data = hex"0000000000000000000000000000000000000000";
+        address from = address(data);
+        address to = address(data);
+
         // Call the function 
         JobManager.OpenrankTx memory transaction = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobRunRequest,
             body: hex"e5c18080e1a00000000000000000000000000000000000000000000000000000000000000000",
             signature: JobManager.Signature({
@@ -114,11 +118,15 @@ contract JobManagerTest is Test {
     }
 
     function test_submitJobRunAssignment() public {
+        bytes20 data = hex"0000000000000000000000000000000000000000";
+        address from = address(data);
+        address to = address(data);
+
         // Send JobRunRequest 
         JobManager.OpenrankTx memory t0 = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobRunRequest,
             body: hex"e5c18080e1a00000000000000000000000000000000000000000000000000000000000000000",
             signature: JobManager.Signature({
@@ -133,8 +141,8 @@ contract JobManagerTest is Test {
         // Call the function
         JobManager.OpenrankTx memory transaction = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobRunAssignment,
             body: hex"f84ee1a0159232adb52f1e32121d4b111339a6959caccfd86ecf2cc7ab8ef4388d314646d59413978aee95f38490e9769c39b2773ed763d9cd5fd594cd2a3d9f938e13cd947ec05abc7fe734df8dd826",
             signature: JobManager.Signature({
@@ -152,11 +160,15 @@ contract JobManagerTest is Test {
 
 
     function test_submitCreateCommitment() public {
+        bytes20 data = hex"0000000000000000000000000000000000000000";
+        address from = address(data);
+        address to = address(data);
+
         // Send JobRunRequest 
         JobManager.OpenrankTx memory t0 = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobRunRequest,
             body: hex"e5c18080e1a00000000000000000000000000000000000000000000000000000000000000000",
             signature: JobManager.Signature({
@@ -171,8 +183,8 @@ contract JobManagerTest is Test {
         // Send JobRunAssignment
         JobManager.OpenrankTx memory t1 = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobRunAssignment,
             body: hex"f84ee1a0159232adb52f1e32121d4b111339a6959caccfd86ecf2cc7ab8ef4388d314646d59413978aee95f38490e9769c39b2773ed763d9cd5fd594cd2a3d9f938e13cd947ec05abc7fe734df8dd826",
             signature: JobManager.Signature({
@@ -189,8 +201,8 @@ contract JobManagerTest is Test {
         // Call the function
         JobManager.OpenrankTx memory transaction = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.CreateCommitment,
             body: hex"f869e1a043924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819e1a00000000000000000000000000000000000000000000000000000000000000000e1a00000000000000000000000000000000000000000000000000000000000000000c0c0c0",
             signature: JobManager.Signature({
@@ -207,11 +219,15 @@ contract JobManagerTest is Test {
 
 
     function test_submitJobVerification() public {
+        bytes20 data = hex"0000000000000000000000000000000000000000";
+        address from = address(data);
+        address to = address(data);
+
         // Send JobRunRequest 
         JobManager.OpenrankTx memory t0 = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobRunRequest,
             body: hex"e5c18080e1a00000000000000000000000000000000000000000000000000000000000000000",
             signature: JobManager.Signature({
@@ -226,8 +242,8 @@ contract JobManagerTest is Test {
         // Send JobRunAssignment
         JobManager.OpenrankTx memory t1 = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobRunAssignment,
             body: hex"f84ee1a0159232adb52f1e32121d4b111339a6959caccfd86ecf2cc7ab8ef4388d314646d59413978aee95f38490e9769c39b2773ed763d9cd5fd594cd2a3d9f938e13cd947ec05abc7fe734df8dd826",
             signature: JobManager.Signature({
@@ -244,8 +260,8 @@ contract JobManagerTest is Test {
         // Send CreateCommitment
         JobManager.OpenrankTx memory t2 = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.CreateCommitment,
             body: hex"f869e1a043924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819e1a00000000000000000000000000000000000000000000000000000000000000000e1a00000000000000000000000000000000000000000000000000000000000000000c0c0c0",
             signature: JobManager.Signature({
@@ -260,8 +276,8 @@ contract JobManagerTest is Test {
         // Call the function
         JobManager.OpenrankTx memory transaction = JobManager.OpenrankTx({
             nonce: 0,
-            from: hex"0000000000000000000000000000000000000000",
-            to: hex"0000000000000000000000000000000000000000",
+            from: from,
+            to: to,
             kind: JobManager.TxKind.JobVerification,
             body: hex"e3e1a043924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c81901",
             signature: JobManager.Signature({
