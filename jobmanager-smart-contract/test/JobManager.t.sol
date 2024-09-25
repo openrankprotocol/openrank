@@ -37,14 +37,18 @@ contract JobManagerTest is Test {
 
 
     function test_submitJobVerification() public {
+        bytes32 txHash = hex"042a89a8fa63d2af0dbb5248e72c0094b640285d78ef262931ab1550e6e1a4d0";
+        JobManager.Signature memory signature = JobManager.Signature({
+            s: hex"75f3cab53d46d1eb00ceaee6525bbece17878ca9ed8caf6796b969d78329cc92",
+            r: hex"f293b710791ceb69d1317ebc0d8952005fc186a2a363bc74004771f183d1d8d5",
+            r_id: 1
+        });
+        
         // Call the function
-        jobManager.submitJobVerification(hex"2a7f69e1c5cc5f11272fa5a2632f8c47c8039f1e19dcf739ad99adad9130fe15", JobManager.Signature({
-                s: hex"75f3cab53d46d1eb00ceaee6525bbece17878ca9ed8caf6796b969d78329cc92",
-                r: hex"f293b710791ceb69d1317ebc0d8952005fc186a2a363bc74004771f183d1d8d5",
-                r_id: 1
-            }));
+        jobManager.submitJobVerification(txHash, signature);
 
         // Assert the expected behavior
-
+        bool exists = jobManager.hasTxHash(hex"042a89a8fa63d2af0dbb5248e72c0094b640285d78ef262931ab1550e6e1a4d0");
+        assert(exists);
     }
 }
