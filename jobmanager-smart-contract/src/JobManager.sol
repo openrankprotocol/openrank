@@ -34,8 +34,8 @@ contract JobManager {
     // struct to store TX
     struct OpenrankTx {
         uint64 nonce;
-        bytes from; // assume it's address(bytes20)
-        bytes to; // assume it's address(bytes20)
+        address from;
+        address to;
         TxKind kind;
         bytes body;
         Signature signature;
@@ -121,16 +121,6 @@ contract JobManager {
         hasTx[txHash] = true;
 
         emit JobRunRequested(txHash, jobRunRequest.job_id);
-    }
-
-    // Convert bytes to bytes20
-    function convertBytesToBytes20(bytes memory input) public pure returns (bytes20) {
-        require(input.length == 20, "Input must be 20 bytes long");
-        bytes20 result;
-        assembly {
-            result := mload(add(input, 0x20))
-        }
-        return result;
     }
 
     // Block Builder sends JobAssignment to Computer, with signature validation
@@ -234,10 +224,10 @@ contract JobManager {
     // Helper function to get the transaction hash from the OpenrankTx
     function getTxHash(OpenrankTx memory transaction) internal pure returns (bytes32) {
         bytes[] memory _from = new bytes[](1);
-        _from[0] = RLPEncode.encodeBytes(transaction.from);
+        _from[0] = RLPEncode.encodeBytes(abi.encodePacked(transaction.from));
 
         bytes[] memory _to = new bytes[](1);
-        _to[0] = RLPEncode.encodeBytes(transaction.to);
+        _to[0] = RLPEncode.encodeBytes(abi.encodePacked(transaction.to));
 
         return keccak256(abi.encodePacked(transaction.nonce, RLPEncode.encodeList(_from), RLPEncode.encodeList(_to), RLPEncode.encodeUint(uint(transaction.kind)), transaction.body));
     }

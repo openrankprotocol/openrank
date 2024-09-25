@@ -83,6 +83,16 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
     is_converged
 }
 
+pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<String, f32>) -> bool {
+    let mut is_converged = true;
+    for (i, v) in scores {
+        let next_score = next_scores.get(i).unwrap_or(&0.0);
+        let curr_converged = (next_score - v).abs() < DELTA;
+        is_converged &= curr_converged;
+    }
+    is_converged
+}
+
 pub fn convergence_check(
     mut lt: HashMap<(u32, u32), f32>, seed: &HashMap<u32, f32>, scores: &HashMap<u32, f32>,
 ) -> Result<bool, AlgoError> {
