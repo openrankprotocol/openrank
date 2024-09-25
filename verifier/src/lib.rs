@@ -69,7 +69,7 @@ fn handle_gossipsub_events(
                             )?;
                         job_runner
                             .update_trust(domain.clone(), trust_update.entries.clone())
-                            .map_err(Into::into)?;
+                            .map_err(VerifierNodeError::ComputeInternalError)?;
                         info!(
                             "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                             message.topic.as_str(),
@@ -99,7 +99,7 @@ fn handle_gossipsub_events(
                             )?;
                         job_runner
                             .update_seed(domain.clone(), seed_update.entries.clone())
-                            .map_err(Into::into)?;
+                            .map_err(VerifierNodeError::ComputeInternalError)?;
                         info!(
                             "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                             message.topic.as_str(),
@@ -136,9 +136,9 @@ fn handle_gossipsub_events(
                         )?;
                         job_runner
                             .update_assigment(domain.clone(), tx.hash())
-                            .map_err(Into::into)?;
+                            .map_err(VerifierNodeError::ComputeInternalError)?;
                         let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
+                            job_runner.check_finished_jobs(domain.clone()).map_err(VerifierNodeError::ComputeInternalError)?;
                         for (tx_hash, verification_res) in res {
                             let verification_res = JobVerification::new(tx_hash, verification_res);
                             let mut tx =
@@ -180,9 +180,9 @@ fn handle_gossipsub_events(
                         )?;
                         let _ = job_runner
                             .update_scores(domain.clone(), tx.hash(), create_scores.clone())
-                            .map_err(Into::into)?;
+                            .map_err(VerifierNodeError::ComputeInternalError)?;
                         let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
+                            job_runner.check_finished_jobs(domain.clone()).map_err(VerifierNodeError::ComputeInternalError)?;
                         for (tx_hash, verification_res) in res {
                             let verification_res = JobVerification::new(tx_hash, verification_res);
                             let mut tx =
@@ -224,7 +224,7 @@ fn handle_gossipsub_events(
                         )?;
                         job_runner.update_commitment(create_commitment.clone());
                         let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(Into::into)?;
+                            job_runner.check_finished_jobs(domain.clone()).map_err(VerifierNodeError::ComputeInternalError)?;
                         for (tx_hash, verification_res) in res {
                             let verification_res = JobVerification::new(tx_hash, verification_res);
                             let mut tx =

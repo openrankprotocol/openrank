@@ -68,7 +68,7 @@ fn handle_gossipsub_events(
                             .ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
                         job_runner
                             .update_trust(domain.clone(), trust_update.entries.clone())
-                            .map_err(Into::into)?;
+                            .map_err(ComputeNodeError::ComputeInternalError)?;
                         info!(
                             "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                             message.topic.as_str(),
@@ -98,7 +98,7 @@ fn handle_gossipsub_events(
                             .ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
                         job_runner
                             .update_seed(domain.clone(), seed_update.entries.clone())
-                            .map_err(Into::into)?;
+                            .map_err(ComputeNodeError::ComputeInternalError)?;
                         info!(
                             "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                             message.topic.as_str(),
@@ -134,12 +134,12 @@ fn handle_gossipsub_events(
                             .iter()
                             .find(|x| &x.to_hash() == domain_id)
                             .ok_or(ComputeNodeError::DomainNotFound(domain_id.clone().to_hex()))?;
-                        job_runner.compute(domain.clone()).map_err(Into::into)?;
-                        job_runner.create_compute_tree(domain.clone()).map_err(Into::into)?;
+                        job_runner.compute(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
+                        job_runner.create_compute_tree(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
                         let create_scores =
-                            job_runner.get_create_scores(domain.clone()).map_err(Into::into)?;
+                            job_runner.get_create_scores(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
                         let (lt_root, compute_root) =
-                            job_runner.get_root_hashes(domain.clone()).map_err(Into::into)?;
+                            job_runner.get_root_hashes(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
 
                         let create_scores_tx_res: Result<Vec<Tx>, ComputeNodeError> = create_scores
                             .iter()
