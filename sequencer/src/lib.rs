@@ -205,7 +205,7 @@ impl Sequencer {
             create_scores
         };
         let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().map(|x| x.entries).flatten().collect();
+            create_scores.into_iter().flat_map(|x| x.entries).collect();
         score_entries.sort_by(|a, b| match a.value.partial_cmp(&b.value) {
             Some(ordering) => ordering,
             None => {

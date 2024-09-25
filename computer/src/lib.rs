@@ -48,19 +48,19 @@ fn handle_gossipsub_events(
                     let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                     if message.topic == topic_wrapper.hash() {
                         let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         let mut tx = Tx::decode(&mut tx_event.data().as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         if tx.kind() != TxKind::TrustUpdate {
                             return Err(ComputeNodeError::InvalidTxKind);
                         }
                         tx.verify_against(namespace.owner())
-                            .map_err(|e| ComputeNodeError::SignatureError(e))?;
+                            .map_err(ComputeNodeError::SignatureError)?;
                         // Add Tx to db
                         tx.set_sequence_number(message.sequence_number.unwrap_or_default());
-                        db.put(tx.clone()).map_err(|e| ComputeNodeError::DbError(e))?;
+                        db.put(tx.clone()).map_err(ComputeNodeError::DbError)?;
                         let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         assert!(*namespace == trust_update.trust_id);
                         let domain = domains
                             .iter()
@@ -79,18 +79,18 @@ fn handle_gossipsub_events(
                     let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                     if message.topic == topic_wrapper.hash() {
                         let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         if tx.kind() != TxKind::SeedUpdate {
                             return Err(ComputeNodeError::InvalidTxKind);
                         }
                         tx.verify_against(namespace.owner())
-                            .map_err(|e| ComputeNodeError::SignatureError(e))?;
+                            .map_err(ComputeNodeError::SignatureError)?;
                         // Add Tx to db
-                        db.put(tx.clone()).map_err(|e| ComputeNodeError::DbError(e))?;
+                        db.put(tx.clone()).map_err(ComputeNodeError::DbError)?;
                         let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         assert!(*namespace == seed_update.seed_id);
                         let domain = domains
                             .iter()
@@ -109,21 +109,21 @@ fn handle_gossipsub_events(
                     let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                     if message.topic == topic_wrapper.hash() {
                         let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         let tx = Tx::decode(&mut tx_event.data().as_slice())
-                            .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                            .map_err(ComputeNodeError::DecodeError)?;
                         if tx.kind() != TxKind::JobRunAssignment {
                             return Err(ComputeNodeError::InvalidTxKind);
                         }
                         let address =
-                            tx.verify().map_err(|e| ComputeNodeError::SignatureError(e))?;
+                            tx.verify().map_err(ComputeNodeError::SignatureError)?;
                         assert!(whitelist.block_builder.contains(&address));
                         // Add Tx to db
-                        db.put(tx.clone()).map_err(|e| ComputeNodeError::DbError(e))?;
+                        db.put(tx.clone()).map_err(ComputeNodeError::DbError)?;
                         // Not checking if we are assigned for the job, for now
                         let job_run_assignment =
                             JobRunAssignment::decode(&mut tx.body().as_slice())
-                                .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                                .map_err(ComputeNodeError::DecodeError)?;
                         let computer_address = address_from_sk(sk);
                         assert_eq!(computer_address, job_run_assignment.assigned_compute_node);
                         assert!(whitelist
@@ -145,7 +145,7 @@ fn handle_gossipsub_events(
                             .iter()
                             .map(|tx_body| Tx::default_with(TxKind::CreateScores, encode(tx_body)))
                             .map(|mut tx| {
-                                tx.sign(sk).map_err(|e| ComputeNodeError::SignatureError(e))?;
+                                tx.sign(sk).map_err(ComputeNodeError::SignatureError)?;
                                 Ok(tx)
                             })
                             .collect();
@@ -164,7 +164,7 @@ fn handle_gossipsub_events(
                             Tx::default_with(TxKind::CreateCommitment, encode(create_commitment));
                         create_commitment_tx
                             .sign(sk)
-                            .map_err(|e| ComputeNodeError::SignatureError(e))?;
+                            .map_err(ComputeNodeError::SignatureError)?;
                         for scores in create_scores_tx {
                             broadcast_event(swarm, scores, create_scores_topic.clone())
                                 .map_err(|e| ComputeNodeError::P2PError(e.to_string()))?;
@@ -305,14 +305,14 @@ impl ComputerNode {
         let mut trust_update_txs: Vec<Tx> = self
             .db
             .read_from_end(TxKind::TrustUpdate.into(), None)
-            .map_err(|e| ComputeNodeError::DbError(e))?;
+            .map_err(ComputeNodeError::DbError)?;
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
         let mut seed_update_txs: Vec<Tx> = self
             .db
             .read_from_end(TxKind::SeedUpdate.into(), None)
-            .map_err(|e| ComputeNodeError::DbError(e))?;
+            .map_err(ComputeNodeError::DbError)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
 
@@ -324,7 +324,7 @@ impl ComputerNode {
             match tx.kind() {
                 TxKind::TrustUpdate => {
                     let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
-                        .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                        .map_err(ComputeNodeError::DecodeError)?;
                     let namespace = trust_update.trust_id;
                     let domain = self
                         .config
@@ -334,11 +334,11 @@ impl ComputerNode {
                         .ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
                     self.job_runner
                         .update_trust(domain.clone(), trust_update.entries.clone())
-                        .map_err(|e| ComputeNodeError::ComputeInternalError(e))?;
+                        .map_err(ComputeNodeError::ComputeInternalError)?;
                 },
                 TxKind::SeedUpdate => {
                     let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
-                        .map_err(|e| ComputeNodeError::DecodeError(e))?;
+                        .map_err(ComputeNodeError::DecodeError)?;
                     let namespace = seed_update.seed_id;
                     let domain = self
                         .config
@@ -348,7 +348,7 @@ impl ComputerNode {
                         .ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
                     self.job_runner
                         .update_seed(domain.clone(), seed_update.entries.clone())
-                        .map_err(|e| ComputeNodeError::ComputeInternalError(e))?;
+                        .map_err(ComputeNodeError::ComputeInternalError)?;
                 },
                 _ => (),
             }
