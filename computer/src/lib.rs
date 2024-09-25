@@ -330,7 +330,7 @@ impl ComputerNode {
                         .config
                         .domains
                         .iter()
-                        .find(|x| &x.trust_namespace() == &namespace)
+                        .find(|x| x.trust_namespace() == namespace)
                         .ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
                     self.job_runner
                         .update_trust(domain.clone(), trust_update.entries.clone())
@@ -344,7 +344,7 @@ impl ComputerNode {
                         .config
                         .domains
                         .iter()
-                        .find(|x| &x.seed_namespace() == &namespace)
+                        .find(|x| x.seed_namespace() == namespace)
                         .ok_or(ComputeNodeError::DomainNotFound(namespace.clone().to_hex()))?;
                     self.job_runner
                         .update_seed(domain.clone(), seed_update.entries.clone())

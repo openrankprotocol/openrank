@@ -315,7 +315,7 @@ impl VerifierNode {
                         .config
                         .domains
                         .iter()
-                        .find(|x| &x.trust_namespace() == &namespace)
+                        .find(|x| x.trust_namespace() == namespace)
                         .ok_or(VerifierNodeError::DomainNotFound(
                             namespace.clone().to_hex(),
                         ))?;
@@ -331,7 +331,7 @@ impl VerifierNode {
                         .config
                         .domains
                         .iter()
-                        .find(|x| &x.seed_namespace() == &namespace)
+                        .find(|x| x.seed_namespace() == namespace)
                         .ok_or(VerifierNodeError::DomainNotFound(
                             namespace.clone().to_hex(),
                         ))?;

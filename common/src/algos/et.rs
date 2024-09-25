@@ -35,7 +35,7 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
     if sum == 0.0 {
         return Err(AlgoError::ZeroSum);
     }
-    for (_, value) in seed {
+    for value in seed.values_mut() {
         *value /= sum;
     }
     Ok(())
