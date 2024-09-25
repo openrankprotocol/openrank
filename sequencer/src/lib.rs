@@ -221,8 +221,10 @@ impl Sequencer {
         score_entries.reverse();
         let score_entries: Vec<ScoreEntry> = score_entries
             .split_at(query.start as usize)
-            .1.iter()
-            .take(query.size as usize).cloned()
+            .1
+            .iter()
+            .take(query.size as usize)
+            .cloned()
             .collect();
 
         let verificarion_results_tx: Vec<Tx> = {

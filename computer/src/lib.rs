@@ -115,8 +115,7 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::JobRunAssignment {
                             return Err(ComputeNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(ComputeNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(ComputeNodeError::SignatureError)?;
                         assert!(whitelist.block_builder.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(ComputeNodeError::DbError)?;
@@ -134,12 +133,18 @@ fn handle_gossipsub_events(
                             .iter()
                             .find(|x| &x.to_hash() == domain_id)
                             .ok_or(ComputeNodeError::DomainNotFound(domain_id.clone().to_hex()))?;
-                        job_runner.compute(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
-                        job_runner.create_compute_tree(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
-                        let create_scores =
-                            job_runner.get_create_scores(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
-                        let (lt_root, compute_root) =
-                            job_runner.get_root_hashes(domain.clone()).map_err(ComputeNodeError::ComputeInternalError)?;
+                        job_runner
+                            .compute(domain.clone())
+                            .map_err(ComputeNodeError::ComputeInternalError)?;
+                        job_runner
+                            .create_compute_tree(domain.clone())
+                            .map_err(ComputeNodeError::ComputeInternalError)?;
+                        let create_scores = job_runner
+                            .get_create_scores(domain.clone())
+                            .map_err(ComputeNodeError::ComputeInternalError)?;
+                        let (lt_root, compute_root) = job_runner
+                            .get_root_hashes(domain.clone())
+                            .map_err(ComputeNodeError::ComputeInternalError)?;
 
                         let create_scores_tx_res: Result<Vec<Tx>, ComputeNodeError> = create_scores
                             .iter()
@@ -162,9 +167,7 @@ fn handle_gossipsub_events(
                         );
                         let mut create_commitment_tx =
                             Tx::default_with(TxKind::CreateCommitment, encode(create_commitment));
-                        create_commitment_tx
-                            .sign(sk)
-                            .map_err(ComputeNodeError::SignatureError)?;
+                        create_commitment_tx.sign(sk).map_err(ComputeNodeError::SignatureError)?;
                         for scores in create_scores_tx {
                             broadcast_event(swarm, scores, create_scores_topic.clone())
                                 .map_err(|e| ComputeNodeError::P2PError(e.to_string()))?;

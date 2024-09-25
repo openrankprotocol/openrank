@@ -54,8 +54,7 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::JobRunRequest {
                             return Err(BlockBuilderNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
                         assert!(whitelist.users.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
@@ -89,8 +88,7 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::CreateCommitment {
                             return Err(BlockBuilderNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
@@ -102,9 +100,8 @@ fn handle_gossipsub_events(
                             TxKind::JobRunAssignment,
                             commitment.job_run_assignment_tx_hash,
                         );
-                        let assignment_tx: Tx = db
-                            .get(assignment_tx_key)
-                            .map_err(BlockBuilderNodeError::DbError)?;
+                        let assignment_tx: Tx =
+                            db.get(assignment_tx_key).map_err(BlockBuilderNodeError::DbError)?;
                         let assignment_body =
                             JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
@@ -112,9 +109,8 @@ fn handle_gossipsub_events(
                             TxKind::JobRunRequest,
                             assignment_body.job_run_request_tx_hash.clone(),
                         );
-                        let request: Tx = db
-                            .get(request_tx_key)
-                            .map_err(BlockBuilderNodeError::DbError)?;
+                        let request: Tx =
+                            db.get(request_tx_key).map_err(BlockBuilderNodeError::DbError)?;
                         let job_result_key =
                             JobResult::construct_full_key(assignment_body.job_run_request_tx_hash);
                         if let Err(DbError::NotFound) = db.get::<JobResult>(job_result_key) {
@@ -137,8 +133,7 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::CreateScores {
                             return Err(BlockBuilderNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
@@ -160,30 +155,26 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::JobVerification {
                             return Err(BlockBuilderNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
                         assert!(whitelist.verifier.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
-                        let job_verification =
-                            JobVerification::decode(&mut tx.body().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                        let job_verification = JobVerification::decode(&mut tx.body().as_slice())
+                            .map_err(BlockBuilderNodeError::DecodeError)?;
 
                         let assignment_tx_key = Tx::construct_full_key(
                             TxKind::JobRunAssignment,
                             job_verification.job_run_assignment_tx_hash,
                         );
-                        let assignment_tx: Tx = db
-                            .get(assignment_tx_key)
-                            .map_err(BlockBuilderNodeError::DbError)?;
+                        let assignment_tx: Tx =
+                            db.get(assignment_tx_key).map_err(BlockBuilderNodeError::DbError)?;
                         let assignment_body =
                             JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                         let job_result_key =
                             JobResult::construct_full_key(assignment_body.job_run_request_tx_hash);
-                        let mut job_result: JobResult = db
-                            .get(job_result_key)
-                            .map_err(BlockBuilderNodeError::DbError)?;
+                        let mut job_result: JobResult =
+                            db.get(job_result_key).map_err(BlockBuilderNodeError::DbError)?;
                         job_result.job_verification_tx_hashes.push(tx.hash());
                         db.put(job_result).map_err(BlockBuilderNodeError::DbError)?;
                         info!(

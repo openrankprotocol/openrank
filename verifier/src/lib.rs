@@ -116,8 +116,7 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::JobRunAssignment {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(VerifierNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
                         assert!(whitelist.block_builder.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
@@ -137,8 +136,9 @@ fn handle_gossipsub_events(
                         job_runner
                             .update_assigment(domain.clone(), tx.hash())
                             .map_err(VerifierNodeError::ComputeInternalError)?;
-                        let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(VerifierNodeError::ComputeInternalError)?;
+                        let res = job_runner
+                            .check_finished_jobs(domain.clone())
+                            .map_err(VerifierNodeError::ComputeInternalError)?;
                         for (tx_hash, verification_res) in res {
                             let verification_res = JobVerification::new(tx_hash, verification_res);
                             let mut tx =
@@ -167,8 +167,7 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::CreateScores {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(VerifierNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
@@ -181,8 +180,9 @@ fn handle_gossipsub_events(
                         job_runner
                             .update_scores(domain.clone(), tx.hash(), create_scores.clone())
                             .map_err(VerifierNodeError::ComputeInternalError)?;
-                        let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(VerifierNodeError::ComputeInternalError)?;
+                        let res = job_runner
+                            .check_finished_jobs(domain.clone())
+                            .map_err(VerifierNodeError::ComputeInternalError)?;
                         for (tx_hash, verification_res) in res {
                             let verification_res = JobVerification::new(tx_hash, verification_res);
                             let mut tx =
@@ -211,8 +211,7 @@ fn handle_gossipsub_events(
                         if tx.kind() != TxKind::CreateCommitment {
                             return Err(VerifierNodeError::InvalidTxKind);
                         }
-                        let address =
-                            tx.verify().map_err(VerifierNodeError::SignatureError)?;
+                        let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
                         assert!(whitelist.computer.contains(&address));
                         // Add Tx to db
                         db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
@@ -223,8 +222,9 @@ fn handle_gossipsub_events(
                             VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                         )?;
                         job_runner.update_commitment(create_commitment.clone());
-                        let res =
-                            job_runner.check_finished_jobs(domain.clone()).map_err(VerifierNodeError::ComputeInternalError)?;
+                        let res = job_runner
+                            .check_finished_jobs(domain.clone())
+                            .map_err(VerifierNodeError::ComputeInternalError)?;
                         for (tx_hash, verification_res) in res {
                             let verification_res = JobVerification::new(tx_hash, verification_res);
                             let mut tx =

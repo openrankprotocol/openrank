@@ -120,8 +120,7 @@ impl VerificationJobRunner {
             let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
-            let sub_tree_root =
-                sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
             let seed_value = seed.get(&to_index).unwrap_or(&0.0);
             let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -167,8 +166,7 @@ impl VerificationJobRunner {
             let sub_tree = lt_sub_trees
                 .get_mut(&index)
                 .ok_or(JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
-            let sub_tree_root =
-                sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
             let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
@@ -357,8 +355,7 @@ impl VerificationJobRunner {
             JobRunnerError::ComputeTreeNotFoundWithTxHash(assignment_id.clone()),
         )?;
         let lt_tree_root = lt_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
-        let ct_tree_root =
-            compute_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+        let ct_tree_root = compute_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
         Ok((lt_tree_root, ct_tree_root))
     }
 }
