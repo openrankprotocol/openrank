@@ -3952,6 +3952,7 @@ name = "openrank-block-builder"
 version = "0.0.1"
 dependencies = [
  "alloy-rlp",
+ "clap",
  "dotenv",
  "futures",
  "hex",
@@ -5230,6 +5231,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml",
+ "tracing",
 ]
 
 [[package]]

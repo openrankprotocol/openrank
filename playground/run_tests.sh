@@ -1,7 +1,7 @@
 #!/bin/bash
 
-TRUST_DB_FILE="../datasets/big-trust-db.csv"
-SEED_DB_FILE="../datasets/big-seed-db.csv"
+TRUST_DB_FILE="../datasets/trust-db.csv"
+SEED_DB_FILE="../datasets/seed-db.csv"
 
 OUTPUT="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk trust-update "./${TRUST_DB_FILE}" "./config.toml")"
 echo $OUTPUT

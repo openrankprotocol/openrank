@@ -1,18 +1,18 @@
 [[domains]]
-trust_owner = "fdc065619e2defb916dca551f85bf7d7a44023ef"
+trust_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
 trust_id = 1
-seed_owner = "fdc065619e2defb916dca551f85bf7d7a44023ef"
+seed_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
 seed_id = 1
 algo_id = 0
 
 [[domains]]
-trust_owner = "fdc065619e2defb916dca551f85bf7d7a44023ef"
+trust_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
 trust_id = 2
-seed_owner = "fdc065619e2defb916dca551f85bf7d7a44023ef"
+seed_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
 seed_id = 2
 algo_id = 0
 
 [whitelist]
-computer = ["7c2df8c780d2e0401d7091c54086d228dabad208"]
-verifier = ["3527ab0f9ba36d221d72e02368ca7ddf73c2bc19"]
-users = ["fdc065619e2defb916dca551f85bf7d7a44023ef"]
+computer = ["e1ab19bdcd7293cd47493c6a935fa48690fad222"]
+verifier = ["40a28b7ca8509395b93165bea28ba614b4a6bdd9"]
+users = ["b79aafc95c8866e65ed51a7856e75587feb481ff"]
