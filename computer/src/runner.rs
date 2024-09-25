@@ -5,7 +5,7 @@ use openrank_common::{
         MerkleError,
     },
     topics::{Domain, DomainHash},
-    txs::{Address, CreateScores, ScoreEntry, TrustEntry},
+    txs::{CreateScores, ScoreEntry, TrustEntry},
 };
 use sha3::Keccak256;
 use std::{
@@ -15,7 +15,7 @@ use std::{
 
 pub struct ComputeJobRunner {
     count: HashMap<DomainHash, u32>,
-    indices: HashMap<DomainHash, HashMap<Address, u32>>,
+    indices: HashMap<DomainHash, HashMap<String, u32>>,
     local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
     seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
@@ -63,7 +63,7 @@ impl ComputeJobRunner {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::IndicesNotFound(domain.to_hash()))?;
+            .ok_or(JobRunnerError::IndexNotFound(domain.to_hash()))?;
         let count = self
             .count
             .get_mut(&domain.to_hash())
@@ -129,7 +129,7 @@ impl ComputeJobRunner {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::IndicesNotFound(domain.to_hash()))?;
+            .ok_or(JobRunnerError::IndexNotFound(domain.to_hash()))?;
         let count = self
             .count
             .get_mut(&domain.to_hash())
@@ -205,12 +205,12 @@ impl ComputeJobRunner {
         let domain_indices = self
             .indices
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::IndicesNotFound(domain.to_hash()))?;
+            .ok_or(JobRunnerError::IndexNotFound(domain.to_hash()))?;
         let scores = self
             .compute_results
             .get(&domain.to_hash())
             .ok_or(JobRunnerError::ComputeResultsNotFound(domain.to_hash()))?;
-        let index_to_address: HashMap<&u32, &Address> =
+        let index_to_address: HashMap<&u32, &String> =
             domain_indices.iter().map(|(k, v)| (v, k)).collect();
         let mut create_scores_txs = Vec::new();
         for chunk in scores.chunks(1000) {
@@ -245,7 +245,7 @@ impl ComputeJobRunner {
 
 #[derive(Debug)]
 pub enum JobRunnerError {
-    IndicesNotFound(DomainHash),
+    IndexNotFound(DomainHash),
     CountNotFound(DomainHash),
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
     LocalTrustSubTreesNotFoundWithIndex(u32),
@@ -263,8 +263,8 @@ pub enum JobRunnerError {
 impl Display for JobRunnerError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::IndicesNotFound(domain) => {
-                write!(f, "indices not found for domain: {:?}", domain)
+            Self::IndexNotFound(domain) => {
+                write!(f, "index not found for domain: {:?}", domain)
             },
             Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
             Self::LocalTrustSubTreesNotFoundWithDomain(domain) => write!(

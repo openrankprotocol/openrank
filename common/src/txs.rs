@@ -318,12 +318,12 @@ impl Signature {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScoreEntry {
-    pub id: Address,
+    pub id: String,
     pub value: f32,
 }
 
 impl ScoreEntry {
-    pub fn new(id: Address, value: f32) -> Self {
+    pub fn new(id: String, value: f32) -> Self {
         Self { id, value }
     }
 }
@@ -337,7 +337,7 @@ impl Encodable for ScoreEntry {
 
 impl Decodable for ScoreEntry {
     fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-        let id = Address::decode(buf)?;
+        let id = String::decode(buf)?;
         let mut value_bytes = [0; 4];
         let size =
             buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
@@ -351,13 +351,13 @@ impl Decodable for ScoreEntry {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TrustEntry {
-    pub from: Address,
-    pub to: Address,
+    pub from: String,
+    pub to: String,
     pub value: f32,
 }
 
 impl TrustEntry {
-    pub fn new(from: Address, to: Address, value: f32) -> Self {
+    pub fn new(from: String, to: String, value: f32) -> Self {
         Self { from, to, value }
     }
 }
@@ -372,8 +372,8 @@ impl Encodable for TrustEntry {
 
 impl Decodable for TrustEntry {
     fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-        let from = Address::decode(buf)?;
-        let to = Address::decode(buf)?;
+        let from = String::decode(buf)?;
+        let to = String::decode(buf)?;
         let mut value_bytes = [0; 4];
         let size =
             buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
