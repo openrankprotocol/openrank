@@ -13,6 +13,7 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
+/// Struct containing the state of the computer job runner.
 pub struct ComputeJobRunner {
     count: HashMap<DomainHash, u32>,
     indices: HashMap<DomainHash, HashMap<String, u32>>,
@@ -57,6 +58,7 @@ impl ComputeJobRunner {
         }
     }
 
+    /// Update the state of trees for certain domain, with the given trust entries.
     pub fn update_trust(
         &mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
     ) -> Result<(), JobRunnerError> {
@@ -87,7 +89,7 @@ impl ComputeJobRunner {
             let from_index = if let Some(i) = domain_indices.get(&entry.from) {
                 *i
             } else {
-                let curr_count = count.clone();
+                let curr_count = *count;
                 domain_indices.insert(entry.from.clone(), curr_count);
                 *count += 1;
                 curr_count
@@ -95,25 +97,22 @@ impl ComputeJobRunner {
             let to_index = if let Some(i) = domain_indices.get(&entry.to) {
                 *i
             } else {
-                let curr_count = count.clone();
-                domain_indices.insert(entry.to.clone(), count.clone());
+                let curr_count = *count;
+                domain_indices.insert(entry.to.clone(), *count);
                 *count += 1;
                 curr_count
             };
             let old_value = lt.get(&(from_index, to_index)).unwrap_or(&0.0);
             lt.insert((from_index, to_index), entry.value + old_value);
 
-            if !lt_sub_trees.contains_key(&from_index) {
-                lt_sub_trees.insert(from_index, default_sub_tree.clone());
-            }
+            lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
                 JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index),
             )?;
             let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
-            let sub_tree_root =
-                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
             let seed_value = seed.get(&to_index).unwrap_or(&0.0);
             let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -123,6 +122,7 @@ impl ComputeJobRunner {
         Ok(())
     }
 
+    /// Update the state of trees for certain domain, with the given seed entries.
     pub fn update_seed(
         &mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
     ) -> Result<(), JobRunnerError> {
@@ -149,20 +149,17 @@ impl ComputeJobRunner {
             let index = if let Some(i) = domain_indices.get(&entry.id) {
                 *i
             } else {
-                let curr_count = count.clone();
+                let curr_count = *count;
                 domain_indices.insert(entry.id.clone(), curr_count);
                 *count += 1;
                 curr_count
             };
 
-            if !lt_sub_trees.contains_key(&index) {
-                lt_sub_trees.insert(index, default_sub_tree.clone());
-            }
+            lt_sub_trees.entry(index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
                 .get_mut(&index)
                 .ok_or(JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
-            let sub_tree_root =
-                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
             let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
@@ -173,6 +170,7 @@ impl ComputeJobRunner {
         Ok(())
     }
 
+    /// Compute the EigenTrust scores for certain domain.
     pub fn compute(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
         let lt = self
             .local_trust
@@ -183,11 +181,12 @@ impl ComputeJobRunner {
             .get(&domain.to_hash())
             .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
         let res = positive_run::<20>(lt.clone(), seed.clone())
-            .map_err(|e| JobRunnerError::ComputeAlgoError(e))?;
+            .map_err(JobRunnerError::ComputeAlgoError)?;
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
     }
 
+    /// Create the compute tree for certain domain.
     pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
         let scores = self
             .compute_results
@@ -196,11 +195,12 @@ impl ComputeJobRunner {
         let score_hashes: Vec<Hash> =
             scores.iter().map(|(_, x)| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
         let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
-            .map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            .map_err(JobRunnerError::ComputeMerkleError)?;
         self.compute_tree.insert(domain.to_hash(), compute_tree);
         Ok(())
     }
 
+    /// Get the create scores for certain domain.
     pub fn get_create_scores(&self, domain: Domain) -> Result<Vec<CreateScores>, JobRunnerError> {
         let domain_indices = self
             .indices
@@ -228,6 +228,7 @@ impl ComputeJobRunner {
         Ok(create_scores_txs)
     }
 
+    /// Get the local trust root hash and compute tree root hash for certain domain.
     pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), JobRunnerError> {
         let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
             JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
@@ -236,27 +237,38 @@ impl ComputeJobRunner {
             .compute_tree
             .get(&domain.to_hash())
             .ok_or(JobRunnerError::ComputeTreeNotFound(domain.to_hash()))?;
-        let lt_tree_root = lt_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
-        let ct_tree_root =
-            compute_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+        let lt_tree_root = lt_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+        let ct_tree_root = compute_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
         Ok((lt_tree_root, ct_tree_root))
     }
 }
 
 #[derive(Debug)]
+/// Errors that can arise while using the job runner.
 pub enum JobRunnerError {
+    /// The index for the domain are not found.
     IndexNotFound(DomainHash),
+    /// The count for the domain is not found.
     CountNotFound(DomainHash),
+    /// The local trust sub trees for the domain are not found.
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
+    /// The local trust sub tree for the index is not found.
     LocalTrustSubTreesNotFoundWithIndex(u32),
+    /// The local trust master tree for the domain are not found.
     LocalTrustMasterTreeNotFound(DomainHash),
+    /// The local trust for the domain are not found.
     LocalTrustNotFound(DomainHash),
+    /// The seed trust for the domain are not found.
     SeedTrustNotFound(DomainHash),
+    /// The compute results for the domain are not found.
     ComputeResultsNotFound(DomainHash),
+    /// The index to address mapping for the domain are not found.
     IndexToAddressNotFound(u32),
+    /// The compute tree for the domain are not found.
     ComputeTreeNotFound(DomainHash),
-
+    /// The compute merkle tree error.
     ComputeMerkleError(MerkleError),
+    /// The compute algorithm error.
     ComputeAlgoError(AlgoError),
 }
 

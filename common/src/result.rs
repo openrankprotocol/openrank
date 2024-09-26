@@ -15,10 +15,14 @@ impl GetResultsQuery {
     }
 }
 
+/// Combination of several tx hashes representing the result of a job run by `Computer`.
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct JobResult {
+    /// Hash of the create commitment transaction.
     pub create_commitment_tx_hash: TxHash,
+    /// Hashes of the job verification transactions.
     pub job_verification_tx_hashes: Vec<TxHash>,
+    /// Hash of the original job run request transaction.
     job_run_request_tx_hash: TxHash,
 }
 
@@ -30,6 +34,7 @@ impl JobResult {
         Self { create_commitment_tx_hash, job_verification_tx_hashes, job_run_request_tx_hash }
     }
 
+    /// Constructs the full key for the given tx hash.
     pub fn construct_full_key(tx_hash: TxHash) -> Vec<u8> {
         let mut prefix = "result".to_string().as_bytes().to_vec();
         prefix.extend(tx_hash.0);

@@ -6,13 +6,21 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use crate::runner::JobRunnerError;
 
 #[derive(Debug)]
+/// Errors that can arise while using the computer node.
 pub enum ComputeNodeError {
+    /// The decode error. This can arise when decoding a transaction.
     DecodeError(alloy_rlp::Error),
+    /// The database error. The database error can occur when interacting with the database.
     DbError(DbError),
+    /// The domain not found error. This can arise when the domain is not found in the config.
     DomainNotFound(String),
+    /// The p2p error. This can arise when sending or receiving messages over the p2p network.
     P2PError(String),
+    /// The compute internal error. This can arise when there is an internal error in the job runner.
     ComputeInternalError(JobRunnerError),
+    /// The signature error. This can arise when verifying a transaction signature.
     SignatureError(EcdsaError),
+    /// The invalid tx kind error.
     InvalidTxKind,
 }
 
@@ -29,11 +37,5 @@ impl Display for ComputeNodeError {
             Self::SignatureError(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
         }
-    }
-}
-
-impl Into<ComputeNodeError> for JobRunnerError {
-    fn into(self) -> ComputeNodeError {
-        ComputeNodeError::ComputeInternalError(self)
     }
 }
