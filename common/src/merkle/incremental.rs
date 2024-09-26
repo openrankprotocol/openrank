@@ -24,7 +24,7 @@ where
     H: Digest,
 {
     pub fn root(&self) -> Result<Hash, MerkleError> {
-        self.nodes.get(&(self.num_levels, 0)).map(|h| h.clone()).ok_or(MerkleError::RootNotFound)
+        self.nodes.get(&(self.num_levels, 0)).cloned().ok_or(MerkleError::RootNotFound)
     }
 
     /// Build a MerkleTree from given leaf nodes and height

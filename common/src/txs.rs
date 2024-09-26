@@ -62,18 +62,18 @@ impl TxKind {
     }
 }
 
-impl Into<String> for TxKind {
-    fn into(self) -> String {
-        match self {
-            Self::TrustUpdate => "trust_update".to_string(),
-            Self::SeedUpdate => "seed_update".to_string(),
-            Self::JobRunRequest => "job_run_request".to_string(),
-            Self::JobRunAssignment => "job_run_assignment".to_string(),
-            Self::CreateScores => "create_scores".to_string(),
-            Self::CreateCommitment => "create_commitment".to_string(),
-            Self::JobVerification => "job_verification".to_string(),
-            Self::ProposedBlock => "proposed_block".to_string(),
-            Self::FinalisedBlock => "finalised_block".to_string(),
+impl From<TxKind> for String {
+    fn from(val: TxKind) -> Self {
+        match val {
+            TxKind::TrustUpdate => "trust_update".to_string(),
+            TxKind::SeedUpdate => "seed_update".to_string(),
+            TxKind::JobRunRequest => "job_run_request".to_string(),
+            TxKind::JobRunAssignment => "job_run_assignment".to_string(),
+            TxKind::CreateScores => "create_scores".to_string(),
+            TxKind::CreateCommitment => "create_commitment".to_string(),
+            TxKind::JobVerification => "job_verification".to_string(),
+            TxKind::ProposedBlock => "proposed_block".to_string(),
+            TxKind::FinalisedBlock => "finalised_block".to_string(),
         }
     }
 }
@@ -114,7 +114,7 @@ impl Tx {
 
     pub fn hash(&self) -> TxHash {
         let mut hasher = Keccak256::new();
-        hasher.update(&self.nonce.to_be_bytes());
+        hasher.update(self.nonce.to_be_bytes());
         hasher.update(encode(&self.from));
         hasher.update(encode(&self.to));
         hasher.update(encode(self.kind));
