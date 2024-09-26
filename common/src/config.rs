@@ -64,7 +64,7 @@ impl Loader {
     pub fn load_named<T: DeserializeOwned>(&self, name: &str) -> Result<T, LoadError> {
         use LoadError::*;
         let path = self.config_dir.join(PathBuf::from(name).with_extension("toml"));
-        let content = std::fs::read_to_string(&path).map_err(CannotRead)?;
+        let content = std::fs::read_to_string(path).map_err(CannotRead)?;
         toml::from_str::<T>(&content).map_err(CannotParseToml)
     }
 
