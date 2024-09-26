@@ -6,6 +6,7 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     address_from_sk, broadcast_event, build_node, config,
     db::{self, Db, DbItem},
+    net,
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
@@ -35,6 +36,7 @@ pub struct Config {
     pub domains: Vec<Domain>,
     pub whitelist: Whitelist,
     pub database: db::Config,
+    pub p2p: net::Config,
 }
 
 pub struct ComputerNode {
@@ -285,9 +287,7 @@ impl ComputerNode {
             self.swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
         }
 
-        // Listen on all interfaces and whatever port the OS assigns
-        self.swarm.listen_on("/ip4/0.0.0.0/udp/10000/quic-v1".parse()?)?;
-        self.swarm.listen_on("/ip4/0.0.0.0/tcp/10000".parse()?)?;
+        net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
 
         // Kick it off
         loop {
