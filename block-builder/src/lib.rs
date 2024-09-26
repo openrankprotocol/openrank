@@ -5,7 +5,7 @@ use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     broadcast_event, build_node, config,
-    db::{Db, DbError, DbItem},
+    db::{self, Db, DbError, DbItem},
     result::JobResult,
     topics::{Domain, Topic},
     tx_event::TxEvent,
@@ -42,6 +42,7 @@ pub struct Config {
     pub domains: Vec<Domain>,
     /// The whitelist for the Block Builder.
     pub whitelist: Whitelist,
+    pub database: db::Config,
 }
 
 /// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the JobRunner.
@@ -71,7 +72,7 @@ impl BlockBuilderNode {
 
         let config_loader = config::Loader::new("openrank-block-builder")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
+        let db = Db::new(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
         Ok(Self { swarm, config, db, secret_key })
     }

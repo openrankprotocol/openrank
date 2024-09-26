@@ -4,7 +4,7 @@ use karyon_jsonrpc::{rpc_impl, RPCError, Server};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     build_node, config,
-    db::{Db, DbItem},
+    db::{self, Db, DbItem},
     result::{GetResultsQuery, JobResult},
     topics::Topic,
     tx_event::TxEvent,
@@ -35,6 +35,7 @@ pub struct Whitelist {
 pub struct Config {
     /// The whitelist for the Sequencer.
     pub whitelist: Whitelist,
+    pub database: db::Config,
 }
 
 /// The Sequencer node. It contains the sender, the whitelisted users, and the database connection.
@@ -294,11 +295,7 @@ impl SequencerNode {
 
         let config_loader = config::Loader::new("openrank-sequencer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new_secondary(
-            "./local-storage",
-            "./local-secondary-storage",
-            &[&Tx::get_cf(), &JobResult::get_cf()],
-        )?;
+        let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
         let (sender, receiver) = mpsc::channel(100);
         let sequencer = Arc::new(Sequencer::new(sender.clone(), config.whitelist.users, db));
         let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;

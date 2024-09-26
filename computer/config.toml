@@ -15,3 +15,6 @@ algo_id = 0
 [whitelist]
 block_builder = ["baf339966e8caa8f47e696b0354b9fcb1186b3f8"]
 verifier = ["3527ab0f9ba36d221d72e02368ca7ddf73c2bc19"]
+
+[database]
+directory = "./local-storage"
