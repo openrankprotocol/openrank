@@ -5,12 +5,12 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     build_node,
     db::{Db, DbItem},
-    result::JobResult,
+    result::{GetResultsQuery, JobResult},
     topics::Topic,
     tx_event::TxEvent,
     txs::{
         Address, CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry,
-        SeedUpdate, TrustUpdate, Tx, TxHash, TxKind,
+        SeedUpdate, TrustUpdate, Tx, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -24,15 +24,20 @@ use tokio::{
 use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The whitelist for the Sequencer.
 pub struct Whitelist {
+    /// The list of addresses that are allowed to call the Sequencer.
     pub users: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Sequencer.
 pub struct Config {
+    /// The whitelist for the Sequencer.
     pub whitelist: Whitelist,
 }
 
+/// The Sequencer node. It contains the sender, the whitelisted users, and the database connection.
 pub struct Sequencer {
     sender: Sender<(Vec<u8>, Topic)>,
     whitelisted_users: Vec<Address>,
@@ -47,6 +52,8 @@ impl Sequencer {
 
 #[rpc_impl]
 impl Sequencer {
+    /// Handles incoming `TrustUpdate` transactions from the network,
+    /// and forward them to the network for processing.
     async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -83,6 +90,8 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
+    /// Handles incoming `SeedUpdate` transactions from the network,
+    /// and forward them to the network node for processing.
     async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -119,6 +128,8 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
+    /// Handles incoming `JobRunRequest` transactions from the network,
+    /// and forward them to the network node for processing
     async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -157,21 +168,17 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    async fn get_results(&self, job_run_tx_hash: Value) -> Result<Value, RPCError> {
+    /// Gets the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash,
+    /// along with start and size parameters.
+    async fn get_results(&self, get_results_query: Value) -> Result<Value, RPCError> {
         self.db.refresh().map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let tx_hash_str = job_run_tx_hash.as_str().ok_or(RPCError::ParseError(
-            "Failed to parse TX hash data as string".to_string(),
-        ))?;
-        let tx_hash_bytes = hex::decode(tx_hash_str).map_err(|e| {
-            error!("{}", e);
-            RPCError::ParseError("Failed to parse TX data".to_string())
-        })?;
-        let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        let query: GetResultsQuery = serde_json::from_value(get_results_query)
+            .map_err(|e| RPCError::ParseError(e.to_string()))?;
 
-        let key = JobResult::construct_full_key(tx_hash);
+        let key = JobResult::construct_full_key(query.job_run_request_tx_hash);
         let result = self.db.get::<JobResult>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
@@ -211,7 +218,7 @@ impl Sequencer {
             create_scores
         };
         let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().map(|x| x.entries).flatten().collect();
+            create_scores.into_iter().flat_map(|x| x.entries).collect();
         score_entries.sort_by(|a, b| match a.value.partial_cmp(&b.value) {
             Some(ordering) => ordering,
             None => {
@@ -224,6 +231,14 @@ impl Sequencer {
                 }
             },
         });
+        score_entries.reverse();
+        let score_entries: Vec<ScoreEntry> = score_entries
+            .split_at(query.start as usize)
+            .1
+            .iter()
+            .take(query.size as usize)
+            .cloned()
+            .collect();
 
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
@@ -260,6 +275,7 @@ impl Sequencer {
     }
 }
 
+/// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
 pub struct SequencerNode {
     swarm: Swarm<MyBehaviour>,
     server: Arc<Server>,
@@ -267,6 +283,11 @@ pub struct SequencerNode {
 }
 
 impl SequencerNode {
+    /// Initialize the node:
+    /// - Load the config from config.toml
+    /// - Initialize the Swarm
+    /// - Initialize the DB
+    /// - Initialize the Sequencer JsonRPC server
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         let swarm = build_node().await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -284,6 +305,11 @@ impl SequencerNode {
         Ok(Self { swarm, server, receiver })
     }
 
+    /// Run the node:
+    /// - Listen on all interfaces and whatever port the OS assigns
+    /// - Subscribe to all the topics
+    /// - Handle gossipsub events
+    /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         // Listen on all interfaces and whatever port the OS assigns
         self.swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;

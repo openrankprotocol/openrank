@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/rs-eigentrust.iml" filepath="$PROJECT_DIR$/.idea/rs-eigentrust.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/openrank.iml" filepath="$PROJECT_DIR$/.idea/openrank.iml" />
     </modules>
   </component>
 </project>
