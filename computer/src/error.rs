@@ -39,9 +39,3 @@ impl Display for ComputeNodeError {
         }
     }
 }
-
-impl Into<ComputeNodeError> for JobRunnerError {
-    fn into(self) -> ComputeNodeError {
-        ComputeNodeError::ComputeInternalError(self)
-    }
-}

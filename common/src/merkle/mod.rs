@@ -54,8 +54,8 @@ pub fn to_bits(num: &[u8]) -> Vec<bool> {
 /// Converts given field element to the bits.
 pub fn num_to_bits_vec(num: u32) -> Vec<bool> {
     let bits = to_bits(&num.to_be_bytes());
-    let sliced_bits = bits[..u32::BITS as usize].to_vec();
-    sliced_bits
+
+    bits[..u32::BITS as usize].to_vec()
 }
 
 /// Computes the hash from two hashes.

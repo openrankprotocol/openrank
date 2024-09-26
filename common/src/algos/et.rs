@@ -34,7 +34,7 @@ fn normalise_lt(lt: &mut HashMap<(u32, u32), f32>) -> Result<(), AlgoError> {
 
     // Divide each element in the local trust matrix by the sum of its row.
     for ((from, _), value) in lt {
-        let sum = sum_map.get(&from).ok_or(AlgoError::ZeroSum)?;
+        let sum = sum_map.get(from).ok_or(AlgoError::ZeroSum)?;
         if *sum == 0.0 {
             return Err(AlgoError::ZeroSum);
         }
@@ -52,7 +52,7 @@ fn normalise_seed(seed: &mut HashMap<u32, f32>) -> Result<(), AlgoError> {
     if sum == 0.0 {
         return Err(AlgoError::ZeroSum);
     }
-    for (_, value) in seed {
+    for value in seed.values_mut() {
         *value /= sum;
     }
     Ok(())
@@ -83,7 +83,7 @@ pub fn positive_run<const NUM_ITER: usize>(
         }
         // Calculate the weighted next scores of each node.
         for (i, v) in &mut next_scores {
-            let pre_trust = seed.get(&i).unwrap_or(&0.0);
+            let pre_trust = seed.get(i).unwrap_or(&0.0);
             let weighted_to_score = PRE_TRUST_WEIGHT * pre_trust + (*v * (1. - PRE_TRUST_WEIGHT));
             *v = weighted_to_score;
         }
@@ -149,7 +149,7 @@ pub fn convergence_check(
 
     // Calculate the weighted next scores of each node
     for (i, v) in &mut next_scores {
-        let pre_trust = seed.get(&i).unwrap_or(&0.0);
+        let pre_trust = seed.get(i).unwrap_or(&0.0);
         let weighted_to_score = PRE_TRUST_WEIGHT * pre_trust + (*v * (1. - PRE_TRUST_WEIGHT));
         *v = weighted_to_score;
     }

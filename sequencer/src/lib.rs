@@ -218,7 +218,7 @@ impl Sequencer {
             create_scores
         };
         let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().map(|x| x.entries).flatten().collect();
+            create_scores.into_iter().flat_map(|x| x.entries).collect();
         score_entries.sort_by(|a, b| match a.value.partial_cmp(&b.value) {
             Some(ordering) => ordering,
             None => {
@@ -235,9 +235,9 @@ impl Sequencer {
         let score_entries: Vec<ScoreEntry> = score_entries
             .split_at(query.start as usize)
             .1
-            .to_vec()
-            .into_iter()
+            .iter()
             .take(query.size as usize)
+            .cloned()
             .collect();
 
         let verificarion_results_tx: Vec<Tx> = {

@@ -28,7 +28,7 @@ where
 {
     /// Returns the root of the tree.
     pub fn root(&self) -> Result<Hash, MerkleError> {
-        self.nodes.get(&(self.num_levels, 0)).map(|h| h.clone()).ok_or(MerkleError::RootNotFound)
+        self.nodes.get(&(self.num_levels, 0)).cloned().ok_or(MerkleError::RootNotFound)
     }
 
     /// Builds a Merkle tree from given height (`num_levels`).

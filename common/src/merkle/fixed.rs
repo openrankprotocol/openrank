@@ -48,7 +48,7 @@ where
         let mut tree = HashMap::new();
         tree.insert(0u8, leaves);
 
-        for i in 0..num_levels as u8 {
+        for i in 0..num_levels {
             let nodes = tree.get(&i).ok_or(MerkleError::NodesNotFound)?;
             let next: Vec<Hash> = nodes
                 .chunks(2)

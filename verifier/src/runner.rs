@@ -99,7 +99,7 @@ impl VerificationJobRunner {
             let from_index = if let Some(i) = domain_indices.get(&entry.from) {
                 *i
             } else {
-                let curr_count = count.clone();
+                let curr_count = *count;
                 domain_indices.insert(entry.from.clone(), curr_count);
                 *count += 1;
                 curr_count
@@ -107,7 +107,7 @@ impl VerificationJobRunner {
             let to_index = if let Some(i) = domain_indices.get(&entry.to) {
                 *i
             } else {
-                let curr_count = count.clone();
+                let curr_count = *count;
                 domain_indices.insert(entry.to.clone(), curr_count);
                 *count += 1;
                 curr_count
@@ -115,17 +115,14 @@ impl VerificationJobRunner {
             let old_value = lt.get(&(from_index, to_index)).unwrap_or(&0.0);
             lt.insert((from_index, to_index), entry.value + old_value);
 
-            if !lt_sub_trees.contains_key(&from_index) {
-                lt_sub_trees.insert(from_index, default_sub_tree.clone());
-            }
+            lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
                 JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index),
             )?;
             let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
-            let sub_tree_root =
-                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
             let seed_value = seed.get(&to_index).unwrap_or(&0.0);
             let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -162,20 +159,17 @@ impl VerificationJobRunner {
             let index = if let Some(i) = domain_indices.get(&entry.id) {
                 *i
             } else {
-                let curr_count = count.clone();
+                let curr_count = *count;
                 domain_indices.insert(entry.id.clone(), curr_count);
                 *count += 1;
                 curr_count
             };
 
-            if !lt_sub_trees.contains_key(&index) {
-                lt_sub_trees.insert(index, default_sub_tree.clone());
-            }
+            lt_sub_trees.entry(index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
                 .get_mut(&index)
                 .ok_or(JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
-            let sub_tree_root =
-                sub_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
             let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
@@ -290,20 +284,20 @@ impl VerificationJobRunner {
         let scores: Vec<&CreateScores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(create_scores.get(&tx_hash).ok_or(
+                scores.push(create_scores.get(tx_hash).ok_or(
                     JobRunnerError::CreateScoresNotFoundWithTxHash(tx_hash.clone()),
                 )?)
             }
             scores
         };
         let score_entries: Vec<f32> =
-            scores.iter().map(|cs| cs.entries.clone()).flatten().map(|x| x.value).collect();
+            scores.iter().flat_map(|cs| cs.entries.clone()).map(|x| x.value).collect();
         let score_hashes: Vec<Hash> = score_entries
             .iter()
             .map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
             .collect();
         let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
-            .map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+            .map_err(JobRunnerError::ComputeMerkleError)?;
         compute_tree_map.insert(assignment_id.clone(), compute_tree);
 
         Ok(())
@@ -335,7 +329,7 @@ impl VerificationJobRunner {
         let scores: Vec<&CreateScores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(create_scores.get(&tx_hash).ok_or(
+                scores.push(create_scores.get(tx_hash).ok_or(
                     JobRunnerError::CreateScoresNotFoundWithTxHash(tx_hash.clone()),
                 )?)
             }
@@ -343,7 +337,7 @@ impl VerificationJobRunner {
         };
         let score_entries: HashMap<u32, f32> = {
             let score_entries_vec: Vec<ScoreEntry> =
-                scores.iter().map(|cs| cs.entries.clone()).flatten().collect();
+                scores.iter().flat_map(|cs| cs.entries.clone()).collect();
 
             let mut score_entries_map: HashMap<u32, f32> = HashMap::new();
             for entry in score_entries_vec {
@@ -355,7 +349,7 @@ impl VerificationJobRunner {
             score_entries_map
         };
         convergence_check(lt.clone(), seed, &score_entries)
-            .map_err(|e| JobRunnerError::ComputeAlgoError(e))
+            .map_err(JobRunnerError::ComputeAlgoError)
     }
 
     /// Get the local trust tree root and compute tree root of certain job/assignment, for certain domain
@@ -371,9 +365,8 @@ impl VerificationJobRunner {
         let compute_tree = compute_tree_map.get(&assignment_id).ok_or(
             JobRunnerError::ComputeTreeNotFoundWithTxHash(assignment_id.clone()),
         )?;
-        let lt_tree_root = lt_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
-        let ct_tree_root =
-            compute_tree.root().map_err(|e| JobRunnerError::ComputeMerkleError(e))?;
+        let lt_tree_root = lt_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+        let ct_tree_root = compute_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
         Ok((lt_tree_root, ct_tree_root))
     }
 }

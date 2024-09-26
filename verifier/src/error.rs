@@ -39,9 +39,3 @@ impl Display for VerifierNodeError {
         }
     }
 }
-
-impl Into<VerifierNodeError> for JobRunnerError {
-    fn into(self) -> VerifierNodeError {
-        VerifierNodeError::ComputeInternalError(self)
-    }
-}
