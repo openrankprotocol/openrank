@@ -177,11 +177,13 @@ impl Tx {
         let sig = EcdsaSignature::try_from(bytes.as_slice())?;
         let rec_id = RecoveryId::from_byte(self.signature.r_id).ok_or(EcdsaError::new())?;
         let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id)?;
-        let vk_bytes = verifying_key.to_sec1_bytes();
 
-        let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+        let uncompressed_point = verifying_key.to_encoded_point(false);
+        let vk_bytes = uncompressed_point.as_bytes();
+
+        let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[..20]);
+        address_bytes.copy_from_slice(&hash.0[12..]);
 
         if Address(address_bytes) != address {
             return Err(EcdsaError::new());
@@ -202,10 +204,12 @@ impl Tx {
         let verifying_key = VerifyingKey::recover_from_prehash(&message, &sig, rec_id)?;
         verifying_key.verify_prehash(&message, &sig)?;
 
-        let vk_bytes = verifying_key.to_sec1_bytes();
-        let hash = hash_leaf::<Keccak256>(vk_bytes.as_ref().to_vec());
+        let uncompressed_point = verifying_key.to_encoded_point(false);
+        let vk_bytes = uncompressed_point.as_bytes();
+
+        let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[..20]);
+        address_bytes.copy_from_slice(&hash.0[12..]);
         let address = Address(address_bytes);
 
         Ok(address)
@@ -357,12 +361,12 @@ impl Signature {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 /// Score entry, used for the seed scores and the job scores.
 pub struct ScoreEntry {
-    pub id: Address,
+    pub id: String,
     pub value: f32,
 }
 
 impl ScoreEntry {
-    pub fn new(id: Address, value: f32) -> Self {
+    pub fn new(id: String, value: f32) -> Self {
         Self { id, value }
     }
 }
@@ -376,7 +380,7 @@ impl Encodable for ScoreEntry {
 
 impl Decodable for ScoreEntry {
     fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-        let id = Address::decode(buf)?;
+        let id = String::decode(buf)?;
         let mut value_bytes = [0; 4];
         let size =
             buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
@@ -391,16 +395,16 @@ impl Decodable for ScoreEntry {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 /// Trust entry, used for the trust graph.
 pub struct TrustEntry {
-    /// Address of the trustor node.
-    pub from: Address,
-    /// Address of the trusted node.
-    pub to: Address,
+    /// Identifier of the trustor node.
+    pub from: String,
+    /// Identifier of the trusted node.
+    pub to: String,
     /// Trust value.
     pub value: f32,
 }
 
 impl TrustEntry {
-    pub fn new(from: Address, to: Address, value: f32) -> Self {
+    pub fn new(from: String, to: String, value: f32) -> Self {
         Self { from, to, value }
     }
 }
@@ -415,8 +419,8 @@ impl Encodable for TrustEntry {
 
 impl Decodable for TrustEntry {
     fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
-        let from = Address::decode(buf)?;
-        let to = Address::decode(buf)?;
+        let from = String::decode(buf)?;
+        let to = String::decode(buf)?;
         let mut value_bytes = [0; 4];
         let size =
             buf.read(&mut value_bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;

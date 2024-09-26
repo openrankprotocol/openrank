@@ -118,6 +118,17 @@ pub fn is_converged(scores: &HashMap<u32, f32>, next_scores: &HashMap<u32, f32>)
     is_converged
 }
 
+/// Same as `is_converged`, but accepts the scores map in it's original form, where peers are identified by a `String`.
+pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<String, f32>) -> bool {
+    let mut is_converged = true;
+    for (i, v) in scores {
+        let next_score = next_scores.get(i).unwrap_or(&0.0);
+        let curr_converged = (next_score - v).abs() < DELTA;
+        is_converged &= curr_converged;
+    }
+    is_converged
+}
+
 /// It performs a single iteration of the positive run EigenTrust algorithm on the given local trust matrix (`lt`),
 /// seed trust values (`seed`), and previous scores (`scores`).
 /// It returns `true` if the scores have converged and `false` otherwise.
