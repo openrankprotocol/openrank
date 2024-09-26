@@ -3,7 +3,7 @@ use futures::StreamExt;
 use karyon_jsonrpc::{rpc_impl, RPCError, Server};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-    build_node,
+    build_node, config,
     db::{Db, DbItem},
     result::{GetResultsQuery, JobResult},
     topics::Topic,
@@ -292,7 +292,8 @@ impl SequencerNode {
         let swarm = build_node().await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        let config: Config = toml::from_str(include_str!("../config.toml"))?;
+        let config_loader = config::Loader::new("openrank-sequencer")?;
+        let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new_secondary(
             "./local-storage",
             "./local-secondary-storage",

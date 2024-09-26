@@ -4,7 +4,7 @@ use futures::StreamExt;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-    address_from_sk, broadcast_event, build_node,
+    address_from_sk, broadcast_event, build_node, config,
     db::{Db, DbItem},
     topics::{Domain, Topic},
     tx_event::TxEvent,
@@ -231,7 +231,8 @@ impl ComputerNode {
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
-        let config: Config = toml::from_str(include_str!("../config.toml"))?;
+        let config_loader = config::Loader::new("openrank-computer")?;
+        let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new("./local-storage", &[&Tx::get_cf()])?;
 
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
