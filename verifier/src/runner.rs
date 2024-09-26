@@ -8,7 +8,7 @@ use openrank_common::{
     txs::{
         job::{ComputeCommitment, ComputeScores},
         trust::{ScoreEntry, TrustEntry},
-        Address, TxHash,
+        TxHash,
     },
 };
 use sha3::Keccak256;
@@ -19,7 +19,7 @@ use std::{
 
 pub struct VerificationRunner {
     count: HashMap<DomainHash, u32>,
-    indices: HashMap<DomainHash, HashMap<Address, u32>>,
+    indices: HashMap<DomainHash, HashMap<String, u32>>,
     local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
     seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
@@ -272,7 +272,7 @@ impl VerificationRunner {
             VerificationRunnerError::ComputeTreeNotFoundWithDomain(domain.to_hash()),
         )?;
         let commitment = self.commitments.get(&assignment_id).ok_or(
-            VerificationRunnerError::ComputeCommitmentNotFound(assignment_id.clone()),
+            VerificationRunnerError::CommitmentNotFound(assignment_id.clone()),
         )?;
         let job_scores = self.job_scores.get(&domain.to_hash()).ok_or(
             VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
@@ -303,7 +303,7 @@ impl VerificationRunner {
         &mut self, domain: Domain, assignment_id: TxHash,
     ) -> Result<bool, VerificationRunnerError> {
         let commitment = self.commitments.get(&assignment_id).ok_or(
-            VerificationRunnerError::ComputeCommitmentNotFound(assignment_id.clone()),
+            VerificationRunnerError::CommitmentNotFound(assignment_id.clone()),
         )?;
         let job_scores = self.job_scores.get(&domain.to_hash()).ok_or(
             VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
@@ -335,7 +335,7 @@ impl VerificationRunner {
             let mut score_entries_map: HashMap<u32, f32> = HashMap::new();
             for entry in score_entries_vec {
                 let i = domain_indices.get(&entry.id).ok_or(
-                    VerificationRunnerError::DomainIndiceNotFound(entry.id.clone()),
+                    VerificationRunnerError::DomainIndexNotFound(entry.id.clone()),
                 )?;
                 score_entries_map.insert(*i, entry.value);
             }
@@ -385,8 +385,9 @@ pub enum VerificationRunnerError {
     ComputeScoresNotFoundWithTxHash(TxHash),
 
     ActiveAssignmentsNotFound(DomainHash),
-    ComputeCommitmentNotFound(TxHash),
-    DomainIndiceNotFound(Address),
+
+    CommitmentNotFound(TxHash),
+    DomainIndexNotFound(String),
 
     MerkleError(MerkleError),
     AlgoError(AlgoError),
@@ -440,14 +441,14 @@ impl Display for VerificationRunnerError {
             Self::ActiveAssignmentsNotFound(domain) => {
                 write!(f, "active_assignments not found for domain: {:?}", domain)
             },
-            Self::ComputeCommitmentNotFound(assigment_id) => {
+            Self::CommitmentNotFound(assigment_id) => {
                 write!(
                     f,
                     "commitment not found for assignment_id: {:?}",
                     assigment_id
                 )
             },
-            Self::DomainIndiceNotFound(address) => {
+            Self::DomainIndexNotFound(address) => {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
             Self::MerkleError(err) => err.fmt(f),

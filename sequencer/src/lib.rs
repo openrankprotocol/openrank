@@ -5,13 +5,13 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     build_node,
     db::{Db, DbItem},
-    result::ComputeResult,
+    result::{ComputeResult, GetResultsQuery},
     topics::Topic,
     tx_event::TxEvent,
     txs::{
         job::{ComputeCommitment, ComputeRequest, ComputeScores, ComputeVerification},
         trust::{ScoreEntry, SeedUpdate, TrustUpdate},
-        Address, Tx, TxHash, TxKind,
+        Address, Tx, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -158,21 +158,15 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    async fn get_results(&self, job_tx_hash: Value) -> Result<Value, RPCError> {
+    async fn get_results(&self, get_results_query: Value) -> Result<Value, RPCError> {
         self.db.refresh().map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let tx_hash_str = job_tx_hash.as_str().ok_or(RPCError::ParseError(
-            "Failed to parse TX hash data as string".to_string(),
-        ))?;
-        let tx_hash_bytes = hex::decode(tx_hash_str).map_err(|e| {
-            error!("{}", e);
-            RPCError::ParseError("Failed to parse TX data".to_string())
-        })?;
-        let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        let query: GetResultsQuery = serde_json::from_value(get_results_query)
+            .map_err(|e| RPCError::ParseError(e.to_string()))?;
 
-        let key = ComputeResult::construct_full_key(tx_hash);
+        let key = ComputeResult::construct_full_key(query.job_run_request_tx_hash);
         let result = self.db.get::<ComputeResult>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
@@ -224,6 +218,14 @@ impl Sequencer {
                 }
             },
         });
+        score_entries.reverse();
+        let score_entries: Vec<ScoreEntry> = score_entries
+            .split_at(query.start as usize)
+            .1
+            .to_vec()
+            .into_iter()
+            .take(query.size as usize)
+            .collect();
 
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
