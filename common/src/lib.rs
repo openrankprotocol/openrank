@@ -1,4 +1,5 @@
 pub mod algos;
+pub mod config;
 pub mod db;
 pub mod merkle;
 pub mod result;

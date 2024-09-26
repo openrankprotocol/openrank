@@ -4,7 +4,7 @@ use futures::StreamExt;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-    broadcast_event, build_node,
+    broadcast_event, build_node, config,
     db::{Db, DbError, DbItem},
     result::JobResult,
     topics::{Domain, Topic},
@@ -69,7 +69,8 @@ impl BlockBuilderNode {
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
-        let config: Config = toml::from_str(include_str!("../config.toml"))?;
+        let config_loader = config::Loader::new("openrank-block-builder")?;
+        let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new("./local-storage", &[&Tx::get_cf(), &JobResult::get_cf()])?;
 
         Ok(Self { swarm, config, db, secret_key })
