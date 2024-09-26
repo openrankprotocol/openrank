@@ -24,15 +24,20 @@ use tokio::{
 use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The whitelist for the Sequencer.
 pub struct Whitelist {
+    /// The list of addresses that are allowed to call the Sequencer.
     pub users: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Sequencer.
 pub struct Config {
+    /// The whitelist for the Sequencer.
     pub whitelist: Whitelist,
 }
 
+/// The Sequencer node. It contains the sender, the whitelisted users, and the database connection.
 pub struct Sequencer {
     sender: Sender<(Vec<u8>, Topic)>,
     whitelisted_users: Vec<Address>,
@@ -47,6 +52,8 @@ impl Sequencer {
 
 #[rpc_impl]
 impl Sequencer {
+    /// Handles incoming `TrustUpdate` transactions from the network,
+    /// and forward them to the network for processing.
     async fn trust_update(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -83,6 +90,8 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
+    /// Handles incoming `SeedUpdate` transactions from the network,
+    /// and forward them to the network node for processing.
     async fn seed_update(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -119,6 +128,8 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
+    /// Handles incoming `JobRunRequest` transactions from the network,
+    /// and forward them to the network node for processing
     async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
@@ -157,6 +168,8 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
+    /// Gets the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash,
+    /// along with start and size parameters.
     async fn get_results(&self, get_results_query: Value) -> Result<Value, RPCError> {
         self.db.refresh().map_err(|e| {
             error!("{}", e);
@@ -262,6 +275,7 @@ impl Sequencer {
     }
 }
 
+/// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
 pub struct SequencerNode {
     swarm: Swarm<MyBehaviour>,
     server: Arc<Server>,
@@ -269,6 +283,11 @@ pub struct SequencerNode {
 }
 
 impl SequencerNode {
+    /// Initialize the node:
+    /// - Load the config from config.toml
+    /// - Initialize the Swarm
+    /// - Initialize the DB
+    /// - Initialize the Sequencer JsonRPC server
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         let swarm = build_node().await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -286,6 +305,11 @@ impl SequencerNode {
         Ok(Self { swarm, server, receiver })
     }
 
+    /// Run the node:
+    /// - Listen on all interfaces and whatever port the OS assigns
+    /// - Subscribe to all the topics
+    /// - Handle gossipsub events
+    /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         // Listen on all interfaces and whatever port the OS assigns
         self.swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;

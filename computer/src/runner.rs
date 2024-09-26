@@ -13,6 +13,7 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
+/// Struct containing the state of the computer job runner.
 pub struct ComputeJobRunner {
     count: HashMap<DomainHash, u32>,
     indices: HashMap<DomainHash, HashMap<String, u32>>,
@@ -57,6 +58,7 @@ impl ComputeJobRunner {
         }
     }
 
+    /// Update the state of trees for certain domain, with the given trust entries.
     pub fn update_trust(
         &mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
     ) -> Result<(), JobRunnerError> {
@@ -120,6 +122,7 @@ impl ComputeJobRunner {
         Ok(())
     }
 
+    /// Update the state of trees for certain domain, with the given seed entries.
     pub fn update_seed(
         &mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
     ) -> Result<(), JobRunnerError> {
@@ -167,6 +170,7 @@ impl ComputeJobRunner {
         Ok(())
     }
 
+    /// Compute the EigenTrust scores for certain domain.
     pub fn compute(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
         let lt = self
             .local_trust
@@ -182,6 +186,7 @@ impl ComputeJobRunner {
         Ok(())
     }
 
+    /// Create the compute tree for certain domain.
     pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
         let scores = self
             .compute_results
@@ -195,6 +200,7 @@ impl ComputeJobRunner {
         Ok(())
     }
 
+    /// Get the create scores for certain domain.
     pub fn get_create_scores(&self, domain: Domain) -> Result<Vec<CreateScores>, JobRunnerError> {
         let domain_indices = self
             .indices
@@ -222,6 +228,7 @@ impl ComputeJobRunner {
         Ok(create_scores_txs)
     }
 
+    /// Get the local trust root hash and compute tree root hash for certain domain.
     pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), JobRunnerError> {
         let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
             JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
@@ -237,19 +244,31 @@ impl ComputeJobRunner {
 }
 
 #[derive(Debug)]
+/// Errors that can arise while using the job runner.
 pub enum JobRunnerError {
+    /// The index for the domain are not found.
     IndexNotFound(DomainHash),
+    /// The count for the domain is not found.
     CountNotFound(DomainHash),
+    /// The local trust sub trees for the domain are not found.
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
+    /// The local trust sub tree for the index is not found.
     LocalTrustSubTreesNotFoundWithIndex(u32),
+    /// The local trust master tree for the domain are not found.
     LocalTrustMasterTreeNotFound(DomainHash),
+    /// The local trust for the domain are not found.
     LocalTrustNotFound(DomainHash),
+    /// The seed trust for the domain are not found.
     SeedTrustNotFound(DomainHash),
+    /// The compute results for the domain are not found.
     ComputeResultsNotFound(DomainHash),
+    /// The index to address mapping for the domain are not found.
     IndexToAddressNotFound(u32),
+    /// The compute tree for the domain are not found.
     ComputeTreeNotFound(DomainHash),
-
+    /// The compute merkle tree error.
     ComputeMerkleError(MerkleError),
+    /// The compute algorithm error.
     ComputeAlgoError(AlgoError),
 }
 

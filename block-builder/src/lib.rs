@@ -25,18 +25,26 @@ mod error;
 use error::BlockBuilderNodeError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The whitelist for the Block Builder.
 pub struct Whitelist {
+    /// The list of addresses that are allowed to be computers.
     pub computer: Vec<Address>,
+    /// The list of addresses that are allowed to be verifiers.
     pub verifier: Vec<Address>,
+    /// The list of addresses that are allowed to broadcast transactions.
     pub users: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Block Builder.
 pub struct Config {
+    /// The list of domains to process job run requests for.
     pub domains: Vec<Domain>,
+    /// The whitelist for the Block Builder.
     pub whitelist: Whitelist,
 }
 
+/// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the JobRunner.
 pub struct BlockBuilderNode {
     swarm: Swarm<MyBehaviour>,
     config: Config,
@@ -45,6 +53,12 @@ pub struct BlockBuilderNode {
 }
 
 impl BlockBuilderNode {
+    /// Initializes the node:
+    /// - Loads the config from config.toml.
+    /// - Initializes the Swarm.
+    /// - Initializes the DB.
+    /// - Initializes the JobRunner.
+    /// - Initializes the Secret Key.
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -61,6 +75,9 @@ impl BlockBuilderNode {
         Ok(Self { swarm, config, db, secret_key })
     }
 
+    /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
+    /// Handling includes TX validation, storage in local db, or optionally triggering a broadcast
+    /// of postceding TX to the network.
     fn handle_gossipsub_events(
         &mut self, event: gossipsub::Event, topics: Vec<&Topic>,
     ) -> Result<(), BlockBuilderNodeError> {
@@ -232,6 +249,11 @@ impl BlockBuilderNode {
         Ok(())
     }
 
+    /// Runs the node:
+    /// - Listens on all interfaces, on OS-assigned ephemeral ports.
+    /// - Subscribes to all the topics.
+    /// - Handles gossipsub events.
+    /// - Handles mDNS events.
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         // Listen on all interfaces and whatever port the OS assigns
         self.swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;

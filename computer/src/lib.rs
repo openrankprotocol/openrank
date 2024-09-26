@@ -45,6 +45,9 @@ pub struct ComputerNode {
 }
 
 impl ComputerNode {
+    /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
+    /// Handling includes TX validation, storage in local db, or optionally triggering a broadcast
+    /// of postceding TX to the network.
     fn handle_gossipsub_events(
         &mut self, event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
     ) -> Result<(), ComputeNodeError> {
@@ -212,6 +215,12 @@ impl ComputerNode {
         Ok(())
     }
 
+    /// Initializes the node:
+    /// - Loads the config from config.toml.
+    /// - Initializes the Swarm.
+    /// - Initializes the DB.
+    /// - Initializes the JobRunner.
+    /// - Initializes the Secret Key.
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -231,6 +240,11 @@ impl ComputerNode {
         Ok(Self { swarm, config, db, job_runner, secret_key })
     }
 
+    /// Runs the node:
+    /// - Listens on all interfaces, on OS-assigned ephemeral ports.
+    /// - Subscribes to all the topics.
+    /// - Handles gossipsub events.
+    /// - Handles mDNS events.
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let topics_trust_update: Vec<Topic> = self
             .config
@@ -306,11 +320,11 @@ impl ComputerNode {
         }
     }
 
-    /// Recover JobRunner state from DB.
+    /// Recovers JobRunner state from DB.
     ///
-    /// - Load all the TXs from the DB
-    /// - Just take TrustUpdate and SeedUpdate transactions
-    /// - Update JobRunner using functions update_trust, update_seed
+    /// - Loads all the TXs from the DB.
+    /// - Takes TrustUpdate and SeedUpdate transactions.
+    /// - Updates JobRunner using functions update_trust, update_seed.
     pub fn node_recovery(&mut self) -> Result<(), ComputeNodeError> {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();

@@ -26,17 +26,24 @@ mod runner;
 use error::VerifierNodeError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The whitelist for the Verifier.
 pub struct Whitelist {
+    /// The list of addresses that are allowed to be block builders.
     block_builder: Vec<Address>,
+    /// The list of addresses that are allowed to be computers.
     computer: Vec<Address>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Verifier.
 pub struct Config {
+    /// The list of domains to perform verification jobs for.
     pub domains: Vec<Domain>,
+    /// The whitelist for the Verifier.
     pub whitelist: Whitelist,
 }
 
+/// The Verifier node. It contains the Swarm, the Config, the DB, the JobRunner, and the SecretKey.
 pub struct VerifierNode {
     swarm: Swarm<MyBehaviour>,
     config: Config,
@@ -46,6 +53,11 @@ pub struct VerifierNode {
 }
 
 impl VerifierNode {
+    /// Initializes the node:
+    /// - Loads the config from config.toml.
+    /// - Initializes the Swarm.
+    /// - Initializes the DB.
+    /// - Initializes the JobRunner.
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -65,6 +77,9 @@ impl VerifierNode {
         Ok(Self { swarm, config, db, job_runner, secret_key })
     }
 
+    /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
+    /// Handling includes TX validation, storage in local db, or optionally triggering a broadcast
+    /// of postceding TX to the network.
     fn handle_gossipsub_events(
         &mut self, event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
     ) -> Result<(), VerifierNodeError> {
@@ -297,9 +312,9 @@ impl VerifierNode {
 
     /// Recover JobRunner state from DB.
     ///
-    /// - Load all the TXs from the DB
-    /// - Just take TrustUpdate and SeedUpdate transactions
-    /// - Update JobRunner using functions update_trust, update_seed
+    /// - Loads all the TXs from the DB.
+    /// - Takes TrustUpdate and SeedUpdate transactions.
+    /// - Updates JobRunner using functions update_trust, update_seed.
     pub fn node_recovery(&mut self) -> Result<(), VerifierNodeError> {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
@@ -362,6 +377,11 @@ impl VerifierNode {
         Ok(())
     }
 
+    /// Runs the node:
+    /// - Listens on all interfaces and whatever port the OS assigns.
+    /// - subscribe to all the topics.
+    /// - Handles gossipsub events.
+    /// - Handles mDNS events.
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let topics_trust_update: Vec<Topic> = self
             .config

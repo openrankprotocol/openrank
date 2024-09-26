@@ -30,33 +30,47 @@ const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
 
 #[derive(Debug, Clone, Subcommand)]
+/// The method to call.
 enum Method {
+    /// Trust update. The method takes a list of trust entries and updates the trust graph.
     TrustUpdate { path: String, config_path: String, output_path: Option<String> },
+    /// Seed update. The method takes a list of seed entries and updates the seed vector.
     SeedUpdate { path: String, config_path: String, output_path: Option<String> },
+    /// The method creates a job run request transaction.
     JobRunRequest { path: String, output_path: Option<String> },
+    /// The method takes a job run request transaction hash and returns the computed results.
     GetResults { request_id: String, config_path: String, output_path: Option<String> },
+    /// The method takes a job run request transaction hash and returns the computed results,
+    /// and also checks the integrity/correctness of the results.
     GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
+    /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
+    /// The method shows the address of the node, given the private key.
     ShowAddress,
 }
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
+/// The command line arguments.
 struct Args {
     #[command(subcommand)]
     method: Method,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Sequencer.
 pub struct Sequencer {
     endpoint: String,
     result_size: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the SDK.
 pub struct Config {
+    /// The domain to be updated.
     pub domain: Domain,
+    /// The Sequencer configuration. It contains the endpoint of the Sequencer.
     pub sequencer: Sequencer,
 }
 
@@ -78,6 +92,7 @@ impl JobRunRequestResult {
     }
 }
 
+/// Creates a new `Config` from a local TOML file, given file path.
 fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
     let mut f = File::open(path)?;
     let mut toml_config = String::new();
@@ -86,6 +101,9 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
+/// 1. Reads a CSV file and get a list of `TrustEntry`.
+/// 2. Creates a new `Client`, which can be used to call the Sequencer.
+/// 3. Sends the list of `TrustEntry` to the Sequencer.
 async fn update_trust(
     sk: SigningKey, path: &str, config_path: &str,
 ) -> Result<Vec<TxEvent>, Box<dyn Error>> {
@@ -120,6 +138,9 @@ async fn update_trust(
     Ok(results)
 }
 
+/// 1. Reads a CSV file and get a list of `ScoreEntry`.
+/// 2. Creates a new `Client`, which can be used to call the Sequencer.
+/// 3. Sends the list of `ScoreEntry` to the Sequencer.
 async fn update_seed(
     sk: SigningKey, path: &str, config_path: &str,
 ) -> Result<Vec<TxEvent>, Box<dyn Error>> {
@@ -154,6 +175,8 @@ async fn update_seed(
     Ok(results)
 }
 
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Sends a `JobRunRequest` transaction to the Sequencer.
 async fn job_run_request(
     sk: SigningKey, path: &str,
 ) -> Result<JobRunRequestResult, Box<dyn Error>> {
@@ -176,6 +199,8 @@ async fn job_run_request(
     Ok(job_run_result)
 }
 
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
 async fn get_results(
     arg: String, config_path: &str,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
@@ -192,12 +217,14 @@ async fn get_results(
     Ok(scores)
 }
 
+/// Generates a new ECDSA keypair and returns the address and the private key.
 fn generate_keypair<R: CryptoRngCore>(rng: &mut R) -> (SigningKey, Address) {
     let sk = SigningKey::random(rng);
     let addr = address_from_sk(&sk);
     (sk, addr)
 }
 
+/// Checks the score integrity against the ones stored in `path`.
 fn check_score_integrity(
     votes: Vec<bool>, scores: Vec<ScoreEntry>, path: &str,
 ) -> Result<bool, Box<dyn Error>> {
@@ -227,6 +254,7 @@ fn check_score_integrity(
     Ok(is_converged & votes)
 }
 
+/// Utility function for writing json to a file.
 fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), Box<dyn Error>> {
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
@@ -235,6 +263,7 @@ fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), Box<dyn E
     Ok(())
 }
 
+/// Returns the secret key from the environment variable.
 fn get_secret_key() -> Result<SigningKey, Box<dyn Error>> {
     let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
     let secret_key_bytes = hex::decode(secret_key_hex)?;
