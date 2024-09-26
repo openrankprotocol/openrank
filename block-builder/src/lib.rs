@@ -6,6 +6,7 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     broadcast_event, build_node, config,
     db::{self, Db, DbError, DbItem},
+    net,
     result::JobResult,
     topics::{Domain, Topic},
     tx_event::TxEvent,
@@ -43,6 +44,7 @@ pub struct Config {
     /// The whitelist for the Block Builder.
     pub whitelist: Whitelist,
     pub database: db::Config,
+    pub p2p: net::Config,
 }
 
 /// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the JobRunner.
@@ -257,9 +259,7 @@ impl BlockBuilderNode {
     /// - Handles gossipsub events.
     /// - Handles mDNS events.
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        // Listen on all interfaces and whatever port the OS assigns
-        self.swarm.listen_on("/ip4/0.0.0.0/udp/9000/quic-v1".parse()?)?;
-        self.swarm.listen_on("/ip4/0.0.0.0/tcp/9000".parse()?)?;
+        net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
 
         let topics_requests: Vec<Topic> = self
             .config

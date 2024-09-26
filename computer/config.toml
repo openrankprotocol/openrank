@@ -18,3 +18,9 @@ verifier = ["3527ab0f9ba36d221d72e02368ca7ddf73c2bc19"]
 
 [database]
 directory = "./local-storage"
+
+[p2p]
+listen_on = [
+    "/ip4/0.0.0.0/udp/10000/quic-v1",
+    "/ip4/0.0.0.0/tcp/10000",
+]

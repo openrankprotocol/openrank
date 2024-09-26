@@ -19,3 +19,9 @@ users = ["fdc065619e2defb916dca551f85bf7d7a44023ef"]
 
 [database]
 directory = "./local-storage"
+
+[p2p]
+listen_on = [
+    "/ip4/0.0.0.0/udp/9000/quic-v1",
+    "/ip4/0.0.0.0/tcp/9000",
+]
