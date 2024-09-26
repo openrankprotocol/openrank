@@ -20,14 +20,21 @@ pub enum LoadError {
 /// OpenRank program configuration loader.
 ///
 /// ```no_run
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
+/// pub struct MyConfig {
+///     // ...
+/// }
+///
 /// // uses ~/.config/openrank-computer dir
-/// let loader = openrank_common::config::Loader::new("openrank-computer")?;
+/// let loader = openrank_common::config::Loader::new("openrank-computer").unwrap();
 ///
 /// // loads ~/.config/openrank-computer/openrank-computer.toml
-/// let config = loader.load()?;
+/// let config: MyConfig = loader.load().unwrap();
 ///
 /// // loads ~/.config/openrank-computer/x.toml
-/// let config = loader.load_named("x")?;
+/// let config: MyConfig = loader.load_named("x").unwrap();
 /// ```
 pub struct Loader {
     program_name: String,
