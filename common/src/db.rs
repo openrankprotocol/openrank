@@ -47,8 +47,8 @@ pub trait DbItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    directory: String,
-    secondary: Option<String>,
+    pub directory: String,
+    pub secondary: Option<String>,
 }
 
 impl Config {
