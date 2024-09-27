@@ -1,5 +1,5 @@
 [package]
-name = "smart-contract-client"
+name = "openrank-smart-contract-client"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

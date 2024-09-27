@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use openrank_block_builder::{self, BlockBuilderNode};
 use openrank_sequencer::{self, SequencerNode};
-use smart_contract_client::JobManagerClient;
+use openrank_smart_contract_client::JobManagerClient;
 use std::error::Error;
 
 #[derive(Parser)]
