@@ -16,7 +16,8 @@ use dotenv::dotenv;
 use eyre::Result;
 
 use openrank_common::{
-    db::{Db, DbItem},
+    config,
+    db::{self, Db, DbItem},
     txs::{Tx, TxKind},
 };
 use JobManager::{OpenrankTx, Signature};
@@ -33,6 +34,7 @@ sol!(
 pub struct Config {
     pub contract_address: String,
     pub rpc_url: String,
+    pub database: db::Config,
 }
 
 pub struct JobManagerClient {
@@ -49,15 +51,12 @@ impl JobManagerClient {
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
-        let config: Config = toml::from_str(include_str!("../config.toml"))?;
+        let config_loader = config::Loader::new("openrank-smart-contract-client")?;
+        let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
 
         let contract_address = Address::from_str(&config.contract_address)?;
         let rpc_url = Url::parse(&config.rpc_url)?;
-        let db = Db::new_secondary(
-            "./local-storage",
-            "./local-secondary-storage",
-            &[&Tx::get_cf()],
-        )?;
+        let db = Db::new_secondary(&config.database, &[&Tx::get_cf()])?;
         let client = Self::new(contract_address, rpc_url, secret_key.into(), db);
         Ok(client)
     }
@@ -185,6 +184,10 @@ mod tests {
 
     use super::*;
 
+    fn config_for_dir(directory: &str) -> db::Config {
+        db::Config { directory: directory.to_string(), secondary: None }
+    }
+
     #[tokio::test]
     async fn test_submit_openrank_tx() -> Result<()> {
         let test_mnemonic = String::from(
@@ -216,7 +219,7 @@ mod tests {
 
         // Create a contract instance.
         let contract_address = contract.address().clone();
-        let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
         let client = JobManagerClient::new(contract_address, rpc_url, signer, db);
 
         // Try to submit "JobRunRequest" TX
