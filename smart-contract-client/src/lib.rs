@@ -172,10 +172,16 @@ impl JobManagerClient {
 
 #[cfg(test)]
 mod tests {
-    use alloy::{network::EthereumWallet, node_bindings::Anvil, signers::local::PrivateKeySigner};
+    use alloy::{
+        network::EthereumWallet, node_bindings::Anvil, primitives::address,
+        signers::local::PrivateKeySigner,
+    };
     use alloy_rlp::encode;
 
-    use openrank_common::txs::JobRunRequest;
+    use openrank_common::{
+        merkle::Hash,
+        txs::{CreateCommitment, JobRunRequest, JobVerification, TxHash},
+    };
 
     use super::*;
 
@@ -201,20 +207,64 @@ mod tests {
             .on_http(rpc_url.clone());
 
         // Deploy the `JobManager` contract.
-        let contract = JobManager::deploy(&provider, vec![], vec![]).await?;
+        let contract = JobManager::deploy(
+            &provider,
+            vec![address!("13978aee95f38490e9769c39b2773ed763d9cd5f")],
+            vec![address!("cd2a3d9f938e13cd947ec05abc7fe734df8dd826")],
+        )
+        .await?;
 
         // Create a contract instance.
         let contract_address = contract.address().clone();
         let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
         let client = JobManagerClient::new(contract_address, rpc_url, signer, db);
 
-        // Call the `submitJobRunRequest` function for testing.
+        // Try to submit "JobRunRequest" TX
         let _ = client
             .submit_openrank_tx(Tx::default_with(
                 TxKind::JobRunRequest,
                 encode(JobRunRequest::default()),
             ))
             .await?;
+
+        // Try to submit "CreateCommitment" TX
+        let sk_bytes_hex = "c87f65ff3f271bf5dc8643484f66b200109caffe4bf98c4cb393dc35740b28c0";
+        let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
+        let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+        let mut tx = Tx::default_with(
+            TxKind::CreateCommitment,
+            encode(CreateCommitment::default_with(
+                TxHash::from_bytes(
+                    hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
+                        .unwrap(),
+                ),
+                Hash::default(),
+                Hash::default(),
+                vec![],
+            )),
+        );
+        let _ = tx.sign(&sk);
+
+        let _ = client.submit_openrank_tx(tx).await?;
+
+        // Try to submit "JobVerification" TX
+        let sk_bytes_hex = "c85ef7d79691fe79573b1a7064c19c1a9819ebdbd1faaab1a8ec92344438aaf4";
+        let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
+        let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+
+        let mut tx = Tx::default_with(
+            TxKind::JobVerification,
+            encode(JobVerification {
+                job_run_assignment_tx_hash: TxHash::from_bytes(
+                    hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
+                        .unwrap(),
+                ),
+                verification_result: true,
+            }),
+        );
+        let _ = tx.sign(&sk);
+
+        let _ = client.submit_openrank_tx(tx).await?;
 
         Ok(())
     }
