@@ -625,10 +625,18 @@ impl SeedUpdate {
 
 #[cfg(test)]
 mod test {
-    use crate::txs::TrustEntry;
+    use crate::{
+        merkle::Hash,
+        topics::DomainHash,
+        txs::{
+            Address, CreateCommitment, JobRunAssignment, JobRunRequest, JobVerification,
+            TrustEntry, TxHash,
+        },
+    };
 
     use super::{ScoreEntry, TrustUpdate, Tx, TxKind};
     use alloy_rlp::{encode, Decodable};
+    use k256::ecdsa::SigningKey;
 
     #[test]
     fn test_decode_tx_kind() {
@@ -664,5 +672,262 @@ mod test {
         let encoded_te = encode(te.clone());
         let decoded_te = TrustEntry::decode(&mut encoded_te.as_slice()).unwrap();
         assert_eq!(te, decoded_te);
+    }
+
+    #[test]
+    fn test_encode_job_run_request() {
+        let job_run_request = JobRunRequest::new(DomainHash::from(1), 2, Hash::default());
+        let encoded_bytes = encode(job_run_request);
+        assert_eq!(
+            encoded_bytes,
+            hex::decode(
+                "e5c10102e1a00000000000000000000000000000000000000000000000000000000000000000"
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_encode_job_run_assignment() {
+        let job_run_assignment =
+            JobRunAssignment::new(TxHash::default(), Address::default(), Address::default());
+        let encoded_bytes = encode(job_run_assignment.clone());
+        assert_eq!(encoded_bytes, hex::decode("f84ee1a00000000000000000000000000000000000000000000000000000000000000000d5940000000000000000000000000000000000000000d5940000000000000000000000000000000000000000").unwrap());
+    }
+
+    #[test]
+    fn test_encode_create_commitment() {
+        let create_commitment = CreateCommitment::default_with(
+            TxHash::default(),
+            Hash::default(),
+            Hash::default(),
+            vec![TxHash::default(), TxHash::default()],
+        );
+        let encoded_bytes = encode(create_commitment);
+        assert_eq!(encoded_bytes, hex::decode("f8aee1a00000000000000000000000000000000000000000000000000000000000000000e1a00000000000000000000000000000000000000000000000000000000000000000e1a00000000000000000000000000000000000000000000000000000000000000000f844e1a00000000000000000000000000000000000000000000000000000000000000000e1a00000000000000000000000000000000000000000000000000000000000000000c0c0").unwrap());
+    }
+
+    #[test]
+    fn test_encode_job_verification() {
+        let job_verification = JobVerification::default();
+        let encoded_bytes = encode(job_verification);
+        assert_eq!(
+            encoded_bytes,
+            hex::decode("e3e1a0000000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_sign_tx_job_run_request() {
+        let sk_bytes_hex = "9E7645D0CFD9C3A04EB7A9DB59A4EB7D359F2E75C9164A9D6B9A7D54E1B6A36F";
+        let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
+        let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+
+        let mut tx = super::Tx::default_with(
+            TxKind::JobRunRequest,
+            encode(super::JobRunRequest::default()),
+        );
+        let _ = tx.sign(&sk).unwrap();
+
+        let tx_hash = tx.hash();
+        assert_eq!(
+            hex::encode(tx_hash.0),
+            "159232adb52f1e32121d4b111339a6959caccfd86ecf2cc7ab8ef4388d314646"
+        );
+
+        let pk = tx.verify().unwrap();
+        assert_eq!(
+            hex::encode(pk.0),
+            "8a0a19589531694250d570040a0c4b74576919b8"
+        );
+
+        assert_eq!(tx.nonce, 0);
+        assert_eq!(
+            hex::encode(tx.from.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            hex::encode(tx.to.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            hex::encode(tx.body.clone()),
+            "e5c18080e1a00000000000000000000000000000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            hex::encode(tx.signature.s),
+            "187e6de032ceea6cc1c879fc7a52ec274c93b2be19b6d4fb11bcb806db2f3f4c"
+        );
+        assert_eq!(
+            hex::encode(tx.signature.r),
+            "02ca805e1940a90fc3df7b51f66abc4d55cc3866a751b6110e9f2e3c962182b3"
+        );
+        assert_eq!(tx.signature.r_id, 1);
+    }
+
+    #[test]
+    fn test_sign_tx_job_run_assignment() {
+        use hex::FromHex;
+
+        let sk_bytes_hex = "45A915E4D060149EB4365960E6A7A45F334393093061116B197E3240065FF2D8";
+        let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
+        let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+
+        let mut tx = Tx::default_with(
+            TxKind::JobRunAssignment,
+            encode(JobRunAssignment::new(
+                TxHash::from_bytes(
+                    Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()))
+                        .hash()
+                        .0
+                        .to_vec(),
+                ),
+                Address::from_hex("13978aee95f38490e9769c39b2773ed763d9cd5f").unwrap(),
+                Address::from_hex("cd2a3d9f938e13cd947ec05abc7fe734df8dd826").unwrap(),
+            )),
+        );
+        let _ = tx.sign(&sk);
+
+        let tx_hash = tx.hash();
+        assert_eq!(
+            hex::encode(tx_hash.0),
+            "43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819"
+        );
+
+        let pk = tx.verify().unwrap();
+        assert_eq!(
+            hex::encode(pk.0),
+            "a94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+        );
+
+        assert_eq!(tx.nonce, 0);
+        assert_eq!(
+            hex::encode(tx.from.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            hex::encode(tx.to.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(hex::encode(tx.body.clone()), "f84ee1a0159232adb52f1e32121d4b111339a6959caccfd86ecf2cc7ab8ef4388d314646d59413978aee95f38490e9769c39b2773ed763d9cd5fd594cd2a3d9f938e13cd947ec05abc7fe734df8dd826");
+        assert_eq!(
+            hex::encode(tx.signature.s),
+            "1de2b58056c12cceae2229750a3975ec10cb56ac1c592bc91422c82fd540bcf0"
+        );
+        assert_eq!(
+            hex::encode(tx.signature.r),
+            "7320fdb17e892a361d979f074cb9f9949764796fb68de9f20b7aff45bafe0b8a"
+        );
+        assert_eq!(tx.signature.r_id, 1);
+    }
+
+    #[test]
+    fn test_sign_tx_create_commitment() {
+        let sk_bytes_hex = "c87f65ff3f271bf5dc8643484f66b200109caffe4bf98c4cb393dc35740b28c0";
+        let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
+        let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+
+        let mut tx = Tx::default_with(
+            TxKind::CreateCommitment,
+            encode(CreateCommitment {
+                job_run_assignment_tx_hash: TxHash::from_bytes(
+                    hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
+                        .unwrap(),
+                ),
+                lt_root_hash: Hash::default(),
+                compute_root_hash: Hash::default(),
+                scores_tx_hashes: vec![],
+                new_seed_tx_hashes: vec![],
+                new_trust_tx_hashes: vec![],
+            }),
+        );
+        let _ = tx.sign(&sk);
+
+        let tx_hash = tx.hash();
+        assert_eq!(
+            hex::encode(tx_hash.0),
+            "9949143b1cabba1079b3f15b000fcb7c030d0fdbfcfff704be1f8917d88582ef"
+        );
+
+        let pk = tx.verify().unwrap();
+        assert_eq!(
+            hex::encode(pk.0),
+            "13978aee95f38490e9769c39b2773ed763d9cd5f"
+        );
+
+        assert_eq!(tx.nonce, 0);
+        assert_eq!(
+            hex::encode(tx.from.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            hex::encode(tx.to.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(hex::encode(tx.body.clone()), "f869e1a043924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819e1a00000000000000000000000000000000000000000000000000000000000000000e1a00000000000000000000000000000000000000000000000000000000000000000c0c0c0");
+        assert_eq!(
+            hex::encode(tx.signature.s),
+            "2a7f69e1c5cc5f11272fa5a2632f8c47c8039f1e19dcf739ad99adad9130fe15"
+        );
+        assert_eq!(
+            hex::encode(tx.signature.r),
+            "dac8c2a3d60d7511b008fdc854b8e8156954ff7670991151ae67c303dbc7e28e"
+        );
+        assert_eq!(tx.signature.r_id, 1);
+    }
+
+    #[test]
+    fn test_sign_tx_job_verification() {
+        let sk_bytes_hex = "c85ef7d79691fe79573b1a7064c19c1a9819ebdbd1faaab1a8ec92344438aaf4";
+        let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
+        let sk = SigningKey::from_slice(&sk_bytes).unwrap();
+
+        let mut tx = Tx::default_with(
+            TxKind::JobVerification,
+            encode(JobVerification {
+                job_run_assignment_tx_hash: TxHash::from_bytes(
+                    hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
+                        .unwrap(),
+                ),
+                verification_result: true,
+            }),
+        );
+        let _ = tx.sign(&sk);
+
+        let tx_hash = tx.hash();
+        assert_eq!(
+            hex::encode(tx_hash.0),
+            "042a89a8fa63d2af0dbb5248e72c0094b640285d78ef262931ab1550e6e1a4d0"
+        );
+
+        let pk = tx.verify().unwrap();
+        assert_eq!(
+            hex::encode(pk.0),
+            "cd2a3d9f938e13cd947ec05abc7fe734df8dd826"
+        );
+
+        assert_eq!(tx.nonce, 0);
+        assert_eq!(
+            hex::encode(tx.from.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            hex::encode(tx.to.0),
+            "0000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            hex::encode(tx.body.clone()),
+            "e3e1a043924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c81901"
+        );
+        assert_eq!(
+            hex::encode(tx.signature.s),
+            "75f3cab53d46d1eb00ceaee6525bbece17878ca9ed8caf6796b969d78329cc92"
+        );
+        assert_eq!(
+            hex::encode(tx.signature.r),
+            "f293b710791ceb69d1317ebc0d8952005fc186a2a363bc74004771f183d1d8d5"
+        );
+        assert_eq!(tx.signature.r_id, 1);
     }
 }
