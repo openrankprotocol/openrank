@@ -748,7 +748,7 @@ mod test {
             TxKind::JobRunRequest,
             encode(super::JobRunRequest::default()),
         );
-        let _ = tx.sign(&sk).unwrap();
+        tx.sign(&sk).unwrap();
 
         let tx_hash = tx.hash();
         assert_eq!(

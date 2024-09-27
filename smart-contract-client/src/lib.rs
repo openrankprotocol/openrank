@@ -218,12 +218,12 @@ mod tests {
         .await?;
 
         // Create a contract instance.
-        let contract_address = contract.address().clone();
+        let contract_address = *contract.address();
         let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
         let client = JobManagerClient::new(contract_address, rpc_url, signer, db);
 
         // Try to submit "JobRunRequest" TX
-        let _ = client
+        client
             .submit_openrank_tx(Tx::default_with(
                 TxKind::JobRunRequest,
                 encode(JobRunRequest::default()),
@@ -248,7 +248,7 @@ mod tests {
         );
         let _ = tx.sign(&sk);
 
-        let _ = client.submit_openrank_tx(tx).await?;
+        client.submit_openrank_tx(tx).await?;
 
         // Try to submit "JobVerification" TX
         let sk_bytes_hex = "c85ef7d79691fe79573b1a7064c19c1a9819ebdbd1faaab1a8ec92344438aaf4";
@@ -267,7 +267,7 @@ mod tests {
         );
         let _ = tx.sign(&sk);
 
-        let _ = client.submit_openrank_tx(tx).await?;
+        client.submit_openrank_tx(tx).await?;
 
         Ok(())
     }

@@ -3,7 +3,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::usize;
 
 #[derive(Debug)]
 /// Errors that can arise while using database.
@@ -148,7 +147,7 @@ impl Db {
 
         let mut elements = Vec::new();
         for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
-            let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
+            let tx = serde_json::from_slice(db_value.as_ref()).map_err(DbError::Serde)?;
             elements.push(tx);
         }
         Ok(elements)
