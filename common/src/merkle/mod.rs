@@ -13,9 +13,11 @@ pub mod incremental;
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
+/// Used to represent a hash of a node in the merkle tree.
 pub struct Hash(#[serde(with = "hex")] pub [u8; 32]);
 
 impl Hash {
+    /// Converts the hash to a hex string.
     pub fn to_hex(self) -> String {
         hex::encode(self.0)
     }
@@ -23,11 +25,13 @@ impl Hash {
 
 #[cfg(test)]
 impl Hash {
+    /// Generates a random hash. This is used for testing.
     pub fn random<R: Rng>(rng: &mut R) -> Self {
         Hash(rng.gen::<[u8; 32]>())
     }
 }
 
+/// Converts given index to the next index.
 fn next_index(i: u32) -> u32 {
     if i % 2 == 1 {
         (i - 1) / 2
@@ -50,10 +54,11 @@ pub fn to_bits(num: &[u8]) -> Vec<bool> {
 /// Converts given field element to the bits.
 pub fn num_to_bits_vec(num: u32) -> Vec<bool> {
     let bits = to_bits(&num.to_be_bytes());
-    let sliced_bits = bits[..u32::BITS as usize].to_vec();
-    sliced_bits
+
+    bits[..u32::BITS as usize].to_vec()
 }
 
+/// Computes the hash from two hashes.
 pub fn hash_two<H: Digest>(left: Hash, right: Hash) -> Hash {
     let mut hasher = H::new();
     hasher.update(left.0);
@@ -64,6 +69,7 @@ pub fn hash_two<H: Digest>(left: Hash, right: Hash) -> Hash {
     Hash(bytes)
 }
 
+/// Hashes the given data(`Vec<u8>`).
 pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
     let mut hasher = H::new();
     hasher.update(preimage);
@@ -74,8 +80,11 @@ pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
 }
 
 #[derive(Debug)]
+/// An error type for the merkle tree.
 pub enum MerkleError {
+    /// The root of the merkle tree is not found.
     RootNotFound,
+    /// The nodes are not found in the merkle tree.
     NodesNotFound,
 }
 

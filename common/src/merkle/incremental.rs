@@ -4,18 +4,21 @@ use std::{collections::HashMap, marker::PhantomData};
 use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
 
 #[derive(Clone, Debug)]
-/// MerkleTree structure
+/// Dense incremental Merkle tree.
+/// The dense tree is a tree where leaf nodes are compressed to be next to each other
+/// which makes it more efficient to store and traverse.
+/// The tree is built incrementally, the nodes are added to the tree one by one.
 pub struct DenseIncrementalMerkleTree<H>
 where
     H: Digest,
 {
-    /// HashMap to keep the level and index of the nodes
+    /// HashMap to keep the level and index of the nodes.
     pub(crate) nodes: HashMap<(u8, u32), Hash>,
-    /// Default nodes
+    /// Default nodes.
     default: HashMap<(u8, u32), Hash>,
-    // Number of levels
+    /// Number of levels.
     num_levels: u8,
-    /// PhantomData for the hasher
+    /// PhantomData for the hasher.
     _h: PhantomData<H>,
 }
 
@@ -23,11 +26,12 @@ impl<H> DenseIncrementalMerkleTree<H>
 where
     H: Digest,
 {
+    /// Returns the root of the tree.
     pub fn root(&self) -> Result<Hash, MerkleError> {
-        self.nodes.get(&(self.num_levels, 0)).map(|h| h.clone()).ok_or(MerkleError::RootNotFound)
+        self.nodes.get(&(self.num_levels, 0)).cloned().ok_or(MerkleError::RootNotFound)
     }
 
-    /// Build a MerkleTree from given leaf nodes and height
+    /// Builds a Merkle tree from given height (`num_levels`).
     pub fn new(num_levels: u8) -> Self {
         let mut default: HashMap<(u8, u32), Hash> = HashMap::new();
         default.insert((0, 0), Hash::default());
@@ -42,6 +46,7 @@ where
         Self { nodes: default.clone(), default, num_levels, _h: PhantomData }
     }
 
+    /// Insert a single leaf to tree.
     pub fn insert_leaf(&mut self, index: u32, leaf: Hash) {
         let max_size = 2u32.pow(self.num_levels as u32) - 1;
         assert!(index < max_size);
@@ -70,6 +75,7 @@ where
         }
     }
 
+    /// Insert multiple leaves to tree.
     pub fn insert_batch(&mut self, mut index: u32, leaves: Vec<Hash>) {
         for leaf in leaves {
             self.insert_leaf(index, leaf);

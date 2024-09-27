@@ -6,10 +6,15 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::usize;
 
 #[derive(Debug)]
+/// Errors that can arise while using database.
 pub enum DbError {
+    /// RocksDB failed.
     RocksDB(RocksDBError),
+    /// Error when decoding entries from RocksDB.
     Serde(SerdeError),
+    /// Error when column family is not found.
     CfNotFound,
+    /// Error when entry is not found.
     NotFound,
 }
 
@@ -38,56 +43,65 @@ pub trait DbItem {
     }
 }
 
+/// Wrapper for database connection.
 pub struct Db {
     connection: DB,
 }
 
 impl Db {
+    /// Creates new database connection, given info of local file path and column families.
     pub fn new(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
         assert!(path.ends_with("-storage"));
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
-        let db = DB::open_cf(&opts, path, cfs).map_err(|e| DbError::RocksDB(e))?;
+        let db = DB::open_cf(&opts, path, cfs).map_err(DbError::RocksDB)?;
         Ok(Self { connection: db })
     }
 
+    /// Creates new read-only database connection, given info of local file path and column families.
     pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
         assert!(path.ends_with("-storage"));
         let db = DB::open_cf_for_read_only(&Options::default(), path, cfs, false)
-            .map_err(|e| DbError::RocksDB(e))?;
+            .map_err(DbError::RocksDB)?;
         Ok(Self { connection: db })
     }
 
+    /// Creates new secondary database connection, given info of primary and secondary file paths and column families.
+    /// Secondary database is used for read-only queries, and should be explicitly refreshed.
     pub fn new_secondary(
         primary_path: &str, secondary_path: &str, cfs: &[&str],
     ) -> Result<Self, DbError> {
         assert!(primary_path.ends_with("-storage"));
         assert!(secondary_path.ends_with("-storage"));
         let db = DB::open_cf_as_secondary(&Options::default(), primary_path, secondary_path, cfs)
-            .map_err(|e| DbError::RocksDB(e))?;
+            .map_err(DbError::RocksDB)?;
         Ok(Self { connection: db })
     }
 
+    /// Refreshes secondary database connection, by catching up with primary database.
     pub fn refresh(&self) -> Result<(), DbError> {
-        self.connection.try_catch_up_with_primary().map_err(|e| DbError::RocksDB(e))
+        self.connection.try_catch_up_with_primary().map_err(DbError::RocksDB)
     }
 
+    /// Puts value into database.
     pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), DbError> {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
         let key = item.get_full_key();
-        let value = to_vec(&item).map_err(|e| DbError::Serde(e))?;
-        self.connection.put_cf(&cf, key, value).map_err(|e| DbError::RocksDB(e))
+        let value = to_vec(&item).map_err(DbError::Serde)?;
+        self.connection.put_cf(&cf, key, value).map_err(DbError::RocksDB)
     }
 
+    /// Gets value from database.
     pub fn get<I: DbItem + DeserializeOwned>(&self, key: Vec<u8>) -> Result<I, DbError> {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
-        let item_res = self.connection.get_cf(&cf, key).map_err(|e| DbError::RocksDB(e))?;
+        let item_res = self.connection.get_cf(&cf, key).map_err(DbError::RocksDB)?;
         let item = item_res.ok_or(DbError::NotFound)?;
-        let value = serde_json::from_slice(&item).map_err(|e| DbError::Serde(e))?;
+        let value = serde_json::from_slice(&item).map_err(DbError::Serde)?;
         Ok(value)
     }
 
+    /// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
     pub fn read_from_end<I: DbItem + DeserializeOwned>(
         &self, prefix: String, num_elements: Option<usize>,
     ) -> Result<Vec<I>, DbError> {
@@ -96,7 +110,7 @@ impl Db {
         let iter = self.connection.prefix_iterator_cf(&cf, prefix);
         let mut elements = Vec::new();
         for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
-            let tx = serde_json::from_slice(db_value.as_ref()).map_err(|e| DbError::Serde(e))?;
+            let tx = serde_json::from_slice(db_value.as_ref()).map_err(DbError::Serde)?;
             elements.push(tx);
         }
         Ok(elements)

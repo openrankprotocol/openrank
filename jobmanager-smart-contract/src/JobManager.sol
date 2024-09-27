@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-// import "https://github.com/hamdiallam/solidity-rlp/blob/master/contracts/RLPReader.sol";
 import "./RLPReader.sol";
 import "./RLPEncode.sol";
 
@@ -12,11 +11,6 @@ contract JobManager {
 
     using RLPEncode for bytes;
     using RLPEncode for uint;
-
-    // Roles and whitelists
-    mapping(address => bool) public blockBuilders;
-    mapping(address => bool) public computers;
-    mapping(address => bool) public verifiers;
 
     // enum to store TX kind
     enum TxKind { 
@@ -48,48 +42,26 @@ contract JobManager {
         uint8 r_id;
     }
 
-    struct JobRunRequest {
-        uint64 domain_id;
-        uint32 block_height;
-        bytes32 job_id;
-    }
-
-    struct JobRunAssignment {
-        bytes32 job_run_request_tx_hash;
-        bytes20 assigned_compute_node;
-        bytes20 assigned_verifier_node;
-    }
-
-    struct CreateCommitment {
-        bytes32 job_run_assignment_tx_hash;
-        bytes32 lt_root_hash;
-        bytes32 compute_root_hash;
-        bytes32[] scores_tx_hashes;
-        bytes32[] new_trust_tx_hashes;
-        bytes32[] new_seed_tx_hashes;
-    }
-
     struct JobVerification {
         bytes32 job_run_assignment_tx_hash;
         bool verification_result;
     }
 
-    // Store OpenrankTx with txHash as the key
-    mapping(bytes32 => OpenrankTx) public txs;
+    // Whitelisted addresses
+    mapping(address => bool) public computers;
+    mapping(address => bool) public verifiers;
+
+    // jobRunAssignTxHash => createCommitmentTxHash => computeRootHash
+    mapping(bytes32 => mapping(bytes32 => bytes32)) public computeRootHashes;
+    // [jobRunAssignTxHash | createCommitmentTxHash | jobVerificationTxHash] => bool
     mapping(bytes32 => bool) public hasTx;
 
     // Events
-    event JobRunRequested(bytes32 txHash, bytes32 jobId);
-    event JobAssigned(bytes32 txHash, address computer, address verifier);
-    event JobCommitted(bytes32 txHash);
-    event JobVerified(bytes32 txHash, bool isVerified);
+    event JobCommitted(bytes32 txHash, address indexed computer);
+    event JobVerified(bytes32 txHash, address indexed verifier);
 
     // Initialize the contract with whitelisted addresses
-    constructor(address[] memory _blockBuilders, address[] memory _computers, address[] memory _verifiers) {
-        for (uint256 i = 0; i < _blockBuilders.length; i++) {
-            blockBuilders[_blockBuilders[i]] = true;
-        }
-
+    constructor(address[] memory _computers, address[] memory _verifiers) {
         for (uint256 i = 0; i < _computers.length; i++) {
             computers[_computers[i]] = true;
         }
@@ -99,126 +71,45 @@ contract JobManager {
         }
     }
 
-    // User sends JobRunRequest to Block Builder
-    function sendJobRunRequest(OpenrankTx memory transaction) external {
-        // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
-
-        // Signature memory sig = transaction.signature;
-        // bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
-        // address signer = recoverSigner(txHash, signature);
-        
-        // // check if signer is whitelisted user
-        // // require(signer == user, "Invalid user signature");
-
-        // check the transaction kind & jobId
-        require(transaction.kind == TxKind.JobRunRequest, "Expected JobRunRequest TX");
-
-        JobRunRequest memory jobRunRequest = decodeJobRunRequest(transaction.body);
-
-        // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
-
-        emit JobRunRequested(txHash, jobRunRequest.job_id);
-    }
-
-    // Block Builder sends JobAssignment to Computer, with signature validation
-    function submitJobRunAssignment(OpenrankTx calldata transaction) external {        
-        // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
-
-        Signature memory sig = transaction.signature;
-        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
-        address signer = recoverSigner(txHash, signature);
-        require(blockBuilders[signer], "BlockBuilder not whitelisted");
-
-        // check the transaction kind & jobRunRequestTxHash
-        require(transaction.kind == TxKind.JobRunAssignment, "Expected JobRunAssignment TX");
-
-        JobRunAssignment memory jobRunAssignment = decodeJobRunAssignment(transaction.body);
-
-        require(hasTx[jobRunAssignment.job_run_request_tx_hash], "Matching JobRunRequest TX missing");
-
-        address _computer = address(jobRunAssignment.assigned_compute_node);
-        address _verifier = address(jobRunAssignment.assigned_verifier_node);
-        require(computers[_computer], "Assigned computer not whitelisted");
-        require(verifiers[_verifier], "Assigned verifier not whitelisted");
-
-        // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
-
-        emit JobAssigned(txHash, _computer, _verifier);
-    }
-
-    // Computer submits a CreateCommitment with signature validation
-    function submitCreateCommitment(OpenrankTx calldata transaction) external {
-        // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
-
-        Signature memory sig = transaction.signature;
-        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
-        address signer = recoverSigner(txHash, signature);
+    // Computer submits a CreateCommitment txHash with computeRootHash
+    function submitCreateCommitment(
+        bytes32 jobRunAssignTxHash,
+        bytes32 createCommitTxHash,
+        bytes32 computeRootHash,
+        Signature memory sig
+    ) external {
+        address signer = recoverSigner(createCommitTxHash, sig);
         require(computers[signer], "Computer not whitelisted");
 
-        // check the transaction kind & jobRunAssignmentTxHash
-        require(transaction.kind == TxKind.CreateCommitment, "Expected CreateCommitment TX");
+        // save `computeRootHash`
+        computeRootHashes[jobRunAssignTxHash][createCommitTxHash] = computeRootHash;
 
-        CreateCommitment memory createCommitment = decodeCreateCommitment(transaction.body);
+        hasTx[jobRunAssignTxHash] = true;
+        hasTx[createCommitTxHash] = true;
         
-        require(hasTx[createCommitment.job_run_assignment_tx_hash], "Matching JobRunAssignment TX missing");
-
-        // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
-
-        emit JobCommitted(txHash);
+        emit JobCommitted(createCommitTxHash, signer);
     }
 
-    // Verifier submit JobVerification result with signature validation
-    function submitJobVerification(OpenrankTx calldata transaction) external {
+    // Verifier submits JobVerification txHash with signature
+    function submitJobVerification(OpenrankTx calldata _tx) external {
         // construct tx hash from transaction and check the signature
-        bytes32 txHash = getTxHash(transaction);
+        bytes32 jobVerifyTxHash = getTxHash(_tx);
 
-        Signature memory sig = transaction.signature;
-        bytes memory signature = abi.encodePacked(sig.r, sig.s, sig.r_id);
-        address signer = recoverSigner(txHash, signature);
+        Signature memory sig = _tx.signature;
+        address signer = recoverSigner(jobVerifyTxHash, sig);
         require(verifiers[signer], "Verifier not whitelisted");
 
         // check the transaction kind & jobRunAssignmentTxHash
-        require(transaction.kind == TxKind.JobVerification, "Expected JobVerification TX");
+        require(_tx.kind == TxKind.JobVerification, "Expected JobVerification TX");
 
-        JobVerification memory jobVerification = decodeJobVerification(transaction.body);
+        JobVerification memory jobVerification = decodeJobVerification(_tx.body);
 
         require(hasTx[jobVerification.job_run_assignment_tx_hash], "Matching JobRunAssignment TX missing");
 
         // save TX in storage
-        txs[txHash] = transaction;
-        hasTx[txHash] = true;
+        hasTx[jobVerifyTxHash] = true;
 
-        emit JobVerified(txHash, jobVerification.verification_result);
-    }
-
-    // Recover signer from the provided hash and signature
-    function recoverSigner(bytes32 messageHash, bytes memory signature) internal pure returns (address) {
-        (uint8 v, bytes32 r, bytes32 s) = splitSignature(signature);
-        address signer = ecrecover(messageHash, v, r, s);
-        require(signer != address(0), "Invalid signature");
-        return signer;
-    }
-
-    // Helper function to split the signature into `r`, `s`, and `v`
-    function splitSignature(bytes memory sig) internal pure returns (uint8 v, bytes32 r, bytes32 s) {
-        require(sig.length == 65, "Invalid signature length");
-        assembly {
-            r := mload(add(sig, 32))
-            s := mload(add(sig, 64))
-            v := byte(0, mload(add(sig, 96)))
-        }
-        // Since OpenRankTX signature uses `recovery_id`(0 - 3), we need to convert it to valid `v`(27 or 28)
-        v = v + 27;
-        return (v, r, s);
+        emit JobVerified(jobVerifyTxHash, signer);
     }
 
     // Helper function to get the transaction hash from the OpenrankTx
@@ -232,62 +123,15 @@ contract JobManager {
         return keccak256(abi.encodePacked(transaction.nonce, RLPEncode.encodeList(_from), RLPEncode.encodeList(_to), RLPEncode.encodeUint(uint(transaction.kind)), transaction.body));
     }
 
-    // Decode RLP back into the JobRunRequest struct
-    function decodeJobRunRequest(bytes memory rlpData) public pure returns (JobRunRequest memory) {
-        RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
-        return JobRunRequest({
-            domain_id: uint64(items[0].toUint()),
-            block_height: uint32(items[1].toUint()),
-            job_id: bytes32(items[2].toList()[0].toBytes())
-        });
+    // Recover signer from the provided hash and signature
+    function recoverSigner(bytes32 messageHash, Signature memory signature) internal pure returns (address) {
+        (uint8 v, bytes32 r, bytes32 s) = (signature.r_id + 27, signature.r, signature.s);
+        address signer = ecrecover(messageHash, v, r, s);
+        require(signer != address(0), "Invalid signature");
+        return signer;
     }
 
-    // Decode RLP back into the JobRunAssignment struct
-    function decodeJobRunAssignment(bytes memory rlpData) public pure returns (JobRunAssignment memory) {
-        RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
-        return JobRunAssignment({
-            job_run_request_tx_hash: bytes32(items[0].toList()[0].toBytes()),
-            assigned_compute_node: bytes20(items[1].toList()[0].toBytes()),
-            assigned_verifier_node: bytes20(items[2].toList()[0].toBytes())
-        });
-    }
-
-    // Decode RLP back into the CreateCommitment struct
-    function decodeCreateCommitment(bytes memory rlpData) public pure returns (CreateCommitment memory) {
-        RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
-
-        // Decode bytes32[] field
-        RLPReader.RLPItem[] memory scoresTxHashes = items[3].toList();
-        bytes32[] memory scores_tx_hashes = new bytes32[](scoresTxHashes.length);
-        for (uint i = 0; i < scoresTxHashes.length; i++) {
-            scores_tx_hashes[i] = bytes32(scoresTxHashes[i].toList()[0].toBytes());
-        }
-
-        // Decode bytes32[] field
-        RLPReader.RLPItem[] memory newTrustTxHashes = items[4].toList();
-        bytes32[] memory new_trust_tx_hashes = new bytes32[](newTrustTxHashes.length);
-        for (uint i = 0; i < newTrustTxHashes.length; i++) {
-            new_trust_tx_hashes[i] = bytes32(newTrustTxHashes[i].toList()[0].toBytes());
-        }
-
-        // Decode bytes32[] field
-        RLPReader.RLPItem[] memory newSeedTxHashes = items[5].toList();
-        bytes32[] memory new_seed_tx_hashes = new bytes32[](newSeedTxHashes.length);
-        for (uint i = 0; i < newSeedTxHashes.length; i++) {
-            new_seed_tx_hashes[i] = bytes32(newSeedTxHashes[i].toList()[0].toBytes());
-        }
-
-        return CreateCommitment({
-            job_run_assignment_tx_hash: bytes32(items[0].toList()[0].toBytes()),
-            lt_root_hash: bytes32(items[1].toList()[0].toBytes()),
-            compute_root_hash: bytes32(items[2].toList()[0].toBytes()),
-            scores_tx_hashes: scores_tx_hashes,
-            new_trust_tx_hashes: new_trust_tx_hashes,
-            new_seed_tx_hashes: new_seed_tx_hashes
-        });
-    }
-
-    // Decode RLP back into the JobVerification struct
+    // Decode RLP bytes back into the `JobVerification` struct
     function decodeJobVerification(bytes memory rlpData) public pure returns (JobVerification memory) {
         RLPReader.RLPItem[] memory items = rlpData.toRlpItem().toList();
         return JobVerification({
