@@ -65,8 +65,6 @@ impl BlockBuilderNode {
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
-        let swarm = build_node().await?;
-        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
         let secret_key_bytes = hex::decode(secret_key_hex)?;
@@ -75,6 +73,9 @@ impl BlockBuilderNode {
         let config_loader = config::Loader::new("openrank-block-builder")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
+
+        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         Ok(Self { swarm, config, db, secret_key })
     }

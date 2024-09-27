@@ -101,4 +101,8 @@ impl Loader {
     pub fn load_or_create<T: DeserializeOwned>(&self, default: &str) -> Result<T, LoadError> {
         self.load_or_create_named(&self.program_name, default)
     }
+
+    pub fn pathname(&self, filename: &str) -> PathBuf {
+        self.config_dir.join(filename)
+    }
 }

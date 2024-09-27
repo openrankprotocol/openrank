@@ -65,9 +65,6 @@ impl VerifierNode {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
-        let swarm = build_node().await?;
-        info!("PEER_ID: {:?}", swarm.local_peer_id());
-
         let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
@@ -77,6 +74,9 @@ impl VerifierNode {
         let db = Db::new(&config.database, &[&Tx::get_cf()])?;
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
         let job_runner = VerificationJobRunner::new(domain_hashes);
+
+        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         Ok(Self { swarm, config, db, job_runner, secret_key })
     }

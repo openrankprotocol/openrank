@@ -12,7 +12,7 @@ use alloy_rlp::encode;
 use k256::ecdsa::SigningKey;
 use libp2p::{
     gossipsub::{self, MessageId, PublishError},
-    mdns, noise,
+    identity, mdns, noise,
     swarm::NetworkBehaviour,
     tcp, yamux, Swarm,
 };
@@ -33,8 +33,8 @@ pub struct MyBehaviour {
 }
 
 /// Builds a libp2p swarm with the custom behaviour.
-pub async fn build_node() -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
-    let swarm = libp2p::SwarmBuilder::with_new_identity()
+pub async fn build_node(keypair: identity::Keypair) -> Result<Swarm<MyBehaviour>, Box<dyn Error>> {
+    let swarm = libp2p::SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),

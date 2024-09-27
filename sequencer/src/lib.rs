@@ -293,9 +293,6 @@ impl SequencerNode {
     /// - Initialize the DB
     /// - Initialize the Sequencer JsonRPC server
     pub async fn init() -> Result<Self, Box<dyn Error>> {
-        let swarm = build_node().await?;
-        info!("PEER_ID: {:?}", swarm.local_peer_id());
-
         let config_loader = config::Loader::new("openrank-sequencer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
@@ -306,6 +303,9 @@ impl SequencerNode {
             db,
         ));
         let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
+
+        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         Ok(Self { swarm, config, server, receiver })
     }

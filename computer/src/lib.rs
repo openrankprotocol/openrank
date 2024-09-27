@@ -227,8 +227,6 @@ impl ComputerNode {
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
-        let swarm = build_node().await?;
-        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
         let secret_key_bytes = hex::decode(secret_key_hex)?;
@@ -240,6 +238,9 @@ impl ComputerNode {
 
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
         let job_runner = ComputeJobRunner::new(domain_hashes);
+
+        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         Ok(Self { swarm, config, db, job_runner, secret_key })
     }
