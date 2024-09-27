@@ -4,8 +4,9 @@ use futures::StreamExt;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-    address_from_sk, broadcast_event, build_node,
-    db::{Db, DbItem},
+    address_from_sk, broadcast_event, build_node, config,
+    db::{self, Db, DbItem},
+    net,
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
@@ -41,6 +42,8 @@ pub struct Config {
     pub domains: Vec<Domain>,
     /// The whitelist for the Verifier.
     pub whitelist: Whitelist,
+    pub database: db::Config,
+    pub p2p: net::Config,
 }
 
 /// The Verifier node. It contains the Swarm, the Config, the DB, the JobRunner, and the SecretKey.
@@ -62,17 +65,18 @@ impl VerifierNode {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
-        let swarm = build_node().await?;
-        info!("PEER_ID: {:?}", swarm.local_peer_id());
-
         let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
-        let config: Config = toml::from_str(include_str!("../config.toml"))?;
-        let db = Db::new("./local-storage", &[&Tx::get_cf()])?;
+        let config_loader = config::Loader::new("openrank-verifier")?;
+        let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
+        let db = Db::new(&config.database, &[&Tx::get_cf()])?;
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
         let job_runner = VerificationJobRunner::new(domain_hashes);
+
+        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         Ok(Self { swarm, config, db, job_runner, secret_key })
     }
@@ -438,9 +442,7 @@ impl VerifierNode {
             self.swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
         }
 
-        // Listen on all interfaces and whatever port the OS assigns
-        self.swarm.listen_on("/ip4/0.0.0.0/udp/11001/quic-v1".parse()?)?;
-        self.swarm.listen_on("/ip4/0.0.0.0/tcp/11001".parse()?)?;
+        net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
 
         // Kick it off
         loop {

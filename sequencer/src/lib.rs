@@ -3,8 +3,9 @@ use futures::StreamExt;
 use karyon_jsonrpc::{rpc_impl, RPCError, Server};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
-    build_node,
-    db::{Db, DbItem},
+    build_node, config,
+    db::{self, Db, DbItem},
+    net,
     result::{GetResultsQuery, JobResult},
     topics::Topic,
     tx_event::TxEvent,
@@ -35,6 +36,8 @@ pub struct Whitelist {
 pub struct Config {
     /// The whitelist for the Sequencer.
     pub whitelist: Whitelist,
+    pub database: db::Config,
+    pub p2p: net::Config,
 }
 
 /// The Sequencer node. It contains the sender, the whitelisted users, and the database connection.
@@ -277,6 +280,7 @@ impl Sequencer {
 
 /// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
 pub struct SequencerNode {
+    config: Config,
     swarm: Swarm<MyBehaviour>,
     server: Arc<Server>,
     receiver: Receiver<(Vec<u8>, Topic)>,
@@ -289,20 +293,21 @@ impl SequencerNode {
     /// - Initialize the DB
     /// - Initialize the Sequencer JsonRPC server
     pub async fn init() -> Result<Self, Box<dyn Error>> {
-        let swarm = build_node().await?;
-        info!("PEER_ID: {:?}", swarm.local_peer_id());
-
-        let config: Config = toml::from_str(include_str!("../config.toml"))?;
-        let db = Db::new_secondary(
-            "./local-storage",
-            "./local-secondary-storage",
-            &[&Tx::get_cf(), &JobResult::get_cf()],
-        )?;
+        let config_loader = config::Loader::new("openrank-sequencer")?;
+        let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
+        let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
         let (sender, receiver) = mpsc::channel(100);
-        let sequencer = Arc::new(Sequencer::new(sender.clone(), config.whitelist.users, db));
+        let sequencer = Arc::new(Sequencer::new(
+            sender.clone(),
+            config.whitelist.users.clone(),
+            db,
+        ));
         let server = Server::builder("tcp://127.0.0.1:60000")?.service(sequencer).build().await?;
 
-        Ok(Self { swarm, server, receiver })
+        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        info!("PEER_ID: {:?}", swarm.local_peer_id());
+
+        Ok(Self { swarm, config, server, receiver })
     }
 
     /// Run the node:
@@ -311,9 +316,7 @@ impl SequencerNode {
     /// - Handle gossipsub events
     /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        // Listen on all interfaces and whatever port the OS assigns
-        self.swarm.listen_on("/ip4/0.0.0.0/udp/8000/quic-v1".parse()?)?;
-        self.swarm.listen_on("/ip4/0.0.0.0/tcp/8000".parse()?)?;
+        net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
         self.server.start();
 
         // Kick it off

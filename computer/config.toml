@@ -15,3 +15,12 @@ algo_id = 0
 [whitelist]
 block_builder = ["4d40f98096410aa4235292343cc5fa559afcc780"]
 verifier = ["40a28b7ca8509395b93165bea28ba614b4a6bdd9"]
+
+[database]
+directory = "./local-storage"
+
+[p2p]
+listen_on = [
+    "/ip4/0.0.0.0/udp/10000/quic-v1",
+    "/ip4/0.0.0.0/tcp/10000",
+]

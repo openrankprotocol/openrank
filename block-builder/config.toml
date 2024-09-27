@@ -16,3 +16,12 @@ algo_id = 0
 computer = ["e1ab19bdcd7293cd47493c6a935fa48690fad222"]
 verifier = ["40a28b7ca8509395b93165bea28ba614b4a6bdd9"]
 users = ["b79aafc95c8866e65ed51a7856e75587feb481ff"]
+
+[database]
+directory = "./local-storage"
+
+[p2p]
+listen_on = [
+    "/ip4/0.0.0.0/udp/9000/quic-v1",
+    "/ip4/0.0.0.0/tcp/9000",
+]

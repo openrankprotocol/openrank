@@ -1,5 +1,5 @@
 use rocksdb::{Error as RocksDBError, IteratorMode, Options, ReadOptions, DB};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
@@ -16,6 +16,7 @@ pub enum DbError {
     CfNotFound,
     /// Error when entry is not found.
     NotFound,
+    Config(String),
 }
 
 impl StdError for DbError {}
@@ -27,6 +28,7 @@ impl Display for DbError {
             Self::Serde(e) => write!(f, "{}", e),
             Self::CfNotFound => write!(f, "CfNotFound"),
             Self::NotFound => write!(f, "NotFound"),
+            Self::Config(msg) => write!(f, "Config({:?})", msg),
         }
     }
 }
@@ -43,6 +45,18 @@ pub trait DbItem {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    directory: String,
+    secondary: Option<String>,
+}
+
+impl Config {
+    fn get_secondary(&self) -> Result<&String, DbError> {
+        self.secondary.as_ref().ok_or(DbError::Config("secondary path not set".into()))
+    }
+}
+
 /// Wrapper for database connection.
 pub struct Db {
     connection: DB,
@@ -50,8 +64,8 @@ pub struct Db {
 
 impl Db {
     /// Creates new database connection, given info of local file path and column families.
-    pub fn new(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
-        assert!(path.ends_with("-storage"));
+    pub fn new(config: &Config, cfs: &[&str]) -> Result<Self, DbError> {
+        let path = &config.directory;
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
@@ -60,8 +74,8 @@ impl Db {
     }
 
     /// Creates new read-only database connection, given info of local file path and column families.
-    pub fn new_read_only(path: &str, cfs: &[&str]) -> Result<Self, DbError> {
-        assert!(path.ends_with("-storage"));
+    pub fn new_read_only(config: &Config, cfs: &[&str]) -> Result<Self, DbError> {
+        let path = &config.directory;
         let db = DB::open_cf_for_read_only(&Options::default(), path, cfs, false)
             .map_err(DbError::RocksDB)?;
         Ok(Self { connection: db })
@@ -69,11 +83,9 @@ impl Db {
 
     /// Creates new secondary database connection, given info of primary and secondary file paths and column families.
     /// Secondary database is used for read-only queries, and should be explicitly refreshed.
-    pub fn new_secondary(
-        primary_path: &str, secondary_path: &str, cfs: &[&str],
-    ) -> Result<Self, DbError> {
-        assert!(primary_path.ends_with("-storage"));
-        assert!(secondary_path.ends_with("-storage"));
+    pub fn new_secondary(config: &Config, cfs: &[&str]) -> Result<Self, DbError> {
+        let primary_path = &config.directory;
+        let secondary_path = config.get_secondary()?;
         let db = DB::open_cf_as_secondary(&Options::default(), primary_path, secondary_path, cfs)
             .map_err(DbError::RocksDB)?;
         Ok(Self { connection: db })
@@ -145,13 +157,17 @@ impl Db {
 
 #[cfg(test)]
 mod test {
-    use super::{Db, DbItem};
+    use super::{Config, Db, DbItem};
     use crate::txs::{JobRunAssignment, JobRunRequest, JobVerification, Tx, TxKind};
     use alloy_rlp::encode;
 
+    fn config_for_dir(directory: &str) -> Config {
+        Config { directory: directory.to_string(), secondary: None }
+    }
+
     #[test]
     fn test_put_get() {
-        let db = Db::new("test-pg-storage", &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
         let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
         db.put(tx.clone()).unwrap();
         let key = Tx::construct_full_key(TxKind::JobRunRequest, tx.hash());
@@ -161,7 +177,7 @@ mod test {
 
     #[test]
     fn test_read_from_end() {
-        let db = Db::new("test-rfs-storage", &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
         let tx1 = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
         let tx2 = Tx::default_with(
             TxKind::JobRunAssignment,
