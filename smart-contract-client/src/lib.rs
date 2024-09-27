@@ -1,3 +1,5 @@
+mod sol;
+
 use alloy_rlp::Decodable;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr};
@@ -9,7 +11,6 @@ use alloy::{
     primitives::Address,
     providers::ProviderBuilder,
     signers::{k256::ecdsa::SigningKey, local::LocalSigner},
-    sol,
     transports::http::reqwest::Url,
 };
 use dotenv::dotenv;
@@ -20,15 +21,7 @@ use openrank_common::{
     db::{self, Db, DbItem},
     txs::{Tx, TxKind},
 };
-use JobManager::{OpenrankTx, Signature};
-
-// Codegen from ABI file to interact with the contract.
-sol!(
-    #[allow(missing_docs)]
-    #[sol(rpc)]
-    JobManager,
-    "./abi/JobManager.json"
-);
+use sol::JobManager::{self, OpenrankTx, Signature};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
