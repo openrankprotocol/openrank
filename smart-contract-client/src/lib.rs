@@ -1,3 +1,4 @@
+use alloy_rlp::Decodable;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr};
 use tracing::info;
@@ -77,40 +78,57 @@ impl JobManagerClient {
         let contract = JobManager::new(self.contract_address, provider);
 
         // check if tx already exists
-        let is_tx_exists = contract.hasTx(tx.hash().0.into()).call().await?._0;
+        let is_tx_exists = match tx.kind() {
+            TxKind::CreateCommitment | TxKind::JobVerification => {
+                contract.hasTx(tx.hash().0.into()).call().await?._0
+            },
+            _ => true,
+        };
         if is_tx_exists {
             return Ok(());
         }
 
         // submit tx
-        let converted_tx = OpenrankTx {
-            nonce: tx.nonce(),
-            from: tx.from().0.into(),
-            to: tx.to().0.into(),
-            kind: tx.kind() as u8,
-            body: tx.body().into(),
-            signature: Signature {
-                s: tx.signature().s.into(),
-                r: tx.signature().r.into(),
-                r_id: tx.signature().r_id(),
-            },
-            sequence_number: 0,
-        };
-
-        let _tx_hash = match tx.kind() {
-            TxKind::JobRunRequest => {
-                contract.sendJobRunRequest(converted_tx).send().await?.watch().await?
-            },
-            TxKind::JobRunAssignment => {
-                contract.submitJobRunAssignment(converted_tx).send().await?.watch().await?
-            },
+        let _result_hash = match tx.kind() {
             TxKind::CreateCommitment => {
-                contract.submitCreateCommitment(converted_tx).send().await?.watch().await?
+                let create_commitment =
+                    openrank_common::txs::CreateCommitment::decode(&mut tx.body().as_slice())?;
+                let job_run_assignment_tx_hash =
+                    create_commitment.job_run_assignment_tx_hash.0.into();
+                let create_commitment_tx_hash = tx.hash().0.into();
+                let compute_root_hash = create_commitment.compute_root_hash.0.into();
+                let sig = Signature {
+                    s: tx.signature().s.into(),
+                    r: tx.signature().r.into(),
+                    r_id: tx.signature().r_id(),
+                };
+                contract
+                    .submitCreateCommitment(
+                        job_run_assignment_tx_hash, create_commitment_tx_hash, compute_root_hash,
+                        sig,
+                    )
+                    .send()
+                    .await?
+                    .watch()
+                    .await?
             },
             TxKind::JobVerification => {
-                contract.submitJobVerification(converted_tx).send().await?.watch().await?
+                let tx_ = OpenrankTx {
+                    nonce: tx.nonce(),
+                    from: tx.from().0.into(),
+                    to: tx.to().0.into(),
+                    kind: tx.kind() as u8,
+                    body: tx.body().into(),
+                    signature: Signature {
+                        s: tx.signature().s.into(),
+                        r: tx.signature().r.into(),
+                        r_id: tx.signature().r_id(),
+                    },
+                    sequence_number: 0,
+                };
+                contract.submitJobVerification(tx_).send().await?.watch().await?
             },
-            _ => unreachable!(),
+            _ => return Ok(()),
         };
 
         Ok(())
@@ -119,19 +137,6 @@ impl JobManagerClient {
     fn read_txs(&self) -> Result<Vec<Tx>> {
         // collect all txs
         let mut txs = Vec::new();
-        let mut job_run_request_txs: Vec<Tx> = self
-            .db
-            .read_from_end(TxKind::JobRunRequest.into(), None)
-            .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut job_run_request_txs);
-        drop(job_run_request_txs);
-
-        let mut job_run_assignment_txs: Vec<Tx> = self
-            .db
-            .read_from_end(TxKind::JobRunAssignment.into(), None)
-            .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut job_run_assignment_txs);
-        drop(job_run_assignment_txs);
 
         let mut create_commitment_txs: Vec<Tx> = self
             .db
@@ -196,7 +201,7 @@ mod tests {
             .on_http(rpc_url.clone());
 
         // Deploy the `JobManager` contract.
-        let contract = JobManager::deploy(&provider, vec![], vec![], vec![]).await?;
+        let contract = JobManager::deploy(&provider, vec![], vec![]).await?;
 
         // Create a contract instance.
         let contract_address = contract.address().clone();
