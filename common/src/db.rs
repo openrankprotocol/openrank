@@ -3,7 +3,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{to_vec, Error as SerdeError};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::usize;
 
 #[derive(Debug)]
 /// Errors that can arise while using database.
@@ -47,8 +46,8 @@ pub trait DbItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    directory: String,
-    secondary: Option<String>,
+    pub directory: String,
+    pub secondary: Option<String>,
 }
 
 impl Config {

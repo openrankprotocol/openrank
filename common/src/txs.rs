@@ -222,6 +222,22 @@ impl Tx {
     pub fn sequence_number(&self) -> u64 {
         self.sequence_number.unwrap_or_default()
     }
+
+    pub fn nonce(&self) -> u64 {
+        self.nonce
+    }
+
+    pub fn from(&self) -> Address {
+        self.from.clone()
+    }
+
+    pub fn to(&self) -> Address {
+        self.to.clone()
+    }
+
+    pub fn signature(&self) -> Signature {
+        self.signature.clone()
+    }
 }
 
 impl DbItem for Tx {
@@ -355,6 +371,10 @@ pub struct Signature {
 impl Signature {
     pub fn new(s: [u8; 32], r: [u8; 32], r_id: u8) -> Self {
         Self { s, r, r_id }
+    }
+
+    pub fn r_id(&self) -> u8 {
+        self.r_id
     }
 }
 
@@ -728,7 +748,7 @@ mod test {
             TxKind::JobRunRequest,
             encode(super::JobRunRequest::default()),
         );
-        let _ = tx.sign(&sk).unwrap();
+        tx.sign(&sk).unwrap();
 
         let tx_hash = tx.hash();
         assert_eq!(
