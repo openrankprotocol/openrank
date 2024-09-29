@@ -144,9 +144,6 @@ impl JobManagerClient {
         txs.append(&mut job_verification_txs);
         drop(job_verification_txs);
 
-        // sort txs by sequence_number
-        txs.sort_unstable_by_key(|tx| tx.sequence_number());
-
         Ok(txs)
     }
 
