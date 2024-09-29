@@ -1,9 +1,8 @@
+use crate::runner::ComputeRunnerError;
 use k256::ecdsa::Error as EcdsaError;
 use openrank_common::db::DbError;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::runner::JobRunnerError;
 
 #[derive(Debug)]
 /// Errors that can arise while using the computer node.
@@ -16,8 +15,8 @@ pub enum ComputeNodeError {
     DomainNotFound(String),
     /// The p2p error. This can arise when sending or receiving messages over the p2p network.
     P2PError(String),
-    /// The compute internal error. This can arise when there is an internal error in the job runner.
-    ComputeInternalError(JobRunnerError),
+    /// The compute internal error. This can arise when there is an internal error in the compute runner.
+    ComputeInternalError(ComputeRunnerError),
     /// The signature error. This can arise when verifying a transaction signature.
     SignatureError(EcdsaError),
     /// The invalid tx kind error.
@@ -37,5 +36,11 @@ impl Display for ComputeNodeError {
             Self::SignatureError(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
         }
+    }
+}
+
+impl Into<ComputeNodeError> for ComputeRunnerError {
+    fn into(self) -> ComputeNodeError {
+        ComputeNodeError::ComputeInternalError(self)
     }
 }

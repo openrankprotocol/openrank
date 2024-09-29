@@ -7,12 +7,15 @@ use openrank_common::{
     broadcast_event, build_node, config,
     db::{self, Db, DbError, DbItem},
     net,
-    result::JobResult,
+    result::ComputeResult,
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        Address, CreateCommitment, CreateScores, JobRunAssignment, JobRunRequest, JobVerification,
-        Tx, TxKind,
+        compute::{
+            ComputeAssignment, ComputeCommitment, ComputeRequest, ComputeScores,
+            ComputeVerification,
+        },
+        Address, Tx, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -39,7 +42,7 @@ pub struct Whitelist {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// The configuration for the Block Builder.
 pub struct Config {
-    /// The list of domains to process job run requests for.
+    /// The list of domains to process ComputeRequest TXs for.
     pub domains: Vec<Domain>,
     /// The whitelist for the Block Builder.
     pub whitelist: Whitelist,
@@ -47,7 +50,7 @@ pub struct Config {
     pub p2p: net::Config,
 }
 
-/// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the JobRunner.
+/// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the ComputeRunner.
 pub struct BlockBuilderNode {
     swarm: Swarm<MyBehaviour>,
     config: Config,
@@ -60,7 +63,7 @@ impl BlockBuilderNode {
     /// - Loads the config from config.toml.
     /// - Initializes the Swarm.
     /// - Initializes the DB.
-    /// - Initializes the JobRunner.
+    /// - Initializes the ComputeRunner.
     /// - Initializes the Secret Key.
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
@@ -72,7 +75,7 @@ impl BlockBuilderNode {
 
         let config_loader = config::Loader::new("openrank-block-builder")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
+        let db = Db::new(&config.database, &[&Tx::get_cf(), &ComputeResult::get_cf()])?;
 
         let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -138,7 +141,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::JobRunRequest {
+                            if tx.kind() != TxKind::ComputeRequest {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -146,23 +149,25 @@ impl BlockBuilderNode {
                             assert!(self.config.whitelist.users.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
-                            let job_run_request = JobRunRequest::decode(&mut tx.body().as_slice())
+                            let compute_request = ComputeRequest::decode(&mut tx.body().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            assert_eq!(&job_run_request.domain_id, domain_id);
+                            assert_eq!(&compute_request.domain_id, domain_id);
 
                             let assignment_topic = Topic::DomainAssignent(domain_id.clone());
                             let computer = self.config.whitelist.computer[0].clone();
                             let verifier = self.config.whitelist.verifier[0].clone();
-                            let job_assignment =
-                                JobRunAssignment::new(tx.hash(), computer, verifier);
-                            let mut tx =
-                                Tx::default_with(TxKind::JobRunAssignment, encode(job_assignment));
+                            let compute_assignment =
+                                ComputeAssignment::new(tx.hash(), computer, verifier);
+                            let mut tx = Tx::default_with(
+                                TxKind::ComputeAssignment,
+                                encode(compute_assignment),
+                            );
                             tx.sign(&self.secret_key)
                                 .map_err(BlockBuilderNodeError::SignatureError)?;
                             self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
                             broadcast_event(&mut self.swarm, tx.clone(), assignment_topic)
                                 .map_err(|e| BlockBuilderNodeError::P2PError(e.to_string()))?;
-                            // After broadcasting JobAssignment, save to db
+                            // After broadcasting ComputeAssignment, save to db
                             self.db.put(tx).map_err(BlockBuilderNodeError::DbError)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -177,7 +182,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::CreateCommitment {
+                            if tx.kind() != TxKind::ComputeCommitment {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -186,34 +191,36 @@ impl BlockBuilderNode {
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
 
-                            let commitment = CreateCommitment::decode(&mut tx.body().as_slice())
+                            let commitment = ComputeCommitment::decode(&mut tx.body().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
-                                TxKind::JobRunAssignment,
-                                commitment.job_run_assignment_tx_hash,
+                                TxKind::ComputeAssignment,
+                                commitment.compute_assignment_tx_hash,
                             );
                             let assignment_tx: Tx = self
                                 .db
                                 .get(assignment_tx_key)
                                 .map_err(BlockBuilderNodeError::DbError)?;
                             let assignment_body =
-                                JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+                                ComputeAssignment::decode(&mut assignment_tx.body().as_slice())
                                     .map_err(BlockBuilderNodeError::DecodeError)?;
                             let request_tx_key = Tx::construct_full_key(
-                                TxKind::JobRunRequest,
-                                assignment_body.job_run_request_tx_hash.clone(),
+                                TxKind::ComputeRequest,
+                                assignment_body.compute_request_tx_hash.clone(),
                             );
                             let request: Tx = self
                                 .db
                                 .get(request_tx_key)
                                 .map_err(BlockBuilderNodeError::DbError)?;
-                            let job_result_key = JobResult::construct_full_key(
-                                assignment_body.job_run_request_tx_hash,
+                            let compute_result_key = ComputeResult::construct_full_key(
+                                assignment_body.compute_request_tx_hash,
                             );
-                            if let Err(DbError::NotFound) = self.db.get::<JobResult>(job_result_key)
+                            if let Err(DbError::NotFound) =
+                                self.db.get::<ComputeResult>(compute_result_key)
                             {
-                                let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
+                                let result =
+                                    ComputeResult::new(tx.hash(), Vec::new(), request.hash());
                                 self.db.put(result).map_err(BlockBuilderNodeError::DbError)?;
                             }
                             info!(
@@ -229,7 +236,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::CreateScores {
+                            if tx.kind() != TxKind::ComputeScores {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -237,7 +244,7 @@ impl BlockBuilderNode {
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
-                            CreateScores::decode(&mut tx.body().as_slice())
+                            ComputeScores::decode(&mut tx.body().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -252,7 +259,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::JobVerification {
+                            if tx.kind() != TxKind::ComputeVerification {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -260,30 +267,30 @@ impl BlockBuilderNode {
                             assert!(self.config.whitelist.verifier.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
-                            let job_verification =
-                                JobVerification::decode(&mut tx.body().as_slice())
+                            let compute_verification =
+                                ComputeVerification::decode(&mut tx.body().as_slice())
                                     .map_err(BlockBuilderNodeError::DecodeError)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
-                                TxKind::JobRunAssignment,
-                                job_verification.job_run_assignment_tx_hash,
+                                TxKind::ComputeAssignment,
+                                compute_verification.compute_assignment_tx_hash,
                             );
                             let assignment_tx: Tx = self
                                 .db
                                 .get(assignment_tx_key)
                                 .map_err(BlockBuilderNodeError::DbError)?;
                             let assignment_body =
-                                JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
+                                ComputeAssignment::decode(&mut assignment_tx.body().as_slice())
                                     .map_err(BlockBuilderNodeError::DecodeError)?;
-                            let job_result_key = JobResult::construct_full_key(
-                                assignment_body.job_run_request_tx_hash,
+                            let compute_result_key = ComputeResult::construct_full_key(
+                                assignment_body.compute_request_tx_hash,
                             );
-                            let mut job_result: JobResult = self
+                            let mut compute_result: ComputeResult = self
                                 .db
-                                .get(job_result_key)
+                                .get(compute_result_key)
                                 .map_err(BlockBuilderNodeError::DbError)?;
-                            job_result.job_verification_tx_hashes.push(tx.hash());
-                            self.db.put(job_result).map_err(BlockBuilderNodeError::DbError)?;
+                            compute_result.compute_verification_tx_hashes.push(tx.hash());
+                            self.db.put(compute_result).map_err(BlockBuilderNodeError::DbError)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),

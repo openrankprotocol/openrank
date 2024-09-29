@@ -15,7 +15,7 @@ TX_HASH="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk job-run-request "./con
 echo $TX_HASH
 wait
 
-# Sleep 1s until the job is finished
+# Sleep 1s until the compute is finished
 sleep 1s
 wait
 

@@ -10,12 +10,13 @@ use openrank_common::{
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        Address, CreateCommitment, CreateScores, JobRunAssignment, JobVerification, SeedUpdate,
-        TrustUpdate, Tx, TxKind,
+        compute::{ComputeAssignment, ComputeCommitment, ComputeScores, ComputeVerification},
+        trust::{SeedUpdate, TrustUpdate},
+        Address, Tx, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
-use runner::VerificationJobRunner;
+use runner::VerificationRunner;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::select;
@@ -38,7 +39,7 @@ pub struct Whitelist {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// The configuration for the Verifier.
 pub struct Config {
-    /// The list of domains to perform verification jobs for.
+    /// The list of domains to perform verification for.
     pub domains: Vec<Domain>,
     /// The whitelist for the Verifier.
     pub whitelist: Whitelist,
@@ -46,12 +47,12 @@ pub struct Config {
     pub p2p: net::Config,
 }
 
-/// The Verifier node. It contains the Swarm, the Config, the DB, the JobRunner, and the SecretKey.
+/// The Verifier node. It contains the Swarm, the Config, the DB, the ComputeRunner, and the SecretKey.
 pub struct VerifierNode {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
-    job_runner: VerificationJobRunner,
+    verification_runner: VerificationRunner,
     secret_key: SigningKey,
 }
 
@@ -60,7 +61,7 @@ impl VerifierNode {
     /// - Loads the config from config.toml.
     /// - Initializes the Swarm.
     /// - Initializes the DB.
-    /// - Initializes the JobRunner.
+    /// - Initializes the ComputeRunner.
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -73,12 +74,12 @@ impl VerifierNode {
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new(&config.database, &[&Tx::get_cf()])?;
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
-        let job_runner = VerificationJobRunner::new(domain_hashes);
+        let verification_runner = VerificationRunner::new(domain_hashes);
 
         let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, db, job_runner, secret_key })
+        Ok(Self { swarm, config, db, verification_runner, secret_key })
     }
 
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
@@ -112,9 +113,9 @@ impl VerifierNode {
                                 domains.iter().find(|x| &x.trust_namespace() == namespace).ok_or(
                                     VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
                                 )?;
-                            self.job_runner
+                            self.verification_runner
                                 .update_trust(domain.clone(), trust_update.entries.clone())
-                                .map_err(VerifierNodeError::ComputeInternalError)?;
+                                .map_err(VerifierNodeError::InternalError)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -142,9 +143,9 @@ impl VerifierNode {
                                 domains.iter().find(|x| &x.trust_namespace() == namespace).ok_or(
                                     VerifierNodeError::DomainNotFound(namespace.clone().to_hex()),
                                 )?;
-                            self.job_runner
+                            self.verification_runner
                                 .update_seed(domain.clone(), seed_update.entries.clone())
-                                .map_err(VerifierNodeError::ComputeInternalError)?;
+                                .map_err(VerifierNodeError::InternalError)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -158,40 +159,40 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::JobRunAssignment {
+                            if tx.kind() != TxKind::ComputeAssignment {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
                             assert!(self.config.whitelist.block_builder.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
-                            // Not checking if this node is assigned for the job
-                            let job_run_assignment =
-                                JobRunAssignment::decode(&mut tx.body().as_slice())
+                            // Not checking if this node is assigned for the compute
+                            let compute_assignment =
+                                ComputeAssignment::decode(&mut tx.body().as_slice())
                                     .map_err(VerifierNodeError::DecodeError)?;
                             let computer_address = address_from_sk(&self.secret_key);
-                            assert_eq!(computer_address, job_run_assignment.assigned_verifier_node);
+                            assert_eq!(computer_address, compute_assignment.assigned_verifier_node);
                             assert!(self
                                 .config
                                 .whitelist
                                 .computer
-                                .contains(&job_run_assignment.assigned_compute_node));
+                                .contains(&compute_assignment.assigned_compute_node));
 
                             let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                                 VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                             )?;
-                            self.job_runner
+                            self.verification_runner
                                 .update_assigment(domain.clone(), tx.hash())
-                                .map_err(VerifierNodeError::ComputeInternalError)?;
+                                .map_err(VerifierNodeError::InternalError)?;
                             let res = self
-                                .job_runner
-                                .check_finished_jobs(domain.clone())
-                                .map_err(VerifierNodeError::ComputeInternalError)?;
+                                .verification_runner
+                                .check_finished_assignments(domain.clone())
+                                .map_err(VerifierNodeError::InternalError)?;
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
-                                    JobVerification::new(tx_hash, verification_res);
+                                    ComputeVerification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
-                                    TxKind::JobVerification,
+                                    TxKind::ComputeVerification,
                                     encode(verification_res),
                                 );
                                 tx.sign(&self.secret_key)
@@ -216,31 +217,31 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::CreateScores {
+                            if tx.kind() != TxKind::ComputeScores {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
-                            let create_scores = CreateScores::decode(&mut tx.body().as_slice())
+                            let create_scores = ComputeScores::decode(&mut tx.body().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
 
                             let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                                 VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                             )?;
-                            self.job_runner
+                            self.verification_runner
                                 .update_scores(domain.clone(), tx.hash(), create_scores.clone())
-                                .map_err(VerifierNodeError::ComputeInternalError)?;
+                                .map_err(VerifierNodeError::InternalError)?;
                             let res = self
-                                .job_runner
-                                .check_finished_jobs(domain.clone())
-                                .map_err(VerifierNodeError::ComputeInternalError)?;
+                                .verification_runner
+                                .check_finished_assignments(domain.clone())
+                                .map_err(VerifierNodeError::InternalError)?;
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
-                                    JobVerification::new(tx_hash, verification_res);
+                                    ComputeVerification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
-                                    TxKind::JobVerification,
+                                    TxKind::ComputeVerification,
                                     encode(verification_res),
                                 );
                                 tx.sign(&self.secret_key)
@@ -265,7 +266,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::CreateCommitment {
+                            if tx.kind() != TxKind::ComputeCommitment {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
@@ -273,22 +274,22 @@ impl VerifierNode {
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
                             let create_commitment =
-                                CreateCommitment::decode(&mut tx.body().as_slice())
+                                ComputeCommitment::decode(&mut tx.body().as_slice())
                                     .map_err(VerifierNodeError::DecodeError)?;
 
                             let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                                 VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                             )?;
-                            self.job_runner.update_commitment(create_commitment.clone());
+                            self.verification_runner.update_commitment(create_commitment.clone());
                             let res = self
-                                .job_runner
-                                .check_finished_jobs(domain.clone())
-                                .map_err(VerifierNodeError::ComputeInternalError)?;
+                                .verification_runner
+                                .check_finished_assignments(domain.clone())
+                                .map_err(VerifierNodeError::InternalError)?;
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
-                                    JobVerification::new(tx_hash, verification_res);
+                                    ComputeVerification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
-                                    TxKind::JobVerification,
+                                    TxKind::ComputeVerification,
                                     encode(verification_res),
                                 );
                                 tx.sign(&self.secret_key)
@@ -314,11 +315,11 @@ impl VerifierNode {
         Ok(())
     }
 
-    /// Recover JobRunner state from DB.
+    /// Recover VerificationRunner state from DB.
     ///
-    /// - Loads all the TXs from the DB.
-    /// - Takes TrustUpdate and SeedUpdate transactions.
-    /// - Updates JobRunner using functions update_trust, update_seed.
+    /// - Load all the TXs from the DB
+    /// - Just take TrustUpdate and SeedUpdate transactions
+    /// - Update VerificationRunner using functions update_trust, update_seed
     pub fn node_recovery(&mut self) -> Result<(), VerifierNodeError> {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
@@ -339,7 +340,7 @@ impl VerifierNode {
         // sort txs by sequence_number
         txs.sort_unstable_by_key(|tx| tx.sequence_number());
 
-        // update job runner
+        // update verification runner
         for tx in txs {
             match tx.kind() {
                 TxKind::TrustUpdate => {
@@ -354,9 +355,9 @@ impl VerifierNode {
                         .ok_or(VerifierNodeError::DomainNotFound(
                             namespace.clone().to_hex(),
                         ))?;
-                    self.job_runner
+                    self.verification_runner
                         .update_trust(domain.clone(), trust_update.entries.clone())
-                        .map_err(VerifierNodeError::ComputeInternalError)?;
+                        .map_err(|e| VerifierNodeError::InternalError(e))?;
                 },
                 TxKind::SeedUpdate => {
                     let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
@@ -370,9 +371,9 @@ impl VerifierNode {
                         .ok_or(VerifierNodeError::DomainNotFound(
                             namespace.clone().to_hex(),
                         ))?;
-                    self.job_runner
+                    self.verification_runner
                         .update_seed(domain.clone(), seed_update.entries.clone())
-                        .map_err(VerifierNodeError::ComputeInternalError)?;
+                        .map_err(|e| VerifierNodeError::InternalError(e))?;
                 },
                 _ => (),
             }

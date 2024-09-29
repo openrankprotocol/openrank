@@ -131,7 +131,10 @@ impl Db {
 #[cfg(test)]
 mod test {
     use super::{Config, Db, DbItem};
-    use crate::txs::{JobRunAssignment, JobRunRequest, JobVerification, Tx, TxKind};
+    use crate::txs::{
+        compute::{ComputeAssignment, ComputeRequest, ComputeVerification},
+        Tx, TxKind,
+    };
     use alloy_rlp::encode;
 
     fn config_for_dir(directory: &str) -> Config {
@@ -141,9 +144,9 @@ mod test {
     #[test]
     fn test_put_get() {
         let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
+        let tx = Tx::default_with(TxKind::ComputeRequest, encode(ComputeRequest::default()));
         db.put(tx.clone()).unwrap();
-        let key = Tx::construct_full_key(TxKind::JobRunRequest, tx.hash());
+        let key = Tx::construct_full_key(TxKind::ComputeRequest, tx.hash());
         let item = db.get::<Tx>(key).unwrap();
         assert_eq!(tx, item);
     }
@@ -151,20 +154,23 @@ mod test {
     #[test]
     fn test_read_from_end() {
         let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx1 = Tx::default_with(TxKind::JobRunRequest, encode(JobRunRequest::default()));
+        let tx1 = Tx::default_with(TxKind::ComputeRequest, encode(ComputeRequest::default()));
         let tx2 = Tx::default_with(
-            TxKind::JobRunAssignment,
-            encode(JobRunAssignment::default()),
+            TxKind::ComputeAssignment,
+            encode(ComputeAssignment::default()),
         );
-        let tx3 = Tx::default_with(TxKind::JobVerification, encode(JobVerification::default()));
+        let tx3 = Tx::default_with(
+            TxKind::ComputeVerification,
+            encode(ComputeVerification::default()),
+        );
         db.put(tx1.clone()).unwrap();
         db.put(tx2.clone()).unwrap();
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>(TxKind::JobRunRequest.into(), Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>(TxKind::JobRunAssignment.into(), Some(1)).unwrap();
-        let items3 = db.read_from_end::<Tx>(TxKind::JobVerification.into(), Some(1)).unwrap();
+        let items1 = db.read_from_end::<Tx>(TxKind::ComputeRequest.into(), Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(TxKind::ComputeAssignment.into(), Some(1)).unwrap();
+        let items3 = db.read_from_end::<Tx>(TxKind::ComputeVerification.into(), Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);

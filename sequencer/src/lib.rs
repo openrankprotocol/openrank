@@ -6,12 +6,13 @@ use openrank_common::{
     build_node, config,
     db::{self, Db, DbItem},
     net,
-    result::{GetResultsQuery, JobResult},
+    result::{ComputeResult, GetResultsQuery},
     topics::Topic,
     tx_event::TxEvent,
     txs::{
-        Address, CreateCommitment, CreateScores, JobRunRequest, JobVerification, ScoreEntry,
-        SeedUpdate, TrustUpdate, Tx, TxKind,
+        compute::{ComputeCommitment, ComputeRequest, ComputeScores, ComputeVerification},
+        trust::{ScoreEntry, SeedUpdate, TrustUpdate},
+        Address, Tx, TxKind,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -131,9 +132,9 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    /// Handles incoming `JobRunRequest` transactions from the network,
+    /// Handles incoming `ComputeRequest` transactions from the network,
     /// and forward them to the network node for processing
-    async fn job_run_request(&self, tx: Value) -> Result<Value, RPCError> {
+    async fn compute_request(&self, tx: Value) -> Result<Value, RPCError> {
         let tx_str = tx.as_str().ok_or(RPCError::ParseError(
             "Failed to parse TX data as string".to_string(),
         ))?;
@@ -146,7 +147,7 @@ impl Sequencer {
             error!("{}", e);
             RPCError::ParseError("Failed to parse TX data".to_string())
         })?;
-        if tx.kind() != TxKind::JobRunRequest {
+        if tx.kind() != TxKind::ComputeRequest {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -155,7 +156,7 @@ impl Sequencer {
         if !self.whitelisted_users.contains(&address) {
             return Err(RPCError::InvalidRequest("Invalid tx signature"));
         }
-        let body = JobRunRequest::decode(&mut tx.body().as_slice())
+        let body = ComputeRequest::decode(&mut tx.body().as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 
         // Build Tx Event
@@ -171,7 +172,7 @@ impl Sequencer {
         Ok(tx_event_value)
     }
 
-    /// Gets the results(EigenTrust scores) of the `JobRunRequest` with the job run transaction hash,
+    /// Gets the results(EigenTrust scores) of the `ComputeRequest` with the ComputeRequest TX hash,
     /// along with start and size parameters.
     async fn get_results(&self, get_results_query: Value) -> Result<Value, RPCError> {
         self.db.refresh().map_err(|e| {
@@ -181,47 +182,47 @@ impl Sequencer {
         let query: GetResultsQuery = serde_json::from_value(get_results_query)
             .map_err(|e| RPCError::ParseError(e.to_string()))?;
 
-        let key = JobResult::construct_full_key(query.job_run_request_tx_hash);
-        let result = self.db.get::<JobResult>(key).map_err(|e| {
+        let key = ComputeResult::construct_full_key(query.compute_request_tx_hash);
+        let result = self.db.get::<ComputeResult>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
         let key =
-            Tx::construct_full_key(TxKind::CreateCommitment, result.create_commitment_tx_hash);
+            Tx::construct_full_key(TxKind::ComputeCommitment, result.compute_commitment_tx_hash);
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let commitment = CreateCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
+        let commitment = ComputeCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let create_scores_tx: Vec<Tx> = {
-            let mut create_scores_tx = Vec::new();
+        let compute_scores_tx: Vec<Tx> = {
+            let mut compute_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
-                let key = Tx::construct_full_key(TxKind::CreateScores, tx_hash);
+                let key = Tx::construct_full_key(TxKind::ComputeScores, tx_hash);
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
                 })?;
-                create_scores_tx.push(tx);
+                compute_scores_tx.push(tx);
             }
-            create_scores_tx
+            compute_scores_tx
         };
-        let create_scores: Vec<CreateScores> = {
-            let mut create_scores = Vec::new();
-            for tx in create_scores_tx.into_iter() {
-                create_scores.push(CreateScores::decode(&mut tx.body().as_slice()).map_err(
+        let compute_scores: Vec<ComputeScores> = {
+            let mut compute_scores = Vec::new();
+            for tx in compute_scores_tx.into_iter() {
+                compute_scores.push(ComputeScores::decode(&mut tx.body().as_slice()).map_err(
                     |e| {
                         error!("{}", e);
                         RPCError::InternalError
                     },
                 )?);
             }
-            create_scores
+            compute_scores
         };
         let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().flat_map(|x| x.entries).collect();
+            compute_scores.into_iter().map(|x| x.entries).flatten().collect();
         score_entries.sort_by(|a, b| match a.value.partial_cmp(&b.value) {
             Some(ordering) => ordering,
             None => {
@@ -245,8 +246,8 @@ impl Sequencer {
 
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
-            for tx_hash in result.job_verification_tx_hashes.iter() {
-                let key = Tx::construct_full_key(TxKind::JobVerification, tx_hash.clone());
+            for tx_hash in result.compute_verification_tx_hashes.iter() {
+                let key = Tx::construct_full_key(TxKind::ComputeVerification, tx_hash.clone());
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
@@ -255,13 +256,14 @@ impl Sequencer {
             }
             verification_resutls_tx
         };
-        let verification_results: Vec<JobVerification> = {
+        let verification_results: Vec<ComputeVerification> = {
             let mut verification_results = Vec::new();
             for tx in verificarion_results_tx.into_iter() {
-                let result = JobVerification::decode(&mut tx.body().as_slice()).map_err(|e| {
-                    error!("{}", e);
-                    RPCError::InternalError
-                })?;
+                let result =
+                    ComputeVerification::decode(&mut tx.body().as_slice()).map_err(|e| {
+                        error!("{}", e);
+                        RPCError::InternalError
+                    })?;
                 verification_results.push(result);
             }
             verification_results
@@ -295,7 +297,7 @@ impl SequencerNode {
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         let config_loader = config::Loader::new("openrank-sequencer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
+        let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &ComputeResult::get_cf()])?;
         let (sender, receiver) = mpsc::channel(100);
         let sequencer = Arc::new(Sequencer::new(
             sender.clone(),

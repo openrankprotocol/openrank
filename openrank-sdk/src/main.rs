@@ -12,7 +12,9 @@ use openrank_common::{
     topics::Domain,
     tx_event::TxEvent,
     txs::{
-        Address, JobRunRequest, ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate, Tx, TxHash, TxKind,
+        compute::ComputeRequest,
+        trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
+        Address, Tx, TxHash, TxKind,
     },
 };
 use rand::{thread_rng, Rng};
@@ -36,11 +38,11 @@ enum Method {
     TrustUpdate { path: String, config_path: String, output_path: Option<String> },
     /// Seed update. The method takes a list of seed entries and updates the seed vector.
     SeedUpdate { path: String, config_path: String, output_path: Option<String> },
-    /// The method creates a job run request transaction.
-    JobRunRequest { path: String, output_path: Option<String> },
-    /// The method takes a job run request transaction hash and returns the computed results.
+    /// The method creates a ComputeRequest TX.
+    ComputeRequest { path: String, output_path: Option<String> },
+    /// The method takes a ComputeRequest TX hash and returns the computed results.
     GetResults { request_id: String, config_path: String, output_path: Option<String> },
-    /// The method takes a job run request transaction hash and returns the computed results,
+    /// The method takes a ComputeRequest TX hash and returns the computed results,
     /// and also checks the integrity/correctness of the results.
     GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
@@ -75,20 +77,20 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct JobRunRequestResult {
-    job_run_tx_hash: TxHash,
+struct ComputeRequestResult {
+    compute_tx_hash: TxHash,
     tx_event: TxEvent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct JobRunResults {
+struct ComputeResults {
     votes: Vec<bool>,
     scores: Vec<ScoreEntry>,
 }
 
-impl JobRunRequestResult {
-    pub fn new(job_run_tx_hash: TxHash, tx_event: TxEvent) -> Self {
-        Self { job_run_tx_hash, tx_event }
+impl ComputeRequestResult {
+    pub fn new(compute_tx_hash: TxHash, tx_event: TxEvent) -> Self {
+        Self { compute_tx_hash, tx_event }
     }
 }
 
@@ -177,9 +179,9 @@ async fn update_seed(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Sends a `JobRunRequest` transaction to the Sequencer.
-async fn job_run_request(
+async fn compute_request(
     sk: SigningKey, path: &str,
-) -> Result<JobRunRequestResult, Box<dyn Error>> {
+) -> Result<ComputeRequestResult, Box<dyn Error>> {
     let config = read_config(path)?;
     // Creates a new client
     let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
@@ -187,16 +189,16 @@ async fn job_run_request(
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(JobRunRequest::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(TxKind::JobRunRequest, data);
+    let data = encode(ComputeRequest::new(domain_id, 0, hash));
+    let mut tx = Tx::default_with(TxKind::ComputeRequest, data);
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
 
-    let result: Value = client.call("Sequencer.job_run_request", hex::encode(encode(tx))).await?;
+    let result: Value = client.call("Sequencer.compute_request", hex::encode(encode(tx))).await?;
     let tx_event: TxEvent = serde_json::from_value(result)?;
 
-    let job_run_result = JobRunRequestResult::new(tx_hash, tx_event);
-    Ok(job_run_result)
+    let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
+    Ok(compute_result)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
@@ -209,9 +211,9 @@ async fn get_results(
     let client =
         Client::builder(config.sequencer.endpoint.as_str())?.set_timeout(900000).build().await?;
     let tx_hash_bytes = hex::decode(arg)?;
-    let job_run_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
     let results_query =
-        GetResultsQuery::new(job_run_request_tx_hash, 0, config.sequencer.result_size);
+        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
     let result: Value = client.call("Sequencer.get_results", results_query).await?;
     let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
     Ok(scores)
@@ -291,10 +293,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::JobRunRequest { path, output_path } => {
+        Method::ComputeRequest { path, output_path } => {
             let secret_key = get_secret_key()?;
-            let res = job_run_request(secret_key, path.as_str()).await?;
-            let hex_encoded_tx_hash = hex::encode(res.job_run_tx_hash.0);
+            let res = compute_request(secret_key, path.as_str()).await?;
+            let hex_encoded_tx_hash = hex::encode(res.compute_tx_hash.0);
             println!("{}", hex_encoded_tx_hash);
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;

@@ -3,7 +3,7 @@ use openrank_common::db::DbError;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use crate::runner::JobRunnerError;
+use crate::runner::VerificationRunnerError;
 
 #[derive(Debug)]
 /// Errors that can arise while using the verifier node.
@@ -16,8 +16,8 @@ pub enum VerifierNodeError {
     DomainNotFound(String),
     /// The p2p error. This can arise when sending or receiving messages over the p2p network.
     P2PError(String),
-    /// The compute internal error. This can arise when there is an internal error in the job runner.
-    ComputeInternalError(JobRunnerError),
+    /// The compute internal error. This can arise when there is an internal error in the verification runner.
+    InternalError(VerificationRunnerError),
     /// The signature error. This can arise when verifying a transaction signature.
     SignatureError(EcdsaError),
     /// The invalid tx kind error.
@@ -33,9 +33,15 @@ impl Display for VerifierNodeError {
             Self::DbError(err) => err.fmt(f),
             Self::DomainNotFound(domain) => write!(f, "Domain not found: {}", domain),
             Self::P2PError(err) => write!(f, "p2p error: {}", err),
-            Self::ComputeInternalError(err) => write!(f, "internal error: {}", err),
+            Self::InternalError(err) => write!(f, "internal error: {}", err),
             Self::SignatureError(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
         }
+    }
+}
+
+impl Into<VerifierNodeError> for VerificationRunnerError {
+    fn into(self) -> VerifierNodeError {
+        VerifierNodeError::InternalError(self)
     }
 }

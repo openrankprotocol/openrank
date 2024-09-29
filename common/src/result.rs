@@ -4,34 +4,38 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetResultsQuery {
-    pub job_run_request_tx_hash: TxHash,
+    pub compute_request_tx_hash: TxHash,
     pub start: u32,
     pub size: u32,
 }
 
 impl GetResultsQuery {
-    pub fn new(job_run_request_tx_hash: TxHash, start: u32, size: u32) -> Self {
-        Self { job_run_request_tx_hash, start, size }
+    pub fn new(compute_request_tx_hash: TxHash, start: u32, size: u32) -> Self {
+        Self { compute_request_tx_hash, start, size }
     }
 }
 
-/// Combination of several tx hashes representing the result of a job run by `Computer`.
+/// Combination of several tx hashes representing the result of a compute run by `Computer`.
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
-pub struct JobResult {
-    /// Hash of the create commitment transaction.
-    pub create_commitment_tx_hash: TxHash,
-    /// Hashes of the job verification transactions.
-    pub job_verification_tx_hashes: Vec<TxHash>,
-    /// Hash of the original job run request transaction.
-    job_run_request_tx_hash: TxHash,
+pub struct ComputeResult {
+    /// Hash of the ComputeCommitment TX.
+    pub compute_commitment_tx_hash: TxHash,
+    /// Hashes of the ComputeVerification TXs.
+    pub compute_verification_tx_hashes: Vec<TxHash>,
+    /// Hash of the original ComputeRequest TX.
+    compute_request_tx_hash: TxHash,
 }
 
-impl JobResult {
+impl ComputeResult {
     pub fn new(
-        create_commitment_tx_hash: TxHash, job_verification_tx_hashes: Vec<TxHash>,
-        job_run_request_tx_hash: TxHash,
+        compute_commitment_tx_hash: TxHash, compute_verification_tx_hashes: Vec<TxHash>,
+        compute_request_tx_hash: TxHash,
     ) -> Self {
-        Self { create_commitment_tx_hash, job_verification_tx_hashes, job_run_request_tx_hash }
+        Self {
+            compute_commitment_tx_hash,
+            compute_verification_tx_hashes,
+            compute_request_tx_hash,
+        }
     }
 
     /// Constructs the full key for the given tx hash.
@@ -42,9 +46,9 @@ impl JobResult {
     }
 }
 
-impl DbItem for JobResult {
+impl DbItem for ComputeResult {
     fn get_key(&self) -> Vec<u8> {
-        self.job_run_request_tx_hash.0.to_vec()
+        self.compute_request_tx_hash.0.to_vec()
     }
 
     fn get_cf() -> String {
