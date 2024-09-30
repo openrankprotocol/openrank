@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use openrank_block_builder::{self, BlockBuilderNode};
 use openrank_sequencer::{self, SequencerNode};
-use openrank_smart_contract_client::JobManagerClient;
+use openrank_smart_contract_client::ComputeManagerClient;
 use std::error::Error;
 
 #[derive(Parser)]
@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match cli.command {
         Some(Commands::PostOnChain) => {
-            let smc = JobManagerClient::init()?;
+            let smc = ComputeManagerClient::init()?;
             let res = smc.run().await;
             if let Err(e) = res {
                 eprintln!("{}", e);

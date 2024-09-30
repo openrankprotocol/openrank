@@ -40,8 +40,8 @@ impl Display for VerifierNodeError {
     }
 }
 
-impl Into<VerifierNodeError> for VerificationRunnerError {
-    fn into(self) -> VerifierNodeError {
-        VerifierNodeError::InternalError(self)
+impl From<VerificationRunnerError> for VerifierNodeError {
+    fn from(val: VerificationRunnerError) -> Self {
+        VerifierNodeError::InternalError(val)
     }
 }

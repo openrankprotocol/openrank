@@ -65,18 +65,18 @@ impl TxKind {
     }
 }
 
-impl Into<String> for TxKind {
-    fn into(self) -> String {
-        match self {
-            Self::TrustUpdate => "trust_update".to_string(),
-            Self::SeedUpdate => "seed_update".to_string(),
-            Self::ComputeRequest => "compute_request".to_string(),
-            Self::ComputeAssignment => "compute_assignment".to_string(),
-            Self::ComputeScores => "compute_scores".to_string(),
-            Self::ComputeCommitment => "compute_commitment".to_string(),
-            Self::ComputeVerification => "compute_verification".to_string(),
-            Self::ProposedBlock => "proposed_block".to_string(),
-            Self::FinalisedBlock => "finalised_block".to_string(),
+impl From<TxKind> for String {
+    fn from(val: TxKind) -> Self {
+        match val {
+            TxKind::TrustUpdate => "trust_update".to_string(),
+            TxKind::SeedUpdate => "seed_update".to_string(),
+            TxKind::ComputeRequest => "compute_request".to_string(),
+            TxKind::ComputeAssignment => "compute_assignment".to_string(),
+            TxKind::ComputeScores => "compute_scores".to_string(),
+            TxKind::ComputeCommitment => "compute_commitment".to_string(),
+            TxKind::ComputeVerification => "compute_verification".to_string(),
+            TxKind::ProposedBlock => "proposed_block".to_string(),
+            TxKind::FinalisedBlock => "finalised_block".to_string(),
         }
     }
 }
@@ -115,9 +115,25 @@ impl Tx {
         self.body.clone()
     }
 
+    pub fn signature(&self) -> Signature {
+        self.signature.clone()
+    }
+
+    pub fn nonce(&self) -> u64 {
+        self.nonce
+    }
+
+    pub fn from(&self) -> Address {
+        self.from.clone()
+    }
+
+    pub fn to(&self) -> Address {
+        self.to.clone()
+    }
+
     pub fn hash(&self) -> TxHash {
         let mut hasher = Keccak256::new();
-        hasher.update(&self.nonce.to_be_bytes());
+        hasher.update(self.nonce.to_be_bytes());
         hasher.update(encode(&self.from));
         hasher.update(encode(&self.to));
         hasher.update(encode(self.kind));
@@ -284,6 +300,10 @@ pub struct Signature {
 impl Signature {
     pub fn new(s: [u8; 32], r: [u8; 32], r_id: u8) -> Self {
         Self { s, r, r_id }
+    }
+
+    pub fn r_id(&self) -> u8 {
+        self.r_id
     }
 }
 

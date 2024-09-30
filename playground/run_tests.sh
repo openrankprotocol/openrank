@@ -11,7 +11,7 @@ OUTPUT="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk seed-update "./${SEED_D
 echo $OUTPUT
 wait
 
-TX_HASH="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk job-run-request "./config.toml")"
+TX_HASH="$(RUSTFLAGS=-Awarnings cargo run -p openrank-sdk compute-request "./config.toml")"
 echo $TX_HASH
 wait
 

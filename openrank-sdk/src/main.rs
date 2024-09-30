@@ -178,7 +178,7 @@ async fn update_seed(
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Sends a `JobRunRequest` transaction to the Sequencer.
+/// 2. Sends a `ComputeRequest` transaction to the Sequencer.
 async fn compute_request(
     sk: SigningKey, path: &str,
 ) -> Result<ComputeRequestResult, Box<dyn Error>> {

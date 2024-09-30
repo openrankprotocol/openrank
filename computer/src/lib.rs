@@ -156,7 +156,7 @@ impl ComputerNode {
                             self.compute_runner
                                 .create_compute_tree(domain.clone())
                                 .map_err(ComputeNodeError::ComputeInternalError)?;
-                            let create_scores = self
+                            let compute_scores = self
                                 .compute_runner
                                 .get_compute_scores(domain.clone())
                                 .map_err(ComputeNodeError::ComputeInternalError)?;
@@ -165,8 +165,8 @@ impl ComputerNode {
                                 .get_root_hashes(domain.clone())
                                 .map_err(ComputeNodeError::ComputeInternalError)?;
 
-                            let create_scores_tx_res: Result<Vec<Tx>, ComputeNodeError> =
-                                create_scores
+                            let compute_scores_tx_res: Result<Vec<Tx>, ComputeNodeError> =
+                                compute_scores
                                     .iter()
                                     .map(|tx_body| {
                                         Tx::default_with(TxKind::ComputeScores, encode(tx_body))
@@ -177,34 +177,34 @@ impl ComputerNode {
                                         Ok(tx)
                                     })
                                     .collect();
-                            let create_scores_tx = create_scores_tx_res?;
-                            let create_scores_tx_hashes: Vec<TxHash> =
-                                create_scores_tx.iter().map(|x| x.hash()).collect();
-                            let create_scores_topic = Topic::DomainScores(domain_id.clone());
+                            let compute_scores_tx = compute_scores_tx_res?;
+                            let compute_scores_tx_hashes: Vec<TxHash> =
+                                compute_scores_tx.iter().map(|x| x.hash()).collect();
+                            let compute_scores_topic = Topic::DomainScores(domain_id.clone());
                             let commitment_topic = Topic::DomainCommitment(domain_id.clone());
-                            let create_commitment = ComputeCommitment::new(
+                            let compute_commitment = ComputeCommitment::new(
                                 tx.hash(),
                                 lt_root,
                                 compute_root,
-                                create_scores_tx_hashes,
+                                compute_scores_tx_hashes,
                             );
-                            let mut create_commitment_tx = Tx::default_with(
+                            let mut compute_commitment_tx = Tx::default_with(
                                 TxKind::ComputeCommitment,
-                                encode(create_commitment),
+                                encode(compute_commitment),
                             );
-                            create_commitment_tx
+                            compute_commitment_tx
                                 .sign(&self.secret_key)
                                 .map_err(ComputeNodeError::SignatureError)?;
-                            for scores in create_scores_tx {
+                            for scores in compute_scores_tx {
                                 broadcast_event(
                                     &mut self.swarm,
                                     scores,
-                                    create_scores_topic.clone(),
+                                    compute_scores_topic.clone(),
                                 )
                                 .map_err(|e| ComputeNodeError::P2PError(e.to_string()))?;
                             }
                             broadcast_event(
-                                &mut self.swarm, create_commitment_tx, commitment_topic,
+                                &mut self.swarm, compute_commitment_tx, commitment_topic,
                             )
                             .map_err(|e| ComputeNodeError::P2PError(e.to_string()))?;
                             info!(

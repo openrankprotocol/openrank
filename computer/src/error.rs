@@ -39,8 +39,8 @@ impl Display for ComputeNodeError {
     }
 }
 
-impl Into<ComputeNodeError> for ComputeRunnerError {
-    fn into(self) -> ComputeNodeError {
-        ComputeNodeError::ComputeInternalError(self)
+impl From<ComputeRunnerError> for ComputeNodeError {
+    fn from(val: ComputeRunnerError) -> Self {
+        ComputeNodeError::ComputeInternalError(val)
     }
 }

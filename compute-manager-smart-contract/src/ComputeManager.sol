@@ -71,8 +71,8 @@ contract ComputeManager {
         }
     }
 
-    // Computer submits a CreateCommitment txHash with computeRootHash
-    function submitCreateCommitment(
+    // Computer submits a ComputeCommitment txHash with computeRootHash
+    function submitComputeCommitment(
         bytes32 computeAssignTxHash,
         bytes32 computeCommitTxHash,
         bytes32 computeRootHash,

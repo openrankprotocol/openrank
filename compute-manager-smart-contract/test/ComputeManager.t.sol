@@ -26,7 +26,7 @@ contract ComputeManagerTest is Test {
         computeManager = new ComputeManager(_computers, _verifiers);
     }
 
-    function test_submitCreateCommitment() public {
+    function test_submitComputeCommitment() public {
         bytes32 computeAssignTxHash = hex"43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819";
         bytes32 computeCommitTxHash = hex"9949143b1cabba1079b3f15b000fcb7c030d0fdbfcfff704be1f8917d88582ef";
         bytes32 computeRootHash = hex"0000000000000000000000000000000000000000000000000000000000000000";
@@ -38,7 +38,7 @@ contract ComputeManagerTest is Test {
         });
 
         // Call the function
-        computeManager.submitCreateCommitment(
+        computeManager.submitComputeCommitment(
             computeAssignTxHash,
             computeCommitTxHash,
             computeRootHash,
@@ -64,7 +64,7 @@ contract ComputeManagerTest is Test {
         address from = address(data);
         address to = address(data);
 
-        // Send the CreateCommitment transaction for testing purposes
+        // Send the ComputeCommitment transaction for testing purposes
         bytes32 computeAssignTxHash = hex"43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819";
         bytes32 computeCommitTxHash = hex"9949143b1cabba1079b3f15b000fcb7c030d0fdbfcfff704be1f8917d88582ef";
         bytes32 computeRootHash = hex"0000000000000000000000000000000000000000000000000000000000000000";
@@ -74,7 +74,7 @@ contract ComputeManagerTest is Test {
             r: hex"dac8c2a3d60d7511b008fdc854b8e8156954ff7670991151ae67c303dbc7e28e",
             r_id: 1
         });
-        computeManager.submitCreateCommitment(
+        computeManager.submitComputeCommitment(
             computeAssignTxHash,
             computeCommitTxHash,
             computeRootHash,

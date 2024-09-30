@@ -224,14 +224,14 @@ impl VerifierNode {
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
-                            let create_scores = ComputeScores::decode(&mut tx.body().as_slice())
+                            let compute_scores = ComputeScores::decode(&mut tx.body().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
 
                             let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                                 VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                             )?;
                             self.verification_runner
-                                .update_scores(domain.clone(), tx.hash(), create_scores.clone())
+                                .update_scores(domain.clone(), tx.hash(), compute_scores.clone())
                                 .map_err(VerifierNodeError::InternalError)?;
                             let res = self
                                 .verification_runner
@@ -273,14 +273,14 @@ impl VerifierNode {
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
-                            let create_commitment =
+                            let compute_commitment =
                                 ComputeCommitment::decode(&mut tx.body().as_slice())
                                     .map_err(VerifierNodeError::DecodeError)?;
 
                             let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
                                 VerifierNodeError::DomainNotFound(domain_id.clone().to_hex()),
                             )?;
-                            self.verification_runner.update_commitment(create_commitment.clone());
+                            self.verification_runner.update_commitment(compute_commitment.clone());
                             let res = self
                                 .verification_runner
                                 .check_finished_assignments(domain.clone())
@@ -357,7 +357,7 @@ impl VerifierNode {
                         ))?;
                     self.verification_runner
                         .update_trust(domain.clone(), trust_update.entries.clone())
-                        .map_err(|e| VerifierNodeError::InternalError(e))?;
+                        .map_err(VerifierNodeError::InternalError)?;
                 },
                 TxKind::SeedUpdate => {
                     let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
@@ -373,7 +373,7 @@ impl VerifierNode {
                         ))?;
                     self.verification_runner
                         .update_seed(domain.clone(), seed_update.entries.clone())
-                        .map_err(|e| VerifierNodeError::InternalError(e))?;
+                        .map_err(VerifierNodeError::InternalError)?;
                 },
                 _ => (),
             }

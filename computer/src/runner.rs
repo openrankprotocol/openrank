@@ -115,7 +115,7 @@ impl ComputeRunner {
             let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
-            let sub_tree_root = sub_tree.root().map_err(|e| ComputeRunnerError::MerkleError(e))?;
+            let sub_tree_root = sub_tree.root().map_err(ComputeRunnerError::MerkleError)?;
             let seed_value = seed.get(&to_index).unwrap_or(&0.0);
             let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -242,8 +242,8 @@ impl ComputeRunner {
             .compute_tree
             .get(&domain.to_hash())
             .ok_or(ComputeRunnerError::ComputeTreeNotFound(domain.to_hash()))?;
-        let lt_tree_root = lt_tree.root().map_err(|e| ComputeRunnerError::MerkleError(e))?;
-        let ct_tree_root = compute_tree.root().map_err(|e| ComputeRunnerError::MerkleError(e))?;
+        let lt_tree_root = lt_tree.root().map_err(ComputeRunnerError::MerkleError)?;
+        let ct_tree_root = compute_tree.root().map_err(ComputeRunnerError::MerkleError)?;
         Ok((lt_tree_root, ct_tree_root))
     }
 }
