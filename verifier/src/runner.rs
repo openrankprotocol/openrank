@@ -246,7 +246,7 @@ impl VerificationRunner {
         Ok(())
     }
 
-    /// Add a new assignment of certain assignment, for certain domain
+    /// Add a new verification assignment for certain domain.
     pub fn update_assigment(
         &mut self, domain: Domain, compute_assignment_tx_hash: TxHash,
     ) -> Result<(), VerificationRunnerError> {
@@ -267,7 +267,7 @@ impl VerificationRunner {
         );
     }
 
-    /// Build the compute tree of certain assignment, for certain domain
+    /// Build the compute tree of certain assignment, for certain domain.
     pub fn create_compute_tree(
         &mut self, domain: Domain, assignment_id: TxHash,
     ) -> Result<(), VerificationRunnerError> {

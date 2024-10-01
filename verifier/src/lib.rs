@@ -47,7 +47,7 @@ pub struct Config {
     pub p2p: net::Config,
 }
 
-/// The Verifier node. It contains the Swarm, the Config, the DB, the ComputeRunner, and the SecretKey.
+/// The Verifier node. It contains the Swarm, the Config, the DB, the VerificationRunner, and the SecretKey.
 pub struct VerifierNode {
     swarm: Swarm<MyBehaviour>,
     config: Config,
@@ -61,7 +61,7 @@ impl VerifierNode {
     /// - Loads the config from config.toml.
     /// - Initializes the Swarm.
     /// - Initializes the DB.
-    /// - Initializes the ComputeRunner.
+    /// - Initializes the VerificationRunner.
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();

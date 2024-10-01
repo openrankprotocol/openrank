@@ -203,7 +203,7 @@ impl ComputeRunner {
         Ok(())
     }
 
-    /// Get the create scores for certain domain.
+    /// Get the compute scores for certain domain.
     pub fn get_compute_scores(
         &self, domain: Domain,
     ) -> Result<Vec<ComputeScores>, ComputeRunnerError> {
