@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 use clap::{Parser, Subcommand};
 use openrank_block_builder::{self, BlockBuilderNode};
 use openrank_sequencer::{self, SequencerNode};

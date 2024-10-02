@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 use alloy_rlp::{encode, Decodable};
 use dotenv::dotenv;
 use futures::StreamExt;

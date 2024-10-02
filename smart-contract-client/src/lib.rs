@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 mod sol;
 
 use alloy_rlp::Decodable;

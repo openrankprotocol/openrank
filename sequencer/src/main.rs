@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 use openrank_sequencer::{self, SequencerNode};
 use std::error::Error;
 

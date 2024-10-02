@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 use openrank_verifier::{self, VerifierNode};
 use std::error::Error;
 

@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 use openrank_computer::ComputerNode;
 use std::error::Error;
 

@@ -1,1 +1,1 @@
-
+#![deny(warnings)]
