@@ -58,14 +58,14 @@ mod test {
     use super::TxEvent;
     use crate::{
         db::DbItem,
-        txs::{compute::ComputeRequest, Tx, TxKind},
+        txs::{compute::ComputeRequest, Kind, Tx},
     };
     use alloy_rlp::encode;
 
     #[test]
     fn test_tx_event_db_item() {
         let tx_event = TxEvent::default_with_data(encode(Tx::default_with(
-            TxKind::ComputeRequest,
+            Kind::ComputeRequest,
             encode(ComputeRequest::default()),
         )));
 

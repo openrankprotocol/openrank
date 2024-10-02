@@ -87,7 +87,7 @@ contract ComputeManagerTest is Test {
                 nonce: 0,
                 from: from,
                 to: to,
-                kind: ComputeManager.TxKind.ComputeVerification,
+                kind: ComputeManager.Kind.ComputeVerification,
                 body: hex"e3e1a043924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c81901",
                 signature: ComputeManager.Signature({
                     s: hex"75f3cab53d46d1eb00ceaee6525bbece17878ca9ed8caf6796b969d78329cc92",

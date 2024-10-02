@@ -12,7 +12,7 @@ use openrank_common::{
     txs::{
         compute::{ComputeAssignment, ComputeCommitment},
         trust::{SeedUpdate, TrustUpdate},
-        Address, Tx, TxHash, TxKind,
+        Address, Kind, Tx, TxHash,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -66,7 +66,7 @@ impl ComputerNode {
                                 .map_err(ComputeNodeError::DecodeError)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(ComputeNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::TrustUpdate {
+                            if tx.kind() != Kind::TrustUpdate {
                                 return Err(ComputeNodeError::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner())
@@ -97,7 +97,7 @@ impl ComputerNode {
                                 .map_err(ComputeNodeError::DecodeError)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(ComputeNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::SeedUpdate {
+                            if tx.kind() != Kind::SeedUpdate {
                                 return Err(ComputeNodeError::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner())
@@ -128,7 +128,7 @@ impl ComputerNode {
                                 .map_err(ComputeNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(ComputeNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeAssignment {
+                            if tx.kind() != Kind::ComputeAssignment {
                                 return Err(ComputeNodeError::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(ComputeNodeError::SignatureError)?;
@@ -169,7 +169,7 @@ impl ComputerNode {
                                 compute_scores
                                     .iter()
                                     .map(|tx_body| {
-                                        Tx::default_with(TxKind::ComputeScores, encode(tx_body))
+                                        Tx::default_with(Kind::ComputeScores, encode(tx_body))
                                     })
                                     .map(|mut tx| {
                                         tx.sign(&self.secret_key)
@@ -189,7 +189,7 @@ impl ComputerNode {
                                 compute_scores_tx_hashes,
                             );
                             let mut compute_commitment_tx = Tx::default_with(
-                                TxKind::ComputeCommitment,
+                                Kind::ComputeCommitment,
                                 encode(compute_commitment),
                             );
                             compute_commitment_tx
@@ -336,14 +336,14 @@ impl ComputerNode {
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::TrustUpdate.into(), None)
+            .read_from_end(Kind::TrustUpdate.into(), None)
             .map_err(ComputeNodeError::DbError)?;
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
         let mut seed_update_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::SeedUpdate.into(), None)
+            .read_from_end(Kind::SeedUpdate.into(), None)
             .map_err(ComputeNodeError::DbError)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
@@ -354,7 +354,7 @@ impl ComputerNode {
         // update compute runner
         for tx in txs {
             match tx.kind() {
-                TxKind::TrustUpdate => {
+                Kind::TrustUpdate => {
                     let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
                         .map_err(ComputeNodeError::DecodeError)?;
                     let namespace = trust_update.trust_id;
@@ -368,7 +368,7 @@ impl ComputerNode {
                         .update_trust(domain.clone(), trust_update.entries.clone())
                         .map_err(ComputeNodeError::ComputeInternalError)?;
                 },
-                TxKind::SeedUpdate => {
+                Kind::SeedUpdate => {
                     let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
                         .map_err(ComputeNodeError::DecodeError)?;
                     let namespace = seed_update.seed_id;

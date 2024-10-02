@@ -12,7 +12,7 @@ use openrank_common::{
     txs::{
         compute::{ComputeCommitment, ComputeRequest, ComputeScores, ComputeVerification},
         trust::{ScoreEntry, SeedUpdate, TrustUpdate},
-        Address, Tx, TxKind,
+        Address, Kind, Tx,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -69,7 +69,7 @@ impl Sequencer {
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-        if tx.kind() != TxKind::TrustUpdate {
+        if tx.kind() != Kind::TrustUpdate {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -107,7 +107,7 @@ impl Sequencer {
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-        if tx.kind() != TxKind::SeedUpdate {
+        if tx.kind() != Kind::SeedUpdate {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -147,7 +147,7 @@ impl Sequencer {
             error!("{}", e);
             RPCError::ParseError("Failed to parse TX data".to_string())
         })?;
-        if tx.kind() != TxKind::ComputeRequest {
+        if tx.kind() != Kind::ComputeRequest {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -188,7 +188,7 @@ impl Sequencer {
             RPCError::InternalError
         })?;
         let key =
-            Tx::construct_full_key(TxKind::ComputeCommitment, result.compute_commitment_tx_hash);
+            Tx::construct_full_key(Kind::ComputeCommitment, result.compute_commitment_tx_hash);
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
@@ -200,7 +200,7 @@ impl Sequencer {
         let compute_scores_tx: Vec<Tx> = {
             let mut compute_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
-                let key = Tx::construct_full_key(TxKind::ComputeScores, tx_hash);
+                let key = Tx::construct_full_key(Kind::ComputeScores, tx_hash);
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
@@ -247,7 +247,7 @@ impl Sequencer {
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
             for tx_hash in result.compute_verification_tx_hashes.iter() {
-                let key = Tx::construct_full_key(TxKind::ComputeVerification, tx_hash.clone());
+                let key = Tx::construct_full_key(Kind::ComputeVerification, tx_hash.clone());
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError

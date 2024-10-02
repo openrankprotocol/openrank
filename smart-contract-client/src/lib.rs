@@ -19,7 +19,7 @@ use eyre::Result;
 use openrank_common::{
     config,
     db::{self, Db, DbItem},
-    txs::{Tx, TxKind},
+    txs::{Kind, Tx},
 };
 use sol::ComputeManager::{self, OpenrankTx, Signature};
 
@@ -71,7 +71,7 @@ impl ComputeManagerClient {
 
         // check if tx already exists
         let is_tx_exists = match tx.kind() {
-            TxKind::ComputeCommitment | TxKind::ComputeVerification => {
+            Kind::ComputeCommitment | Kind::ComputeVerification => {
                 contract.hasTx(tx.hash().0.into()).call().await?._0
             },
             _ => true,
@@ -82,7 +82,7 @@ impl ComputeManagerClient {
 
         // submit tx
         let _result_hash = match tx.kind() {
-            TxKind::ComputeCommitment => {
+            Kind::ComputeCommitment => {
                 let compute_commitment = openrank_common::txs::compute::ComputeCommitment::decode(
                     &mut tx.body().as_slice(),
                 )?;
@@ -105,7 +105,7 @@ impl ComputeManagerClient {
                     .watch()
                     .await?
             },
-            TxKind::ComputeVerification => {
+            Kind::ComputeVerification => {
                 let tx_ = OpenrankTx {
                     nonce: tx.nonce(),
                     from: tx.from().0.into(),
@@ -133,14 +133,14 @@ impl ComputeManagerClient {
 
         let mut compute_commitment_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::ComputeCommitment.into(), None)
+            .read_from_end(Kind::ComputeCommitment.into(), None)
             .map_err(|e| eyre::eyre!(e))?;
         txs.append(&mut compute_commitment_txs);
         drop(compute_commitment_txs);
 
         let mut compute_verification_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::ComputeVerification.into(), None)
+            .read_from_end(Kind::ComputeVerification.into(), None)
             .map_err(|e| eyre::eyre!(e))?;
         txs.append(&mut compute_verification_txs);
         drop(compute_verification_txs);
@@ -219,7 +219,7 @@ mod tests {
         // Try to submit "ComputeRequest" TX
         client
             .submit_openrank_tx(Tx::default_with(
-                TxKind::ComputeRequest,
+                Kind::ComputeRequest,
                 encode(ComputeRequest::default()),
             ))
             .await?;
@@ -229,7 +229,7 @@ mod tests {
         let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();
         let mut tx = Tx::default_with(
-            TxKind::ComputeCommitment,
+            Kind::ComputeCommitment,
             encode(ComputeCommitment::new(
                 TxHash::from_bytes(
                     hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
@@ -250,7 +250,7 @@ mod tests {
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();
 
         let mut tx = Tx::default_with(
-            TxKind::ComputeVerification,
+            Kind::ComputeVerification,
             encode(ComputeVerification {
                 compute_assignment_tx_hash: TxHash::from_bytes(
                     hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")

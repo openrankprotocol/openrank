@@ -13,7 +13,7 @@ contract ComputeManager {
     using RLPEncode for uint;
 
     // enum to store TX kind
-    enum TxKind {
+    enum Kind {
         TrustUpdate,
         SeedUpdate,
         ComputeRequest,
@@ -30,7 +30,7 @@ contract ComputeManager {
         uint64 nonce;
         address from;
         address to;
-        TxKind kind;
+        Kind kind;
         bytes body;
         Signature signature;
         uint64 sequence_number;
@@ -103,7 +103,7 @@ contract ComputeManager {
 
         // check the transaction kind & computeAssignmentTxHash
         require(
-            _tx.kind == TxKind.ComputeVerification,
+            _tx.kind == Kind.ComputeVerification,
             "Expected ComputeVerification TX"
         );
 

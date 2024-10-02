@@ -133,7 +133,7 @@ mod test {
     use super::{Config, Db, DbItem};
     use crate::txs::{
         compute::{ComputeAssignment, ComputeRequest, ComputeVerification},
-        Tx, TxKind,
+        Kind, Tx,
     };
     use alloy_rlp::encode;
 
@@ -144,9 +144,9 @@ mod test {
     #[test]
     fn test_put_get() {
         let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx = Tx::default_with(TxKind::ComputeRequest, encode(ComputeRequest::default()));
+        let tx = Tx::default_with(Kind::ComputeRequest, encode(ComputeRequest::default()));
         db.put(tx.clone()).unwrap();
-        let key = Tx::construct_full_key(TxKind::ComputeRequest, tx.hash());
+        let key = Tx::construct_full_key(Kind::ComputeRequest, tx.hash());
         let item = db.get::<Tx>(key).unwrap();
         assert_eq!(tx, item);
     }
@@ -154,13 +154,13 @@ mod test {
     #[test]
     fn test_read_from_end() {
         let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx1 = Tx::default_with(TxKind::ComputeRequest, encode(ComputeRequest::default()));
+        let tx1 = Tx::default_with(Kind::ComputeRequest, encode(ComputeRequest::default()));
         let tx2 = Tx::default_with(
-            TxKind::ComputeAssignment,
+            Kind::ComputeAssignment,
             encode(ComputeAssignment::default()),
         );
         let tx3 = Tx::default_with(
-            TxKind::ComputeVerification,
+            Kind::ComputeVerification,
             encode(ComputeVerification::default()),
         );
         db.put(tx1.clone()).unwrap();
@@ -168,9 +168,9 @@ mod test {
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>(TxKind::ComputeRequest.into(), Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>(TxKind::ComputeAssignment.into(), Some(1)).unwrap();
-        let items3 = db.read_from_end::<Tx>(TxKind::ComputeVerification.into(), Some(1)).unwrap();
+        let items1 = db.read_from_end::<Tx>(Kind::ComputeRequest.into(), Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(Kind::ComputeAssignment.into(), Some(1)).unwrap();
+        let items3 = db.read_from_end::<Tx>(Kind::ComputeVerification.into(), Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);

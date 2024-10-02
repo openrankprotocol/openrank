@@ -15,7 +15,7 @@ use openrank_common::{
             ComputeAssignment, ComputeCommitment, ComputeRequest, ComputeScores,
             ComputeVerification,
         },
-        Address, Tx, TxKind,
+        Address, Kind, Tx,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -99,7 +99,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::TrustUpdate {
+                            if tx.kind() != Kind::TrustUpdate {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner())
@@ -120,7 +120,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::SeedUpdate {
+                            if tx.kind() != Kind::SeedUpdate {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner())
@@ -141,7 +141,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeRequest {
+                            if tx.kind() != Kind::ComputeRequest {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -159,7 +159,7 @@ impl BlockBuilderNode {
                             let compute_assignment =
                                 ComputeAssignment::new(tx.hash(), computer, verifier);
                             let mut tx = Tx::default_with(
-                                TxKind::ComputeAssignment,
+                                Kind::ComputeAssignment,
                                 encode(compute_assignment),
                             );
                             tx.sign(&self.secret_key)
@@ -182,7 +182,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeCommitment {
+                            if tx.kind() != Kind::ComputeCommitment {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -195,7 +195,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
-                                TxKind::ComputeAssignment,
+                                Kind::ComputeAssignment,
                                 commitment.compute_assignment_tx_hash,
                             );
                             let assignment_tx: Tx = self
@@ -206,7 +206,7 @@ impl BlockBuilderNode {
                                 ComputeAssignment::decode(&mut assignment_tx.body().as_slice())
                                     .map_err(BlockBuilderNodeError::DecodeError)?;
                             let request_tx_key = Tx::construct_full_key(
-                                TxKind::ComputeRequest,
+                                Kind::ComputeRequest,
                                 assignment_body.compute_request_tx_hash.clone(),
                             );
                             let request: Tx = self
@@ -236,7 +236,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeScores {
+                            if tx.kind() != Kind::ComputeScores {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -259,7 +259,7 @@ impl BlockBuilderNode {
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeVerification {
+                            if tx.kind() != Kind::ComputeVerification {
                                 return Err(BlockBuilderNodeError::InvalidTxKind);
                             }
                             let address =
@@ -272,7 +272,7 @@ impl BlockBuilderNode {
                                     .map_err(BlockBuilderNodeError::DecodeError)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
-                                TxKind::ComputeAssignment,
+                                Kind::ComputeAssignment,
                                 compute_verification.compute_assignment_tx_hash,
                             );
                             let assignment_tx: Tx = self

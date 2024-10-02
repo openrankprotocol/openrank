@@ -18,7 +18,7 @@ pub mod trust;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
-pub enum TxKind {
+pub enum Kind {
     TrustUpdate,
     SeedUpdate,
     ComputeRequest,
@@ -30,13 +30,13 @@ pub enum TxKind {
     FinalisedBlock,
 }
 
-impl Encodable for TxKind {
+impl Encodable for Kind {
     fn encode(&self, out: &mut dyn BufMut) {
         out.put_u8(*self as u8);
     }
 }
 
-impl Decodable for TxKind {
+impl Decodable for Kind {
     fn decode(buf: &mut &[u8]) -> RlpResult<Self> {
         let mut bytes = [0; 1];
         let size = buf.read(&mut bytes).map_err(|_| RlpError::Custom("Failed to read bytes"))?;
@@ -44,11 +44,11 @@ impl Decodable for TxKind {
             return RlpResult::Err(RlpError::UnexpectedLength);
         }
 
-        Ok(TxKind::from_byte(bytes[0]))
+        Ok(Kind::from_byte(bytes[0]))
     }
 }
 
-impl TxKind {
+impl Kind {
     pub fn from_byte(byte: u8) -> Self {
         match byte {
             0 => Self::TrustUpdate,
@@ -65,18 +65,18 @@ impl TxKind {
     }
 }
 
-impl From<TxKind> for String {
-    fn from(val: TxKind) -> Self {
+impl From<Kind> for String {
+    fn from(val: Kind) -> Self {
         match val {
-            TxKind::TrustUpdate => "trust_update".to_string(),
-            TxKind::SeedUpdate => "seed_update".to_string(),
-            TxKind::ComputeRequest => "compute_request".to_string(),
-            TxKind::ComputeAssignment => "compute_assignment".to_string(),
-            TxKind::ComputeScores => "compute_scores".to_string(),
-            TxKind::ComputeCommitment => "compute_commitment".to_string(),
-            TxKind::ComputeVerification => "compute_verification".to_string(),
-            TxKind::ProposedBlock => "proposed_block".to_string(),
-            TxKind::FinalisedBlock => "finalised_block".to_string(),
+            Kind::TrustUpdate => "trust_update".to_string(),
+            Kind::SeedUpdate => "seed_update".to_string(),
+            Kind::ComputeRequest => "compute_request".to_string(),
+            Kind::ComputeAssignment => "compute_assignment".to_string(),
+            Kind::ComputeScores => "compute_scores".to_string(),
+            Kind::ComputeCommitment => "compute_commitment".to_string(),
+            Kind::ComputeVerification => "compute_verification".to_string(),
+            Kind::ProposedBlock => "proposed_block".to_string(),
+            Kind::FinalisedBlock => "finalised_block".to_string(),
         }
     }
 }
@@ -88,14 +88,14 @@ pub struct Tx {
     from: Address,
     // Use 0x0 for transactions intended to be processed by the network
     to: Address,
-    kind: TxKind,
+    kind: Kind,
     body: Vec<u8>,
     signature: Signature,
     sequence_number: Option<u64>,
 }
 
 impl Tx {
-    pub fn default_with(kind: TxKind, body: Vec<u8>) -> Self {
+    pub fn default_with(kind: Kind, body: Vec<u8>) -> Self {
         Self {
             nonce: 0,
             from: Address::default(),
@@ -107,7 +107,7 @@ impl Tx {
         }
     }
 
-    pub fn kind(&self) -> TxKind {
+    pub fn kind(&self) -> Kind {
         self.kind
     }
 
@@ -146,7 +146,7 @@ impl Tx {
         TxHash(tx_bytes)
     }
 
-    pub fn construct_full_key(kind: TxKind, tx_hash: TxHash) -> Vec<u8> {
+    pub fn construct_full_key(kind: Kind, tx_hash: TxHash) -> Vec<u8> {
         let kind_string: String = kind.into();
         let mut prefix = kind_string.as_bytes().to_vec();
         prefix.extend(tx_hash.0);
@@ -311,23 +311,23 @@ impl Signature {
 mod test {
     use super::{
         trust::{ScoreEntry, TrustEntry, TrustUpdate},
-        Tx, TxKind,
+        Kind, Tx,
     };
     use alloy_rlp::{encode, Decodable};
 
     #[test]
     fn test_decode_tx_kind() {
-        let res = TxKind::decode(&mut [0].as_slice()).unwrap();
-        assert_eq!(res, TxKind::TrustUpdate);
-        let res = TxKind::decode(&mut [3].as_slice()).unwrap();
-        assert_eq!(res, TxKind::ComputeAssignment);
-        let res = TxKind::decode(&mut [8].as_slice()).unwrap();
-        assert_eq!(res, TxKind::FinalisedBlock);
+        let res = Kind::decode(&mut [0].as_slice()).unwrap();
+        assert_eq!(res, Kind::TrustUpdate);
+        let res = Kind::decode(&mut [3].as_slice()).unwrap();
+        assert_eq!(res, Kind::ComputeAssignment);
+        let res = Kind::decode(&mut [8].as_slice()).unwrap();
+        assert_eq!(res, Kind::FinalisedBlock);
     }
 
     #[test]
     fn test_tx_to_hash() {
-        let tx = Tx::default_with(TxKind::TrustUpdate, encode(TrustUpdate::default()));
+        let tx = Tx::default_with(Kind::TrustUpdate, encode(TrustUpdate::default()));
         let tx_hash = tx.hash();
         assert_eq!(
             hex::encode(tx_hash.0),

@@ -14,7 +14,7 @@ use openrank_common::{
     txs::{
         compute::ComputeRequest,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
-        Address, Tx, TxHash, TxKind,
+        Address, Kind, Tx, TxHash,
     },
 };
 use rand::{thread_rng, Rng};
@@ -129,7 +129,7 @@ async fn update_trust(
             config.domain.trust_namespace(),
             chunk.to_vec(),
         ));
-        let mut tx = Tx::default_with(TxKind::TrustUpdate, data);
+        let mut tx = Tx::default_with(Kind::TrustUpdate, data);
         tx.sign(&sk)?;
 
         let result: Value = client.call("Sequencer.trust_update", hex::encode(encode(tx))).await?;
@@ -166,7 +166,7 @@ async fn update_seed(
             config.domain.seed_namespace(),
             chunk.to_vec(),
         ));
-        let mut tx = Tx::default_with(TxKind::SeedUpdate, data);
+        let mut tx = Tx::default_with(Kind::SeedUpdate, data);
         tx.sign(&sk)?;
 
         let result: Value = client.call("Sequencer.seed_update", hex::encode(encode(tx))).await?;
@@ -190,7 +190,7 @@ async fn compute_request(
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
     let data = encode(ComputeRequest::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(TxKind::ComputeRequest, data);
+    let mut tx = Tx::default_with(Kind::ComputeRequest, data);
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
 

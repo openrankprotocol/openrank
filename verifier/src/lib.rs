@@ -12,7 +12,7 @@ use openrank_common::{
     txs::{
         compute::{ComputeAssignment, ComputeCommitment, ComputeScores, ComputeVerification},
         trust::{SeedUpdate, TrustUpdate},
-        Address, Tx, TxKind,
+        Address, Kind, Tx,
     },
     MyBehaviour, MyBehaviourEvent,
 };
@@ -98,7 +98,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::TrustUpdate {
+                            if tx.kind() != Kind::TrustUpdate {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner())
@@ -129,7 +129,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::SeedUpdate {
+                            if tx.kind() != Kind::SeedUpdate {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner())
@@ -159,7 +159,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeAssignment {
+                            if tx.kind() != Kind::ComputeAssignment {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
@@ -192,7 +192,7 @@ impl VerifierNode {
                                 let verification_res =
                                     ComputeVerification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
-                                    TxKind::ComputeVerification,
+                                    Kind::ComputeVerification,
                                     encode(verification_res),
                                 );
                                 tx.sign(&self.secret_key)
@@ -217,7 +217,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeScores {
+                            if tx.kind() != Kind::ComputeScores {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
@@ -241,7 +241,7 @@ impl VerifierNode {
                                 let verification_res =
                                     ComputeVerification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
-                                    TxKind::ComputeVerification,
+                                    Kind::ComputeVerification,
                                     encode(verification_res),
                                 );
                                 tx.sign(&self.secret_key)
@@ -266,7 +266,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::DecodeError)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
-                            if tx.kind() != TxKind::ComputeCommitment {
+                            if tx.kind() != Kind::ComputeCommitment {
                                 return Err(VerifierNodeError::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(VerifierNodeError::SignatureError)?;
@@ -289,7 +289,7 @@ impl VerifierNode {
                                 let verification_res =
                                     ComputeVerification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
-                                    TxKind::ComputeVerification,
+                                    Kind::ComputeVerification,
                                     encode(verification_res),
                                 );
                                 tx.sign(&self.secret_key)
@@ -325,14 +325,14 @@ impl VerifierNode {
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::TrustUpdate.into(), None)
+            .read_from_end(Kind::TrustUpdate.into(), None)
             .map_err(VerifierNodeError::DbError)?;
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
         let mut seed_update_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::SeedUpdate.into(), None)
+            .read_from_end(Kind::SeedUpdate.into(), None)
             .map_err(VerifierNodeError::DbError)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
@@ -343,7 +343,7 @@ impl VerifierNode {
         // update verification runner
         for tx in txs {
             match tx.kind() {
-                TxKind::TrustUpdate => {
+                Kind::TrustUpdate => {
                     let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
                         .map_err(VerifierNodeError::DecodeError)?;
                     let namespace = trust_update.trust_id;
@@ -359,7 +359,7 @@ impl VerifierNode {
                         .update_trust(domain.clone(), trust_update.entries.clone())
                         .map_err(VerifierNodeError::InternalError)?;
                 },
-                TxKind::SeedUpdate => {
+                Kind::SeedUpdate => {
                     let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
                         .map_err(VerifierNodeError::DecodeError)?;
                     let namespace = seed_update.seed_id;
