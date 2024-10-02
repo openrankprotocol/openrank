@@ -1,5 +1,5 @@
 use sha3::Digest;
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData, u32};
 
 use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
 
@@ -48,7 +48,10 @@ where
 
     /// Insert a single leaf to tree.
     pub fn insert_leaf(&mut self, index: u32, leaf: Hash) {
-        let max_size = 2u32.pow(self.num_levels as u32) - 1;
+        let max_size = match self.num_levels {
+            n if n < 32 => 2u32.pow(self.num_levels as u32) - 1,
+            _ => u32::MAX,
+        };
         assert!(index < max_size);
         let bits = num_to_bits_vec(index);
 
@@ -58,11 +61,17 @@ where
         let mut curr_node = leaf;
         for i in 0..self.num_levels {
             let (left, right) = if bits[i as usize] {
-                let n_key = (i, curr_index - 1);
+                let n_key = match curr_index {
+                    0 => (i, u32::MAX - 1),
+                    n => (i, n - 1),
+                };
                 let n = self.nodes.get(&n_key).unwrap_or(&self.default[&(i, 0)]);
                 (n.clone(), curr_node)
             } else {
-                let n_key = (i, curr_index + 1);
+                let n_key = match curr_index {
+                    n if n < u32::MAX => (i, n + 1),
+                    _ => (i, 0),
+                };
                 let n = self.nodes.get(&n_key).unwrap_or(&self.default[&(i, 0)]);
                 (curr_node, n.clone())
             };

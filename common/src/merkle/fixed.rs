@@ -36,7 +36,7 @@ where
             let diff = next_power_of_two - leaves.len();
             leaves.extend(vec![Hash::default(); diff]);
         }
-        let num_levels = (u32::BITS - next_power_of_two.leading_zeros()) as u8;
+        let num_levels = (u32::BITS - (next_power_of_two as u32).leading_zeros()) as u8;
 
         let mut default = Vec::new();
         default.push(Hash::default());
@@ -102,7 +102,7 @@ mod test {
 
         assert_eq!(
             root.to_hex(),
-            "485da52d1d8900a627e2f3cc9f3cf6e653b8effed5972cd10a38990f2fefc494".to_string()
+            "887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968".to_string()
         );
     }
 }
