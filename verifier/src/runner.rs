@@ -15,11 +15,11 @@ use std::{
 
 /// Struct containing the state of the verification job runner
 pub struct VerificationJobRunner {
-    count: HashMap<DomainHash, u32>,
-    indices: HashMap<DomainHash, HashMap<String, u32>>,
-    local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
-    seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
-    lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
+    count: HashMap<DomainHash, u64>,
+    indices: HashMap<DomainHash, HashMap<String, u64>>,
+    local_trust: HashMap<DomainHash, HashMap<(u64, u64), f32>>,
+    seed_trust: HashMap<DomainHash, HashMap<u64, f32>>,
+    lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
     create_scores: HashMap<DomainHash, HashMap<TxHash, CreateScores>>,
     compute_tree: HashMap<DomainHash, HashMap<TxHash, DenseMerkleTree<Keccak256>>>,
@@ -335,11 +335,11 @@ impl VerificationJobRunner {
             }
             scores
         };
-        let score_entries: HashMap<u32, f32> = {
+        let score_entries: HashMap<u64, f32> = {
             let score_entries_vec: Vec<ScoreEntry> =
                 scores.iter().flat_map(|cs| cs.entries.clone()).collect();
 
-            let mut score_entries_map: HashMap<u32, f32> = HashMap::new();
+            let mut score_entries_map: HashMap<u64, f32> = HashMap::new();
             for entry in score_entries_vec {
                 let i = domain_indices
                     .get(&entry.id)
@@ -377,7 +377,7 @@ pub enum JobRunnerError {
     CountNotFound(DomainHash),
 
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
-    LocalTrustSubTreesNotFoundWithIndex(u32),
+    LocalTrustSubTreesNotFoundWithIndex(u64),
 
     LocalTrustMasterTreeNotFound(DomainHash),
 

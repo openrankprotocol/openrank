@@ -36,7 +36,7 @@ where
             let diff = next_power_of_two - leaves.len();
             leaves.extend(vec![Hash::default(); diff]);
         }
-        let num_levels = (u32::BITS - (next_power_of_two as u32).leading_zeros()) as u8;
+        let num_levels = (u64::BITS - next_power_of_two.leading_zeros()) as u8;
 
         let mut default = Vec::new();
         default.push(Hash::default());

@@ -1,5 +1,5 @@
 use sha3::Digest;
-use std::{collections::HashMap, marker::PhantomData, u32};
+use std::{collections::HashMap, marker::PhantomData};
 
 use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
 
@@ -13,9 +13,9 @@ where
     H: Digest,
 {
     /// HashMap to keep the level and index of the nodes.
-    pub(crate) nodes: HashMap<(u8, u32), Hash>,
+    pub(crate) nodes: HashMap<(u8, u64), Hash>,
     /// Default nodes.
-    default: HashMap<(u8, u32), Hash>,
+    default: HashMap<(u8, u64), Hash>,
     /// Number of levels.
     num_levels: u8,
     /// PhantomData for the hasher.
@@ -33,12 +33,12 @@ where
 
     /// Builds a Merkle tree from given height (`num_levels`).
     pub fn new(num_levels: u8) -> Self {
-        let mut default: HashMap<(u8, u32), Hash> = HashMap::new();
+        let mut default: HashMap<(u8, u64), Hash> = HashMap::new();
         default.insert((0, 0), Hash::default());
         for i in 0..num_levels as usize {
             let h = hash_two::<H>(
-                default[&(i as u8, 0u32)].clone(),
-                default[&(i as u8, 0u32)].clone(),
+                default[&(i as u8, 0u64)].clone(),
+                default[&(i as u8, 0u64)].clone(),
             );
             default.insert(((i + 1) as u8, 0), h);
         }
@@ -47,11 +47,8 @@ where
     }
 
     /// Insert a single leaf to tree.
-    pub fn insert_leaf(&mut self, index: u32, leaf: Hash) {
-        let max_size = match self.num_levels {
-            n if n < 32 => 2u32.pow(self.num_levels as u32) - 1,
-            _ => u32::MAX,
-        };
+    pub fn insert_leaf(&mut self, index: u64, leaf: Hash) {
+        let max_size = 2u64.pow(self.num_levels as u32) - 1;
         assert!(index < max_size);
         let bits = num_to_bits_vec(index);
 
@@ -79,7 +76,7 @@ where
     }
 
     /// Insert multiple leaves to tree.
-    pub fn insert_batch(&mut self, mut index: u32, leaves: Vec<Hash>) {
+    pub fn insert_batch(&mut self, mut index: u64, leaves: Vec<Hash>) {
         for leaf in leaves {
             self.insert_leaf(index, leaf);
             index += 1;
