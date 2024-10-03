@@ -1,5 +1,3 @@
-#![deny(warnings)]
-
 use alloy_rlp::encode;
 use clap::{Parser, Subcommand};
 use csv::StringRecord;

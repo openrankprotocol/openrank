@@ -1,5 +1,3 @@
-#![deny(warnings)]
-
 use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use karyon_jsonrpc::{rpc_impl, RPCError, Server};

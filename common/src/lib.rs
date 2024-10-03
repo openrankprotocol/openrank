@@ -1,5 +1,3 @@
-#![deny(warnings)]
-
 pub mod algos;
 pub mod config;
 pub mod db;
