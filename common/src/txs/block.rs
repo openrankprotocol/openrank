@@ -20,8 +20,8 @@ pub struct ProposedBlock {
     previous_block_hash: TxHash,
     state_root: Hash,
     pending_domain_updates: Vec<PendingDomainUpdate>,
-    timestamp: u32,
-    block_height: u32,
+    timestamp: u64,
+    block_height: u64,
 }
 
 #[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
@@ -29,6 +29,6 @@ pub struct FinalisedBlock {
     previous_block_hash: TxHash,
     state_root: Hash,
     domain_updates: Vec<DomainUpdate>,
-    timestamp: u32,
-    block_height: u32,
+    timestamp: u64,
+    block_height: u64,
 }
