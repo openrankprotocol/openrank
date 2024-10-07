@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use openrank_sequencer::{self, SequencerNode};
 use openrank_smart_contract_client::ComputeManagerClient;
 use std::error::Error;
 
@@ -31,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
         None => {
             let mut bb = openrank_block_builder::Node::init().await?;
-            let mut sequencer = SequencerNode::init().await?;
+            let mut sequencer = openrank_sequencer::Node::init().await?;
             let block_builder_task = tokio::spawn(async move {
                 let res = bb.run().await;
                 if let Err(e) = res {

@@ -281,14 +281,14 @@ impl Sequencer {
 }
 
 /// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
-pub struct SequencerNode {
+pub struct Node {
     config: Config,
     swarm: Swarm<MyBehaviour>,
     server: Arc<Server>,
     receiver: Receiver<(Vec<u8>, Topic)>,
 }
 
-impl SequencerNode {
+impl Node {
     /// Initialize the node:
     /// - Load the config from config.toml
     /// - Initialize the Swarm
