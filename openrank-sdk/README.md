@@ -1,18 +1,18 @@
-## Installing the SDK
-```
-curl -s https://raw.githubusercontent.com/openrankprotocol/datasets/refs/heads/main/install-sdk.sh | sh
-```
-The above command will install the cargo (Rust package manager) and openrank-sdk binary.
-
 ## Preparing environment
 `datasets` repo can be used to get up to speed, since it contains some example datasets, like Degen Tipping DB or OSO GitHub DB.
-It also contains an example `config.toml` needed to run openrank-sdk methods.
+It contains the script for installing the SDK, as well as an example `config.toml` needed to run openrank-sdk methods.
 To clone the `datasets` repo:
 ```
 git clone https://github.com/openrankprotocol/datasets.git
+cd ./datasets
 ```
-Before requesting compute jobs, following things need to be prepared:
-- A keypair should be generated using `generate-keypair` command. The output of the command is:
+Then run `./install-sdk.sh` script:
+```bash
+./install-sdk.sh
+```
+The above command will install the cargo (Rust package manager) and openrank-sdk binary.
+It will also generate a new keypair that will be used for signing messages using `generate-keypair` command.
+The output of the command is:
 ```
 SIGNING_KEY: b0f6d4b7865e1128eebfe4eb37b96522d2e58cbd7892c7e0759907c5f4c6ede4
 ADDRESS: b79aafc95c8866e65ed51a7856e75587feb481ff
@@ -21,6 +21,9 @@ The generated secret key should be added to local `.env` file that will be used 
 ```bash
 SIGNING_KEY="b0f6d4b7865e1128eebfe4eb37b96522d2e58cbd7892c7e0759907c5f4c6ede4"
 ```
+If you wish for you address to be whitelisted, send us a request at devs@karma3labs.com.
+
+## Datasets
 If you wish to create new datasets to run the compute on, they should be prepared in the following format, e.g.:
 - For Seed trust:
 ```csv
