@@ -80,7 +80,7 @@ pub struct Config {
     pub p2p: net::Config,
 }
 
-pub struct ComputerNode {
+pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
@@ -88,7 +88,7 @@ pub struct ComputerNode {
     secret_key: SigningKey,
 }
 
-impl ComputerNode {
+impl Node {
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
     /// Handling includes TX validation, storage in local db, or optionally triggering a broadcast
     /// of postceding TX to the network.

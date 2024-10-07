@@ -75,28 +75,28 @@ impl VerificationRunner {
     /// Update the state of trees for certain domain, with the given trust entries
     pub fn update_trust(
         &mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
-    ) -> Result<(), VerificationRunnerError> {
+    ) -> Result<(), Error> {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(VerificationRunnerError::IndicesNotFound(domain.to_hash()))?;
-        let count = self
-            .count
-            .get_mut(&domain.to_hash())
-            .ok_or(VerificationRunnerError::CountNotFound(domain.to_hash()))?;
+            .ok_or(Error::IndicesNotFound(domain.to_hash()))?;
+        let count =
+            self.count.get_mut(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
         let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-            VerificationRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
+            Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
         )?;
-        let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-            VerificationRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
-        )?;
-        let lt = self.local_trust.get_mut(&domain.to_hash()).ok_or(
-            VerificationRunnerError::LocalTrustNotFound(domain.to_hash()),
-        )?;
+        let lt_master_tree = self
+            .lt_master_tree
+            .get_mut(&domain.to_hash())
+            .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
+        let lt = self
+            .local_trust
+            .get_mut(&domain.to_hash())
+            .ok_or(Error::LocalTrustNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get(&domain.to_hash())
-            .ok_or(VerificationRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(&entry.from) {
@@ -121,11 +121,11 @@ impl VerificationRunner {
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
                 .get_mut(&from_index)
-                .ok_or(VerificationRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
+                .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
             let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
-            let sub_tree_root = sub_tree.root().map_err(VerificationRunnerError::MerkleError)?;
+            let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
             let seed_value = seed.get(&to_index).unwrap_or(&0.0);
             let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -138,25 +138,24 @@ impl VerificationRunner {
     /// Update the state of trees for certain domain, with the given seed entries
     pub fn update_seed(
         &mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
-    ) -> Result<(), VerificationRunnerError> {
+    ) -> Result<(), Error> {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(VerificationRunnerError::IndicesNotFound(domain.to_hash()))?;
-        let count = self
-            .count
-            .get_mut(&domain.to_hash())
-            .ok_or(VerificationRunnerError::CountNotFound(domain.to_hash()))?;
+            .ok_or(Error::IndicesNotFound(domain.to_hash()))?;
+        let count =
+            self.count.get_mut(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
         let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-            VerificationRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
+            Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
         )?;
-        let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-            VerificationRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
-        )?;
+        let lt_master_tree = self
+            .lt_master_tree
+            .get_mut(&domain.to_hash())
+            .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get_mut(&domain.to_hash())
-            .ok_or(VerificationRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
             let index = if let Some(i) = domain_indices.get(&entry.id) {
@@ -171,8 +170,8 @@ impl VerificationRunner {
             lt_sub_trees.entry(index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
                 .get_mut(&index)
-                .ok_or(VerificationRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
-            let sub_tree_root = sub_tree.root().map_err(VerificationRunnerError::MerkleError)?;
+                .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(index))?;
+            let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
             let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
@@ -186,10 +185,11 @@ impl VerificationRunner {
     /// Check if the score tx hashes of the given commitment exists in the `compute_scores` of certain domain
     pub fn check_scores_tx_hashes(
         &self, domain: Domain, commitment: compute::Commitment,
-    ) -> Result<bool, VerificationRunnerError> {
-        let compute_scores_txs = self.compute_scores.get(&domain.clone().to_hash()).ok_or(
-            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
-        )?;
+    ) -> Result<bool, Error> {
+        let compute_scores_txs = self
+            .compute_scores
+            .get(&domain.clone().to_hash())
+            .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
         for score_tx in commitment.scores_tx_hashes {
             let res = compute_scores_txs.contains_key(&score_tx);
             if !res {
@@ -202,10 +202,11 @@ impl VerificationRunner {
     /// Get the list of completed assignments for certain domain
     pub fn check_finished_assignments(
         &mut self, domain: Domain,
-    ) -> Result<Vec<(TxHash, bool)>, VerificationRunnerError> {
-        let assignments = self.active_assignments.get(&domain.clone().to_hash()).ok_or(
-            VerificationRunnerError::ActiveAssignmentsNotFound(domain.to_hash()),
-        )?;
+    ) -> Result<Vec<(TxHash, bool)>, Error> {
+        let assignments = self
+            .active_assignments
+            .get(&domain.clone().to_hash())
+            .ok_or(Error::ActiveAssignmentsNotFound(domain.to_hash()))?;
         let mut results = Vec::new();
         let mut completed = Vec::new();
         for assignment_id in assignments.clone().into_iter() {
@@ -228,9 +229,10 @@ impl VerificationRunner {
                 }
             }
         }
-        let active_assignments = self.active_assignments.get_mut(&domain.clone().to_hash()).ok_or(
-            VerificationRunnerError::ActiveAssignmentsNotFound(domain.to_hash()),
-        )?;
+        let active_assignments = self
+            .active_assignments
+            .get_mut(&domain.clone().to_hash())
+            .ok_or(Error::ActiveAssignmentsNotFound(domain.to_hash()))?;
         active_assignments.retain(|x| !completed.contains(x));
         Ok(results)
     }
@@ -238,10 +240,11 @@ impl VerificationRunner {
     /// Add a new scores of certain transaction, for certain domain
     pub fn update_scores(
         &mut self, domain: Domain, tx_hash: TxHash, compute_scores: compute::Scores,
-    ) -> Result<(), VerificationRunnerError> {
-        let score_values = self.compute_scores.get_mut(&domain.clone().to_hash()).ok_or(
-            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
-        )?;
+    ) -> Result<(), Error> {
+        let score_values = self
+            .compute_scores
+            .get_mut(&domain.clone().to_hash())
+            .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
         score_values.insert(tx_hash, compute_scores);
         Ok(())
     }
@@ -249,10 +252,11 @@ impl VerificationRunner {
     /// Add a new verification assignment for certain domain.
     pub fn update_assigment(
         &mut self, domain: Domain, compute_assignment_tx_hash: TxHash,
-    ) -> Result<(), VerificationRunnerError> {
-        let active_assignments = self.active_assignments.get_mut(&domain.to_hash()).ok_or(
-            VerificationRunnerError::ActiveAssignmentsNotFound(domain.to_hash()),
-        )?;
+    ) -> Result<(), Error> {
+        let active_assignments = self
+            .active_assignments
+            .get_mut(&domain.to_hash())
+            .ok_or(Error::ActiveAssignmentsNotFound(domain.to_hash()))?;
         if !active_assignments.contains(&compute_assignment_tx_hash) {
             active_assignments.push(compute_assignment_tx_hash);
         }
@@ -267,22 +271,27 @@ impl VerificationRunner {
     /// Build the compute tree of certain assignment, for certain domain.
     pub fn create_compute_tree(
         &mut self, domain: Domain, assignment_id: TxHash,
-    ) -> Result<(), VerificationRunnerError> {
-        let compute_tree_map = self.compute_tree.get_mut(&domain.to_hash()).ok_or(
-            VerificationRunnerError::ComputeTreeNotFoundWithDomain(domain.to_hash()),
-        )?;
-        let commitment = self.commitments.get(&assignment_id).ok_or(
-            VerificationRunnerError::CommitmentNotFound(assignment_id.clone()),
-        )?;
-        let compute_scores = self.compute_scores.get(&domain.to_hash()).ok_or(
-            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
-        )?;
+    ) -> Result<(), Error> {
+        let compute_tree_map = self
+            .compute_tree
+            .get_mut(&domain.to_hash())
+            .ok_or(Error::ComputeTreeNotFoundWithDomain(domain.to_hash()))?;
+        let commitment = self
+            .commitments
+            .get(&assignment_id)
+            .ok_or(Error::CommitmentNotFound(assignment_id.clone()))?;
+        let compute_scores = self
+            .compute_scores
+            .get(&domain.to_hash())
+            .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
         let scores: Vec<&compute::Scores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(compute_scores.get(tx_hash).ok_or(
-                    VerificationRunnerError::ComputeScoresNotFoundWithTxHash(tx_hash.clone()),
-                )?)
+                scores.push(
+                    compute_scores
+                        .get(tx_hash)
+                        .ok_or(Error::ComputeScoresNotFoundWithTxHash(tx_hash.clone()))?,
+                )
             }
             scores
         };
@@ -292,8 +301,8 @@ impl VerificationRunner {
             .iter()
             .map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
             .collect();
-        let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
-            .map_err(VerificationRunnerError::MerkleError)?;
+        let compute_tree =
+            DenseMerkleTree::<Keccak256>::new(score_hashes).map_err(Error::Merkle)?;
         compute_tree_map.insert(assignment_id.clone(), compute_tree);
 
         Ok(())
@@ -302,30 +311,33 @@ impl VerificationRunner {
     /// Get the verification result(True or False) of certain assignment, for certain domain
     pub fn compute_verification(
         &mut self, domain: Domain, assignment_id: TxHash,
-    ) -> Result<bool, VerificationRunnerError> {
-        let commitment = self.commitments.get(&assignment_id).ok_or(
-            VerificationRunnerError::CommitmentNotFound(assignment_id.clone()),
-        )?;
-        let compute_scores = self.compute_scores.get(&domain.to_hash()).ok_or(
-            VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
-        )?;
-        let domain_indices = self
-            .indices
+    ) -> Result<bool, Error> {
+        let commitment = self
+            .commitments
+            .get(&assignment_id)
+            .ok_or(Error::CommitmentNotFound(assignment_id.clone()))?;
+        let compute_scores = self
+            .compute_scores
             .get(&domain.to_hash())
-            .ok_or(VerificationRunnerError::IndicesNotFound(domain.to_hash()))?;
-        let lt = self.local_trust.get(&domain.to_hash()).ok_or(
-            VerificationRunnerError::LocalTrustNotFound(domain.to_hash()),
-        )?;
+            .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
+        let domain_indices =
+            self.indices.get(&domain.to_hash()).ok_or(Error::IndicesNotFound(domain.to_hash()))?;
+        let lt = self
+            .local_trust
+            .get(&domain.to_hash())
+            .ok_or(Error::LocalTrustNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get(&domain.to_hash())
-            .ok_or(VerificationRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let scores: Vec<&compute::Scores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
-                scores.push(compute_scores.get(tx_hash).ok_or(
-                    VerificationRunnerError::ComputeScoresNotFoundWithTxHash(tx_hash.clone()),
-                )?)
+                scores.push(
+                    compute_scores
+                        .get(tx_hash)
+                        .ok_or(Error::ComputeScoresNotFoundWithTxHash(tx_hash.clone()))?,
+                )
             }
             scores
         };
@@ -335,38 +347,39 @@ impl VerificationRunner {
 
             let mut score_entries_map: HashMap<u32, f32> = HashMap::new();
             for entry in score_entries_vec {
-                let i = domain_indices.get(&entry.id).ok_or(
-                    VerificationRunnerError::DomainIndexNotFound(entry.id.clone()),
-                )?;
+                let i = domain_indices
+                    .get(&entry.id)
+                    .ok_or(Error::DomainIndexNotFound(entry.id.clone()))?;
                 score_entries_map.insert(*i, entry.value);
             }
             score_entries_map
         };
-        convergence_check(lt.clone(), seed, &score_entries)
-            .map_err(VerificationRunnerError::AlgoError)
+        convergence_check(lt.clone(), seed, &score_entries).map_err(Error::Algo)
     }
 
     /// Get the local trust tree root and compute tree root of certain assignment, for certain domain
     pub fn get_root_hashes(
         &self, domain: Domain, assignment_id: TxHash,
-    ) -> Result<(Hash, Hash), VerificationRunnerError> {
-        let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
-            VerificationRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
-        )?;
-        let compute_tree_map = self.compute_tree.get(&domain.to_hash()).ok_or(
-            VerificationRunnerError::ComputeTreeNotFoundWithDomain(domain.to_hash()),
-        )?;
-        let compute_tree = compute_tree_map.get(&assignment_id).ok_or(
-            VerificationRunnerError::ComputeTreeNotFoundWithTxHash(assignment_id.clone()),
-        )?;
-        let lt_tree_root = lt_tree.root().map_err(VerificationRunnerError::MerkleError)?;
-        let ct_tree_root = compute_tree.root().map_err(VerificationRunnerError::MerkleError)?;
+    ) -> Result<(Hash, Hash), Error> {
+        let lt_tree = self
+            .lt_master_tree
+            .get(&domain.to_hash())
+            .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
+        let compute_tree_map = self
+            .compute_tree
+            .get(&domain.to_hash())
+            .ok_or(Error::ComputeTreeNotFoundWithDomain(domain.to_hash()))?;
+        let compute_tree = compute_tree_map
+            .get(&assignment_id)
+            .ok_or(Error::ComputeTreeNotFoundWithTxHash(assignment_id.clone()))?;
+        let lt_tree_root = lt_tree.root().map_err(Error::Merkle)?;
+        let ct_tree_root = compute_tree.root().map_err(Error::Merkle)?;
         Ok((lt_tree_root, ct_tree_root))
     }
 }
 
 #[derive(Debug)]
-pub enum VerificationRunnerError {
+pub enum Error {
     IndicesNotFound(DomainHash),
     CountNotFound(DomainHash),
 
@@ -390,11 +403,11 @@ pub enum VerificationRunnerError {
     CommitmentNotFound(TxHash),
     DomainIndexNotFound(String),
 
-    MerkleError(merkle::Error),
-    AlgoError(algos::Error),
+    Merkle(merkle::Error),
+    Algo(algos::Error),
 }
 
-impl Display for VerificationRunnerError {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::IndicesNotFound(domain) => {
@@ -452,8 +465,8 @@ impl Display for VerificationRunnerError {
             Self::DomainIndexNotFound(address) => {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
-            Self::MerkleError(err) => err.fmt(f),
-            Self::AlgoError(err) => err.fmt(f),
+            Self::Merkle(err) => err.fmt(f),
+            Self::Algo(err) => err.fmt(f),
         }
     }
 }
