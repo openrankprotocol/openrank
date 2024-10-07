@@ -1,5 +1,5 @@
 use k256::ecdsa::Error as EcdsaError;
-use openrank_common::db::DbError;
+use openrank_common::db;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
@@ -11,7 +11,7 @@ pub enum VerifierNodeError {
     /// The decode error. This can arise when decoding a transaction.
     DecodeError(alloy_rlp::Error),
     /// The database error. The database error can occur when interacting with the database.
-    DbError(DbError),
+    DbError(db::Error),
     /// The domain not found error. This can arise when the domain is not found in the config.
     DomainNotFound(String),
     /// The p2p error. This can arise when sending or receiving messages over the p2p network.

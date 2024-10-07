@@ -10,7 +10,7 @@ use openrank_common::{
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        compute::{ComputeAssignment, ComputeCommitment},
+        compute,
         trust::{SeedUpdate, TrustUpdate},
         Address, Kind, Tx, TxHash,
     },
@@ -137,7 +137,7 @@ impl ComputerNode {
                             self.db.put(tx.clone()).map_err(ComputeNodeError::DbError)?;
                             // Not checking if we are assigned for the compute, for now
                             let compute_assignment =
-                                ComputeAssignment::decode(&mut tx.body().as_slice())
+                                compute::Assignment::decode(&mut tx.body().as_slice())
                                     .map_err(ComputeNodeError::DecodeError)?;
                             let computer_address = address_from_sk(&self.secret_key);
                             assert_eq!(computer_address, compute_assignment.assigned_compute_node);
@@ -182,7 +182,7 @@ impl ComputerNode {
                                 compute_scores_tx.iter().map(|x| x.hash()).collect();
                             let compute_scores_topic = Topic::DomainScores(domain_id.clone());
                             let commitment_topic = Topic::DomainCommitment(domain_id.clone());
-                            let compute_commitment = ComputeCommitment::new(
+                            let compute_commitment = compute::Commitment::new(
                                 tx.hash(),
                                 lt_root,
                                 compute_root,

@@ -6,11 +6,11 @@ use openrank_common::{
     build_node, config,
     db::{self, Db, DbItem},
     net,
-    result::{ComputeResult, GetResultsQuery},
+    result::GetResultsQuery,
     topics::Topic,
     tx_event::TxEvent,
     txs::{
-        compute::{ComputeCommitment, ComputeRequest, ComputeScores, ComputeVerification},
+        compute,
         trust::{ScoreEntry, SeedUpdate, TrustUpdate},
         Address, Kind, Tx,
     },
@@ -156,7 +156,7 @@ impl Sequencer {
         if !self.whitelisted_users.contains(&address) {
             return Err(RPCError::InvalidRequest("Invalid tx signature"));
         }
-        let body = ComputeRequest::decode(&mut tx.body().as_slice())
+        let body = compute::Request::decode(&mut tx.body().as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
 
         // Build Tx Event
@@ -182,8 +182,8 @@ impl Sequencer {
         let query: GetResultsQuery = serde_json::from_value(get_results_query)
             .map_err(|e| RPCError::ParseError(e.to_string()))?;
 
-        let key = ComputeResult::construct_full_key(query.compute_request_tx_hash);
-        let result = self.db.get::<ComputeResult>(key).map_err(|e| {
+        let key = compute::Result::construct_full_key(query.compute_request_tx_hash);
+        let result = self.db.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
@@ -193,7 +193,7 @@ impl Sequencer {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let commitment = ComputeCommitment::decode(&mut tx.body().as_slice()).map_err(|e| {
+        let commitment = compute::Commitment::decode(&mut tx.body().as_slice()).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
@@ -209,10 +209,10 @@ impl Sequencer {
             }
             compute_scores_tx
         };
-        let compute_scores: Vec<ComputeScores> = {
+        let compute_scores: Vec<compute::Scores> = {
             let mut compute_scores = Vec::new();
             for tx in compute_scores_tx.into_iter() {
-                compute_scores.push(ComputeScores::decode(&mut tx.body().as_slice()).map_err(
+                compute_scores.push(compute::Scores::decode(&mut tx.body().as_slice()).map_err(
                     |e| {
                         error!("{}", e);
                         RPCError::InternalError
@@ -256,11 +256,11 @@ impl Sequencer {
             }
             verification_resutls_tx
         };
-        let verification_results: Vec<ComputeVerification> = {
+        let verification_results: Vec<compute::Verification> = {
             let mut verification_results = Vec::new();
             for tx in verificarion_results_tx.into_iter() {
                 let result =
-                    ComputeVerification::decode(&mut tx.body().as_slice()).map_err(|e| {
+                    compute::Verification::decode(&mut tx.body().as_slice()).map_err(|e| {
                         error!("{}", e);
                         RPCError::InternalError
                     })?;
@@ -297,7 +297,10 @@ impl SequencerNode {
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         let config_loader = config::Loader::new("openrank-sequencer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &ComputeResult::get_cf()])?;
+        let db = Db::new_secondary(
+            &config.database,
+            &[&Tx::get_cf(), &compute::Result::get_cf()],
+        )?;
         let (sender, receiver) = mpsc::channel(100);
         let sequencer = Arc::new(Sequencer::new(
             sender.clone(),

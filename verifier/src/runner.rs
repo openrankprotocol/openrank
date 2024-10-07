@@ -1,12 +1,12 @@
 use openrank_common::{
-    algos::{et::convergence_check, AlgoError},
+    algos::{self, et::convergence_check},
     merkle::{
-        fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
-        MerkleError,
+        self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
+        Hash,
     },
     topics::{Domain, DomainHash},
     txs::{
-        compute::{ComputeCommitment, ComputeScores},
+        compute,
         trust::{ScoreEntry, TrustEntry},
         TxHash,
     },
@@ -25,10 +25,10 @@ pub struct VerificationRunner {
     seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
-    compute_scores: HashMap<DomainHash, HashMap<TxHash, ComputeScores>>,
+    compute_scores: HashMap<DomainHash, HashMap<TxHash, compute::Scores>>,
     compute_tree: HashMap<DomainHash, HashMap<TxHash, DenseMerkleTree<Keccak256>>>,
     active_assignments: HashMap<DomainHash, Vec<TxHash>>,
-    commitments: HashMap<TxHash, ComputeCommitment>,
+    commitments: HashMap<TxHash, compute::Commitment>,
 }
 
 impl VerificationRunner {
@@ -185,7 +185,7 @@ impl VerificationRunner {
 
     /// Check if the score tx hashes of the given commitment exists in the `compute_scores` of certain domain
     pub fn check_scores_tx_hashes(
-        &self, domain: Domain, commitment: ComputeCommitment,
+        &self, domain: Domain, commitment: compute::Commitment,
     ) -> Result<bool, VerificationRunnerError> {
         let compute_scores_txs = self.compute_scores.get(&domain.clone().to_hash()).ok_or(
             VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
@@ -237,7 +237,7 @@ impl VerificationRunner {
 
     /// Add a new scores of certain transaction, for certain domain
     pub fn update_scores(
-        &mut self, domain: Domain, tx_hash: TxHash, compute_scores: ComputeScores,
+        &mut self, domain: Domain, tx_hash: TxHash, compute_scores: compute::Scores,
     ) -> Result<(), VerificationRunnerError> {
         let score_values = self.compute_scores.get_mut(&domain.clone().to_hash()).ok_or(
             VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
@@ -260,11 +260,8 @@ impl VerificationRunner {
     }
 
     /// Add a new commitment of certain assignment
-    pub fn update_commitment(&mut self, commitment: ComputeCommitment) {
-        self.commitments.insert(
-            commitment.compute_assignment_tx_hash.clone(),
-            commitment.clone(),
-        );
+    pub fn update_commitment(&mut self, commitment: compute::Commitment) {
+        self.commitments.insert(commitment.assignment_tx_hash.clone(), commitment.clone());
     }
 
     /// Build the compute tree of certain assignment, for certain domain.
@@ -280,7 +277,7 @@ impl VerificationRunner {
         let compute_scores = self.compute_scores.get(&domain.to_hash()).ok_or(
             VerificationRunnerError::ComputeScoresNotFoundWithDomain(domain.to_hash()),
         )?;
-        let scores: Vec<&ComputeScores> = {
+        let scores: Vec<&compute::Scores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
                 scores.push(compute_scores.get(tx_hash).ok_or(
@@ -323,7 +320,7 @@ impl VerificationRunner {
             .seed_trust
             .get(&domain.to_hash())
             .ok_or(VerificationRunnerError::SeedTrustNotFound(domain.to_hash()))?;
-        let scores: Vec<&ComputeScores> = {
+        let scores: Vec<&compute::Scores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.iter() {
                 scores.push(compute_scores.get(tx_hash).ok_or(
@@ -393,8 +390,8 @@ pub enum VerificationRunnerError {
     CommitmentNotFound(TxHash),
     DomainIndexNotFound(String),
 
-    MerkleError(MerkleError),
-    AlgoError(AlgoError),
+    MerkleError(merkle::Error),
+    AlgoError(algos::Error),
 }
 
 impl Display for VerificationRunnerError {

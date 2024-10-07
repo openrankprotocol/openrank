@@ -1,12 +1,12 @@
 use openrank_common::{
-    algos::{et::positive_run, AlgoError},
+    algos::{self, et::positive_run},
     merkle::{
-        fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
-        MerkleError,
+        self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
+        Hash,
     },
     topics::{Domain, DomainHash},
     txs::{
-        compute::ComputeScores,
+        compute,
         trust::{ScoreEntry, TrustEntry},
     },
 };
@@ -206,7 +206,7 @@ impl ComputeRunner {
     /// Get the compute scores for certain domain.
     pub fn get_compute_scores(
         &self, domain: Domain,
-    ) -> Result<Vec<ComputeScores>, ComputeRunnerError> {
+    ) -> Result<Vec<compute::Scores>, ComputeRunnerError> {
         let domain_indices = self
             .indices
             .get(&domain.to_hash())
@@ -227,7 +227,7 @@ impl ComputeRunner {
                 let score_entry = ScoreEntry::new((*address).clone(), *val);
                 entries.push(score_entry);
             }
-            let compute_scores = ComputeScores::new(entries);
+            let compute_scores = compute::Scores::new(entries);
             compute_scores_txs.push(compute_scores);
         }
         Ok(compute_scores_txs)
@@ -273,9 +273,9 @@ pub enum ComputeRunnerError {
     ComputeTreeNotFound(DomainHash),
 
     /// The compute merkle tree error.
-    MerkleError(MerkleError),
+    MerkleError(merkle::Error),
     /// The compute algorithm error.
-    AlgoError(AlgoError),
+    AlgoError(algos::Error),
 }
 
 impl Display for ComputeRunnerError {

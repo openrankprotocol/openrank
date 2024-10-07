@@ -10,7 +10,7 @@ use openrank_common::{
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
-        compute::{ComputeAssignment, ComputeCommitment, ComputeScores, ComputeVerification},
+        compute,
         trust::{SeedUpdate, TrustUpdate},
         Address, Kind, Tx,
     },
@@ -168,7 +168,7 @@ impl VerifierNode {
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
                             // Not checking if this node is assigned for the compute
                             let compute_assignment =
-                                ComputeAssignment::decode(&mut tx.body().as_slice())
+                                compute::Assignment::decode(&mut tx.body().as_slice())
                                     .map_err(VerifierNodeError::DecodeError)?;
                             let computer_address = address_from_sk(&self.secret_key);
                             assert_eq!(computer_address, compute_assignment.assigned_verifier_node);
@@ -190,7 +190,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::InternalError)?;
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
-                                    ComputeVerification::new(tx_hash, verification_res);
+                                    compute::Verification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
                                     Kind::ComputeVerification,
                                     encode(verification_res),
@@ -224,7 +224,7 @@ impl VerifierNode {
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
-                            let compute_scores = ComputeScores::decode(&mut tx.body().as_slice())
+                            let compute_scores = compute::Scores::decode(&mut tx.body().as_slice())
                                 .map_err(VerifierNodeError::DecodeError)?;
 
                             let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
@@ -239,7 +239,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::InternalError)?;
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
-                                    ComputeVerification::new(tx_hash, verification_res);
+                                    compute::Verification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
                                     Kind::ComputeVerification,
                                     encode(verification_res),
@@ -274,7 +274,7 @@ impl VerifierNode {
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(VerifierNodeError::DbError)?;
                             let compute_commitment =
-                                ComputeCommitment::decode(&mut tx.body().as_slice())
+                                compute::Commitment::decode(&mut tx.body().as_slice())
                                     .map_err(VerifierNodeError::DecodeError)?;
 
                             let domain = domains.iter().find(|x| &x.to_hash() == domain_id).ok_or(
@@ -287,7 +287,7 @@ impl VerifierNode {
                                 .map_err(VerifierNodeError::InternalError)?;
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
-                                    ComputeVerification::new(tx_hash, verification_res);
+                                    compute::Verification::new(tx_hash, verification_res);
                                 let mut tx = Tx::default_with(
                                     Kind::ComputeVerification,
                                     encode(verification_res),

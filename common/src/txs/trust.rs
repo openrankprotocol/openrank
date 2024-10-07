@@ -1,8 +1,8 @@
-use crate::{merkle::Hash, topics::DomainHash};
-
 use super::{Address, TxHash};
+use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use core::result::Result as CoreResult;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -34,7 +34,7 @@ impl OwnedNamespace {
 impl FromHex for OwnedNamespace {
     type Error = hex::FromHexError;
 
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> CoreResult<Self, Self::Error> {
         Ok(OwnedNamespace(<[u8; 24]>::from_hex(hex)?))
     }
 }
@@ -159,14 +159,14 @@ impl AcceptedTrustUpdates {
     }
 }
 
-pub struct TrustAssignment {
+pub struct Assignment {
     to_sequence: u64,
     domain_id: DomainHash,
     trust_builder: Address,
     trust_verifier: Vec<Address>,
 }
 
-impl TrustAssignment {
+impl Assignment {
     pub fn new(
         to_sequence: u64, domain_id: DomainHash, trust_builder: Address,
         trust_verifier: Vec<Address>,
@@ -191,12 +191,12 @@ impl TrustAssignment {
     }
 }
 
-pub struct TrustCommitment {
+pub struct Commitment {
     trust_assignment_tx_hash: TxHash,
     root_hash: Hash,
 }
 
-impl TrustCommitment {
+impl Commitment {
     pub fn new(trust_assignment_tx_hash: TxHash, root_hash: Hash) -> Self {
         Self { trust_assignment_tx_hash, root_hash }
     }
@@ -210,12 +210,12 @@ impl TrustCommitment {
     }
 }
 
-pub struct TrustVerification {
+pub struct Verification {
     trust_commitment_tx_hash: TxHash,
     verification_result: bool,
 }
 
-impl TrustVerification {
+impl Verification {
     pub fn new(trust_commitment_tx_hash: TxHash, verification_result: bool) -> Self {
         Self { trust_commitment_tx_hash, verification_result }
     }
@@ -229,13 +229,13 @@ impl TrustVerification {
     }
 }
 
-pub struct TrustResult {
+pub struct Result {
     trust_commitment_tx_hash: TxHash,
     trust_verification_tx_hashes: Vec<TxHash>,
     timestamp: u64,
 }
 
-impl TrustResult {
+impl Result {
     pub fn new(
         trust_commitment_tx_hash: TxHash, trust_verification_tx_hashes: Vec<TxHash>, timestamp: u64,
     ) -> Self {

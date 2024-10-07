@@ -83,11 +83,9 @@ impl ComputeManagerClient {
         // submit tx
         let _result_hash = match tx.kind() {
             Kind::ComputeCommitment => {
-                let compute_commitment = openrank_common::txs::compute::ComputeCommitment::decode(
-                    &mut tx.body().as_slice(),
-                )?;
-                let compute_assignment_tx_hash =
-                    compute_commitment.compute_assignment_tx_hash.0.into();
+                let compute_commitment =
+                    openrank_common::txs::compute::Commitment::decode(&mut tx.body().as_slice())?;
+                let compute_assignment_tx_hash = compute_commitment.assignment_tx_hash.0.into();
                 let compute_commitment_tx_hash = tx.hash().0.into();
                 let compute_root_hash = compute_commitment.compute_root_hash.0.into();
                 let sig = Signature {
@@ -170,10 +168,7 @@ mod tests {
 
     use openrank_common::{
         merkle::Hash,
-        txs::{
-            compute::{ComputeCommitment, ComputeRequest, ComputeVerification},
-            TxHash,
-        },
+        txs::{compute, TxHash},
     };
 
     use super::*;
@@ -220,7 +215,7 @@ mod tests {
         client
             .submit_openrank_tx(Tx::default_with(
                 Kind::ComputeRequest,
-                encode(ComputeRequest::default()),
+                encode(compute::Request::default()),
             ))
             .await?;
 
@@ -230,7 +225,7 @@ mod tests {
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();
         let mut tx = Tx::default_with(
             Kind::ComputeCommitment,
-            encode(ComputeCommitment::new(
+            encode(compute::Commitment::new(
                 TxHash::from_bytes(
                     hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
                         .unwrap(),
@@ -251,8 +246,8 @@ mod tests {
 
         let mut tx = Tx::default_with(
             Kind::ComputeVerification,
-            encode(ComputeVerification {
-                compute_assignment_tx_hash: TxHash::from_bytes(
+            encode(compute::Verification {
+                assignment_tx_hash: TxHash::from_bytes(
                     hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
                         .unwrap(),
                 ),

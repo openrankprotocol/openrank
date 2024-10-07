@@ -1,32 +1,53 @@
 use alloy_rlp::{encode, Decodable};
 use dotenv::dotenv;
 use futures::StreamExt;
+use k256::ecdsa;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     broadcast_event, build_node, config,
-    db::{self, Db, DbError, DbItem},
+    db::{self, Db, DbItem},
     net,
-    result::ComputeResult,
     topics::{Domain, Topic},
     tx_event::TxEvent,
-    txs::{
-        compute::{
-            ComputeAssignment, ComputeCommitment, ComputeRequest, ComputeScores,
-            ComputeVerification,
-        },
-        Address, Kind, Tx,
-    },
+    txs::{compute, Address, Kind, Tx},
     MyBehaviour, MyBehaviourEvent,
 };
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-mod error;
-use error::BlockBuilderNodeError;
+#[derive(Debug)]
+/// Errors that can arise while using the block builder node.
+pub enum Error {
+    /// The decode error. This can arise when decoding a transaction.
+    Decode(alloy_rlp::Error),
+    /// The database error. The error can occur when interacting with the database.
+    Db(db::Error),
+    /// The p2p error. This can arise when sending or receiving messages over the p2p network.
+    P2P(String),
+    /// The signature error. This can arise when verifying a transaction signature.
+    Signature(ecdsa::Error),
+    /// The invalid tx kind error. This can arise when the transaction kind is not valid.
+    InvalidTxKind,
+}
+
+impl StdError for Error {}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::Decode(err) => err.fmt(f),
+            Self::Db(err) => err.fmt(f),
+            Self::P2P(err) => write!(f, "p2p error: {}", err),
+            Self::Signature(err) => err.fmt(f),
+            Self::InvalidTxKind => write!(f, "InvalidTxKind"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// The whitelist for the Block Builder.
@@ -51,21 +72,21 @@ pub struct Config {
 }
 
 /// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the ComputeRunner.
-pub struct BlockBuilderNode {
+pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
     secret_key: SigningKey,
 }
 
-impl BlockBuilderNode {
+impl Node {
     /// Initializes the node:
     /// - Loads the config from config.toml.
     /// - Initializes the Swarm.
     /// - Initializes the DB.
     /// - Initializes the ComputeRunner.
     /// - Initializes the Secret Key.
-    pub async fn init() -> Result<Self, Box<dyn Error>> {
+    pub async fn init() -> Result<Self, Box<dyn StdError>> {
         dotenv().ok();
         tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
@@ -75,7 +96,10 @@ impl BlockBuilderNode {
 
         let config_loader = config::Loader::new("openrank-block-builder")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, &[&Tx::get_cf(), &ComputeResult::get_cf()])?;
+        let db = Db::new(
+            &config.database,
+            &[&Tx::get_cf(), &compute::Result::get_cf()],
+        )?;
 
         let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
@@ -88,7 +112,7 @@ impl BlockBuilderNode {
     /// of postceding TX to the network.
     fn handle_gossipsub_events(
         &mut self, event: gossipsub::Event, topics: Vec<&Topic>,
-    ) -> Result<(), BlockBuilderNodeError> {
+    ) -> Result<(), Error> {
         if let gossipsub::Event::Message { message_id, message, propagation_source } = event {
             for topic in topics {
                 match topic {
@@ -96,17 +120,16 @@ impl BlockBuilderNode {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             if tx.kind() != Kind::TrustUpdate {
-                                return Err(BlockBuilderNodeError::InvalidTxKind);
+                                return Err(Error::InvalidTxKind);
                             }
-                            tx.verify_against(namespace.owner())
-                                .map_err(BlockBuilderNodeError::SignatureError)?;
+                            tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
-                            self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
+                            self.db.put(tx.clone()).map_err(Error::Db)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -117,17 +140,16 @@ impl BlockBuilderNode {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             if tx.kind() != Kind::SeedUpdate {
-                                return Err(BlockBuilderNodeError::InvalidTxKind);
+                                return Err(Error::InvalidTxKind);
                             }
-                            tx.verify_against(namespace.owner())
-                                .map_err(BlockBuilderNodeError::SignatureError)?;
+                            tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
-                            self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
+                            self.db.put(tx.clone()).map_err(Error::Db)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -138,37 +160,36 @@ impl BlockBuilderNode {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             if tx.kind() != Kind::ComputeRequest {
-                                return Err(BlockBuilderNodeError::InvalidTxKind);
+                                return Err(Error::InvalidTxKind);
                             }
-                            let address =
-                                tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                            let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.users.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
-                            let compute_request = ComputeRequest::decode(&mut tx.body().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            let compute_request =
+                                compute::Request::decode(&mut tx.body().as_slice())
+                                    .map_err(Error::Decode)?;
                             assert_eq!(&compute_request.domain_id, domain_id);
 
                             let assignment_topic = Topic::DomainAssignent(domain_id.clone());
                             let computer = self.config.whitelist.computer[0].clone();
                             let verifier = self.config.whitelist.verifier[0].clone();
                             let compute_assignment =
-                                ComputeAssignment::new(tx.hash(), computer, verifier);
+                                compute::Assignment::new(tx.hash(), computer, verifier);
                             let mut tx = Tx::default_with(
                                 Kind::ComputeAssignment,
                                 encode(compute_assignment),
                             );
-                            tx.sign(&self.secret_key)
-                                .map_err(BlockBuilderNodeError::SignatureError)?;
-                            self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
+                            tx.sign(&self.secret_key).map_err(Error::Signature)?;
+                            self.db.put(tx.clone()).map_err(Error::Db)?;
                             broadcast_event(&mut self.swarm, tx.clone(), assignment_topic)
-                                .map_err(|e| BlockBuilderNodeError::P2PError(e.to_string()))?;
+                                .map_err(|e| Error::P2P(e.to_string()))?;
                             // After broadcasting ComputeAssignment, save to db
-                            self.db.put(tx).map_err(BlockBuilderNodeError::DbError)?;
+                            self.db.put(tx).map_err(Error::Db)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -179,49 +200,43 @@ impl BlockBuilderNode {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             if tx.kind() != Kind::ComputeCommitment {
-                                return Err(BlockBuilderNodeError::InvalidTxKind);
+                                return Err(Error::InvalidTxKind);
                             }
-                            let address =
-                                tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                            let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
+                            self.db.put(tx.clone()).map_err(Error::Db)?;
 
-                            let commitment = ComputeCommitment::decode(&mut tx.body().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                            let commitment = compute::Commitment::decode(&mut tx.body().as_slice())
+                                .map_err(Error::Decode)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 Kind::ComputeAssignment,
-                                commitment.compute_assignment_tx_hash,
+                                commitment.assignment_tx_hash,
                             );
-                            let assignment_tx: Tx = self
-                                .db
-                                .get(assignment_tx_key)
-                                .map_err(BlockBuilderNodeError::DbError)?;
+                            let assignment_tx: Tx =
+                                self.db.get(assignment_tx_key).map_err(Error::Db)?;
                             let assignment_body =
-                                ComputeAssignment::decode(&mut assignment_tx.body().as_slice())
-                                    .map_err(BlockBuilderNodeError::DecodeError)?;
+                                compute::Assignment::decode(&mut assignment_tx.body().as_slice())
+                                    .map_err(Error::Decode)?;
                             let request_tx_key = Tx::construct_full_key(
                                 Kind::ComputeRequest,
-                                assignment_body.compute_request_tx_hash.clone(),
+                                assignment_body.request_tx_hash.clone(),
                             );
-                            let request: Tx = self
-                                .db
-                                .get(request_tx_key)
-                                .map_err(BlockBuilderNodeError::DbError)?;
-                            let compute_result_key = ComputeResult::construct_full_key(
-                                assignment_body.compute_request_tx_hash,
+                            let request: Tx = self.db.get(request_tx_key).map_err(Error::Db)?;
+                            let compute_result_key = compute::Result::construct_full_key(
+                                assignment_body.request_tx_hash,
                             );
-                            if let Err(DbError::NotFound) =
-                                self.db.get::<ComputeResult>(compute_result_key)
+                            if let Err(db::Error::NotFound) =
+                                self.db.get::<compute::Result>(compute_result_key)
                             {
                                 let result =
-                                    ComputeResult::new(tx.hash(), Vec::new(), request.hash());
-                                self.db.put(result).map_err(BlockBuilderNodeError::DbError)?;
+                                    compute::Result::new(tx.hash(), Vec::new(), request.hash());
+                                self.db.put(result).map_err(Error::Db)?;
                             }
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -233,19 +248,18 @@ impl BlockBuilderNode {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             if tx.kind() != Kind::ComputeScores {
-                                return Err(BlockBuilderNodeError::InvalidTxKind);
+                                return Err(Error::InvalidTxKind);
                             }
-                            let address =
-                                tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                            let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
-                            ComputeScores::decode(&mut tx.body().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            compute::Scores::decode(&mut tx.body().as_slice())
+                                .map_err(Error::Decode)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -256,41 +270,36 @@ impl BlockBuilderNode {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(BlockBuilderNodeError::DecodeError)?;
+                                .map_err(Error::Decode)?;
                             if tx.kind() != Kind::ComputeVerification {
-                                return Err(BlockBuilderNodeError::InvalidTxKind);
+                                return Err(Error::InvalidTxKind);
                             }
-                            let address =
-                                tx.verify().map_err(BlockBuilderNodeError::SignatureError)?;
+                            let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.verifier.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(BlockBuilderNodeError::DbError)?;
+                            self.db.put(tx.clone()).map_err(Error::Db)?;
                             let compute_verification =
-                                ComputeVerification::decode(&mut tx.body().as_slice())
-                                    .map_err(BlockBuilderNodeError::DecodeError)?;
+                                compute::Verification::decode(&mut tx.body().as_slice())
+                                    .map_err(Error::Decode)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 Kind::ComputeAssignment,
-                                compute_verification.compute_assignment_tx_hash,
+                                compute_verification.assignment_tx_hash,
                             );
-                            let assignment_tx: Tx = self
-                                .db
-                                .get(assignment_tx_key)
-                                .map_err(BlockBuilderNodeError::DbError)?;
+                            let assignment_tx: Tx =
+                                self.db.get(assignment_tx_key).map_err(Error::Db)?;
                             let assignment_body =
-                                ComputeAssignment::decode(&mut assignment_tx.body().as_slice())
-                                    .map_err(BlockBuilderNodeError::DecodeError)?;
-                            let compute_result_key = ComputeResult::construct_full_key(
-                                assignment_body.compute_request_tx_hash,
+                                compute::Assignment::decode(&mut assignment_tx.body().as_slice())
+                                    .map_err(Error::Decode)?;
+                            let compute_result_key = compute::Result::construct_full_key(
+                                assignment_body.request_tx_hash,
                             );
-                            let mut compute_result: ComputeResult = self
-                                .db
-                                .get(compute_result_key)
-                                .map_err(BlockBuilderNodeError::DbError)?;
+                            let mut compute_result: compute::Result =
+                                self.db.get(compute_result_key).map_err(Error::Db)?;
                             compute_result.compute_verification_tx_hashes.push(tx.hash());
-                            self.db.put(compute_result).map_err(BlockBuilderNodeError::DbError)?;
+                            self.db.put(compute_result).map_err(Error::Db)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -310,7 +319,7 @@ impl BlockBuilderNode {
     /// - Subscribes to all the topics.
     /// - Handles gossipsub events.
     /// - Handles mDNS events.
-    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn run(&mut self) -> Result<(), Box<dyn StdError>> {
         net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
 
         let topics_trust_updates: Vec<Topic> = self

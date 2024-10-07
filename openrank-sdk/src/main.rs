@@ -12,7 +12,7 @@ use openrank_common::{
     topics::Domain,
     tx_event::TxEvent,
     txs::{
-        compute::ComputeRequest,
+        compute,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
         Address, Kind, Tx, TxHash,
     },
@@ -189,7 +189,7 @@ async fn compute_request(
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(ComputeRequest::new(domain_id, 0, hash));
+    let data = encode(compute::Request::new(domain_id, 0, hash));
     let mut tx = Tx::default_with(Kind::ComputeRequest, data);
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
