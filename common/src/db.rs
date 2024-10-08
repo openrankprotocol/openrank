@@ -39,7 +39,7 @@ pub trait DbItem {
 }
 
 pub struct Db {
-    pub connection: DB,
+    connection: DB,
 }
 
 impl Db {

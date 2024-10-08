@@ -11,7 +11,10 @@ pub mod api;
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
     env_logger::init();
-    let dbs = vec![("../block-builder/local-storage", "tx")];
+    let dbs = vec![
+        ("../block-builder/local-storage", "tx"),
+        //("../block-builder/local-storage", "metadata")
+    ];
     let mut relayer = SQLRelayer::init(dbs).await;
     let server_task = tokio::spawn(async {
         serve().await;
