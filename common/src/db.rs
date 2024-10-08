@@ -39,7 +39,7 @@ pub trait DbItem {
 }
 
 pub struct Db {
-    connection: DB,
+    pub connection: DB,
 }
 
 impl Db {
@@ -83,6 +83,7 @@ impl Db {
     pub fn get<I: DbItem + DeserializeOwned>(&self, key: Vec<u8>) -> Result<I, DbError> {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(DbError::CfNotFound)?;
         let item_res = self.connection.get_cf(&cf, key).map_err(|e| DbError::RocksDB(e))?;
+
         let item = item_res.ok_or(DbError::NotFound)?;
         let value = serde_json::from_slice(&item).map_err(|e| DbError::Serde(e))?;
         Ok(value)

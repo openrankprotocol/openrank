@@ -1,4 +1,16 @@
 use log::{debug, error, info};
+use openrank_common::{
+    db::Db,
+    result::JobResult,
+    topics::{Domain, Topic},
+    tx_event::TxEvent,
+    txs::{
+        Address, CreateCommitment, CreateScores, JobRunAssignment, JobRunRequest, JobVerification,
+        Tx, TxKind,
+    },
+};
+
+use openrank_common::db::DbItem;
 use rocksdb::{ColumnFamilyDescriptor, DBWithThreadMode, MultiThreaded, Options, DB};
 use std::collections::HashMap;
 use std::path::Path;
@@ -7,9 +19,11 @@ use tokio::time::{sleep, Duration};
 mod postgres;
 
 pub struct SQLRelayer {
-    dbs: HashMap<String, (DBWithThreadMode<MultiThreaded>, String)>, // Store multiple databases with paths and topics
-    last_processed_keys: HashMap<String, Option<usize>>, // Track last processed key per database
-    target_db: postgres::SQLDatabase,
+    // todo use only common db, here because common lib db does not expose iterator
+    dbs: HashMap<String, (DBWithThreadMode<MultiThreaded>, String)>, 
+    last_processed_keys: HashMap<String, Option<usize>>, 
+    target_db: postgres::SQLDatabase, // sql
+    common_db: Db, // common lib
 }
 
 impl SQLRelayer {
@@ -18,6 +32,8 @@ impl SQLRelayer {
 
         let mut dbs = HashMap::new();
         let mut last_processed_keys = HashMap::new();
+        
+        let common_db = Db::new("../block-builder/local-storage", &[&Tx::get_cf(), &JobResult::get_cf()]).expect("Failed to initialize common_db");
 
         for (db_path, topic) in db_configs {
             let last_processed_key = target_db
@@ -30,16 +46,15 @@ impl SQLRelayer {
             opts.create_if_missing(false);
             opts.create_missing_column_families(true);
 
-            let cfs = vec![ColumnFamilyDescriptor::new(topic, Options::default())];
-
-            let db = DBWithThreadMode::<MultiThreaded>::open_cf_descriptors(&opts, path, cfs)
+            let cfs = &[&Tx::get_cf(), &JobResult::get_cf()];
+            let db = DBWithThreadMode::<MultiThreaded>::open_cf_for_read_only(&opts, path, cfs, false)
                 .expect("Failed to open RocksDB with column families");
 
             dbs.insert(db_path.to_string(), (db, topic.to_string()));
             last_processed_keys.insert(db_path.to_string(), last_processed_key);
         }
 
-        SQLRelayer { dbs, last_processed_keys, target_db }
+        SQLRelayer { dbs, last_processed_keys, target_db, common_db }
     }
 
     async fn save_last_processed_key(&self, db_path: &str, topic: &str, last_processed_key: usize) {
@@ -54,8 +69,8 @@ impl SQLRelayer {
 
     async fn index(&mut self) {
         for (db_path, (db, topic)) in &self.dbs {
-            let cf = db.cf_handle(topic).expect(&format!("Column family '{}' not found", topic));
-            let iter = db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+            let cf = self.common_db.connection.cf_handle(topic).expect(&format!("Column family '{}' not found", topic));
+            let iter = self.common_db.connection.iterator_cf(&cf, rocksdb::IteratorMode::Start);
 
             let mut count = 0;
 
@@ -66,19 +81,32 @@ impl SQLRelayer {
 
             for item in iter {
                 match item {
-                    Ok((key, value)) => {
-                        let key_index = key.to_vec();
-
+                    Ok((key, _)) => {
                         if self.last_processed_keys[db_path].is_none()
                             || self.last_processed_keys[db_path].unwrap() < count
                         {
-                            let key_str = String::from_utf8_lossy(&key);
-                            let value_str = String::from_utf8_lossy(&value);
-                            debug!("New Key: {}, Value length: {}", key_str, value_str.len());
-                            self.target_db.insert_events(&key_str, &value_str).await;
+                            let key_vec = key.to_vec();
 
-                            self.last_processed_keys.insert(db_path.clone(), Some(count));
-                            self.save_last_processed_key(db_path, topic, count).await;
+                            match self.common_db.get::<TxEvent>(key_vec.clone()) {
+                                Ok(tx) => {
+                                    let key_str = String::from_utf8_lossy(&key_vec);
+                                    let value_str = serde_json::to_string(&tx).unwrap();
+
+                                    info!("New Key: {}, Value length: {}", key_str, value_str);
+
+                                    
+                                    self.target_db.insert_events(&key_str, &value_str).await;
+
+                                    self.last_processed_keys.insert(db_path.clone(), Some(count));
+                                    self.save_last_processed_key(db_path, topic, count).await;
+                                },
+                                Err(e) => {
+                                    error!(
+                                        "Failed to retrieve data for key {:?} from common DB: {}",
+                                        key_vec, e
+                                    );
+                                },
+                            }
                         }
                     },
                     Err(e) => {

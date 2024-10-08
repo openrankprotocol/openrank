@@ -6,6 +6,7 @@ use async_graphql_warp::{graphql, GraphQLResponse};
 use dotenv::dotenv;
 use sqlx::PgPool;
 use std::sync::Arc;
+use warp::http::Method;
 use warp::Filter;
 
 use crate::api::schema;
@@ -13,10 +14,7 @@ use crate::api::schema;
 pub async fn serve() {
     dotenv().ok();
 
-    // Initialize DB Pool
     let pool = Arc::new(get_db_pool().await);
-
-    // Dereference the Arc when passing to build_schema
     let schema = build_schema((*pool).clone());
 
     let graphql_filter = async_graphql_warp::graphql(schema.clone()).and_then(
@@ -33,6 +31,12 @@ pub async fn serve() {
         .and(warp::post().and(graphql_filter.clone()))
         .or(warp::get().and(playground));
 
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(&[Method::GET, Method::POST])
+        .allow_headers(vec!["content-type", "authorization"]);
+
     let host = ([127, 0, 0, 1], 3030);
-    warp::serve(routes).run(host).await;
+
+    warp::serve(routes.with(cors)).run(host).await;
 }
