@@ -22,8 +22,4 @@ impl JobCoordinator {
             self.count = seq_number;
         }
     }
-
-    pub fn get_count(&self) -> u64 {
-        self.count
-    }
 }
