@@ -90,6 +90,9 @@ pub fn broadcast_default_event(
 pub fn broadcast_event(
     swarm: &mut Swarm<MyBehaviour>, tx: Tx, topic: Topic,
 ) -> Result<MessageId, PublishError> {
+    if let Topic::DomainVerification(d) = topic.clone() {
+        println!("{:?}", d);
+    }
     info!("PUBLISH: {}", topic.clone());
     let tx_event = TxEvent::default_with_data(encode(tx));
     let topic_wrapper = gossipsub::IdentTopic::new(topic);

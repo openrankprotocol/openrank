@@ -6,7 +6,7 @@ use openrank_common::{
     build_node, config,
     db::{self, Db, DbItem},
     net,
-    result::{GetResultsQuery, JobResult},
+    result::{GetResultsQuery, JobResult, JobResultReference},
     topics::Topic,
     tx_event::TxEvent,
     txs::{
@@ -181,7 +181,14 @@ impl Sequencer {
         let query: GetResultsQuery = serde_json::from_value(get_results_query)
             .map_err(|e| RPCError::ParseError(e.to_string()))?;
 
-        let key = JobResult::construct_full_key(query.job_run_request_tx_hash);
+        let job_result_reference = self
+            .db
+            .get::<JobResultReference>(query.job_run_request_tx_hash.0.to_vec())
+            .map_err(|e| {
+                error!("{}", e);
+                RPCError::InternalError
+            })?;
+        let key = JobResult::construct_full_key(job_result_reference.seq_number);
         let result = self.db.get::<JobResult>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
@@ -295,7 +302,10 @@ impl SequencerNode {
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         let config_loader = config::Loader::new("openrank-sequencer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
+        let db = Db::new_secondary(
+            &config.database,
+            &[&Tx::get_cf(), &JobResult::get_cf(), &JobResultReference::get_cf()],
+        )?;
         let (sender, receiver) = mpsc::channel(100);
         let sequencer = Arc::new(Sequencer::new(
             sender.clone(),

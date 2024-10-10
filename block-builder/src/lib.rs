@@ -1,4 +1,5 @@
 use alloy_rlp::{encode, Decodable};
+use coordinator::JobCoordinator;
 use dotenv::dotenv;
 use futures::StreamExt;
 use k256::ecdsa::SigningKey;
@@ -7,7 +8,7 @@ use openrank_common::{
     broadcast_event, build_node, config,
     db::{self, Db, DbError, DbItem},
     net,
-    result::JobResult,
+    result::{JobResult, JobResultReference},
     topics::{Domain, Topic},
     tx_event::TxEvent,
     txs::{
@@ -22,6 +23,7 @@ use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+mod coordinator;
 mod error;
 use error::BlockBuilderNodeError;
 
@@ -53,6 +55,7 @@ pub struct BlockBuilderNode {
     config: Config,
     db: Db,
     secret_key: SigningKey,
+    coordinator: JobCoordinator,
 }
 
 impl BlockBuilderNode {
@@ -72,12 +75,17 @@ impl BlockBuilderNode {
 
         let config_loader = config::Loader::new("openrank-block-builder")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
+        let db = Db::new(
+            &config.database,
+            &[&Tx::get_cf(), &JobResult::get_cf(), &JobResultReference::get_cf()],
+        )?;
 
         let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, db, secret_key })
+        let coordinator = JobCoordinator::new();
+
+        Ok(Self { swarm, config, db, secret_key, coordinator })
     }
 
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
@@ -208,13 +216,20 @@ impl BlockBuilderNode {
                                 .db
                                 .get(request_tx_key)
                                 .map_err(BlockBuilderNodeError::DbError)?;
-                            let job_result_key = JobResult::construct_full_key(
-                                assignment_body.job_run_request_tx_hash,
-                            );
-                            if let Err(DbError::NotFound) = self.db.get::<JobResult>(job_result_key)
-                            {
-                                let result = JobResult::new(tx.hash(), Vec::new(), request.hash());
-                                self.db.put(result).map_err(BlockBuilderNodeError::DbError)?;
+                            if let Err(DbError::NotFound) = self.db.get::<JobResultReference>(
+                                assignment_body.job_run_request_tx_hash.0.to_vec(),
+                            ) {
+                                let mut result =
+                                    JobResult::new(tx.hash(), Vec::new(), request.hash());
+                                self.coordinator.add_job_result(&mut result);
+                                self.db
+                                    .put(result.clone())
+                                    .map_err(BlockBuilderNodeError::DbError)?;
+                                let reference = JobResultReference::new(
+                                    assignment_body.job_run_request_tx_hash,
+                                    result.seq_number.unwrap(),
+                                );
+                                self.db.put(reference).map_err(BlockBuilderNodeError::DbError)?;
                             }
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -247,6 +262,7 @@ impl BlockBuilderNode {
                     },
                     Topic::DomainVerification(_) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                        println!("{} {}", message.topic, topic_wrapper.hash());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
@@ -275,14 +291,18 @@ impl BlockBuilderNode {
                             let assignment_body =
                                 JobRunAssignment::decode(&mut assignment_tx.body().as_slice())
                                     .map_err(BlockBuilderNodeError::DecodeError)?;
-                            let job_result_key = JobResult::construct_full_key(
-                                assignment_body.job_run_request_tx_hash,
-                            );
+                            let job_result_reference: JobResultReference = self
+                                .db
+                                .get(assignment_body.job_run_request_tx_hash.0.to_vec())
+                                .map_err(BlockBuilderNodeError::DbError)?;
+                            let job_result_key =
+                                JobResult::construct_full_key(job_result_reference.seq_number);
                             let mut job_result: JobResult = self
                                 .db
                                 .get(job_result_key)
                                 .map_err(BlockBuilderNodeError::DbError)?;
                             job_result.job_verification_tx_hashes.push(tx.hash());
+                            self.coordinator.add_job_result(&mut job_result);
                             self.db.put(job_result).map_err(BlockBuilderNodeError::DbError)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -295,6 +315,18 @@ impl BlockBuilderNode {
             }
         }
 
+        Ok(())
+    }
+
+    /// Node recovery method. Used for loading results from the DB into the memory, for future indexing.
+    pub fn node_recovery(&mut self) -> Result<(), BlockBuilderNodeError> {
+        let job_results: Vec<JobResult> = self
+            .db
+            .read_from_end("result".to_string(), None)
+            .map_err(BlockBuilderNodeError::DbError)?;
+        for mut job_result in job_results {
+            self.coordinator.add_job_result(&mut job_result);
+        }
         Ok(())
     }
 
@@ -352,6 +384,7 @@ impl BlockBuilderNode {
             .map(|x| x.to_hash())
             .map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
             .collect();
+        println!("topics_verification: {:?}", topics_verification);
 
         for topic in topics_verification
             .iter()
