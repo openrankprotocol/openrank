@@ -31,4 +31,5 @@ alloy-rlp = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 karyon_jsonrpc = { workspace = true }
+jsonrpsee = { workspace = true, features = ["server", "macros"] }
 toml = { workspace = true }

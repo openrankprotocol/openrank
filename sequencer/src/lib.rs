@@ -24,6 +24,8 @@ use tokio::{
 };
 use tracing::{error, info};
 
+mod rpc;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// The whitelist for the Sequencer.
 pub struct Whitelist {
