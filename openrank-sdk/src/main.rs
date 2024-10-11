@@ -321,8 +321,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let rng = &mut thread_rng();
             let (sk, address) = generate_keypair(rng);
             let sk_bytes = sk.to_bytes();
-            println!("SIGNING_KEY: {}", hex::encode(sk_bytes));
-            println!("ADDRESS:     {}", address.to_hex());
+            println!("SECRET_KEY=\"{}\"", hex::encode(sk_bytes));
+            println!("# ADDRESS: {}", address.to_hex());
         },
         Method::ShowAddress => {
             let secret_key = get_secret_key()?;
