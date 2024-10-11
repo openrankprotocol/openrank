@@ -19,9 +19,9 @@ use eyre::Result;
 use openrank_common::{
     config,
     db::{self, Db, DbItem},
-    txs::{Tx, TxKind},
+    txs::{Kind, Tx},
 };
-use sol::JobManager::{self, OpenrankTx, Signature};
+use sol::ComputeManager::{self, OpenrankTx, Signature};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -30,14 +30,14 @@ pub struct Config {
     pub database: db::Config,
 }
 
-pub struct JobManagerClient {
+pub struct ComputeManagerClient {
     contract_address: Address,
     rpc_url: Url,
     signer: LocalSigner<SigningKey>,
     db: Db,
 }
 
-impl JobManagerClient {
+impl ComputeManagerClient {
     pub fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
         let secret_key_hex = std::env::var("SECRET_KEY")?;
@@ -67,11 +67,11 @@ impl JobManagerClient {
             .with_recommended_fillers()
             .wallet(wallet)
             .on_http(self.rpc_url.clone());
-        let contract = JobManager::new(self.contract_address, provider);
+        let contract = ComputeManager::new(self.contract_address, provider);
 
         // check if tx already exists
         let is_tx_exists = match tx.kind() {
-            TxKind::CreateCommitment | TxKind::JobVerification => {
+            Kind::ComputeCommitment | Kind::ComputeVerification => {
                 contract.hasTx(tx.hash().0.into()).call().await?._0
             },
             _ => true,
@@ -82,21 +82,20 @@ impl JobManagerClient {
 
         // submit tx
         let _result_hash = match tx.kind() {
-            TxKind::CreateCommitment => {
-                let create_commitment =
-                    openrank_common::txs::CreateCommitment::decode(&mut tx.body().as_slice())?;
-                let job_run_assignment_tx_hash =
-                    create_commitment.job_run_assignment_tx_hash.0.into();
-                let create_commitment_tx_hash = tx.hash().0.into();
-                let compute_root_hash = create_commitment.compute_root_hash.0.into();
+            Kind::ComputeCommitment => {
+                let compute_commitment =
+                    openrank_common::txs::compute::Commitment::decode(&mut tx.body().as_slice())?;
+                let compute_assignment_tx_hash = compute_commitment.assignment_tx_hash.0.into();
+                let compute_commitment_tx_hash = tx.hash().0.into();
+                let compute_root_hash = compute_commitment.compute_root_hash.0.into();
                 let sig = Signature {
                     s: tx.signature().s.into(),
                     r: tx.signature().r.into(),
                     r_id: tx.signature().r_id(),
                 };
                 contract
-                    .submitCreateCommitment(
-                        job_run_assignment_tx_hash, create_commitment_tx_hash, compute_root_hash,
+                    .submitComputeCommitment(
+                        compute_assignment_tx_hash, compute_commitment_tx_hash, compute_root_hash,
                         sig,
                     )
                     .send()
@@ -104,7 +103,7 @@ impl JobManagerClient {
                     .watch()
                     .await?
             },
-            TxKind::JobVerification => {
+            Kind::ComputeVerification => {
                 let tx_ = OpenrankTx {
                     nonce: tx.nonce(),
                     from: tx.from().0.into(),
@@ -118,7 +117,7 @@ impl JobManagerClient {
                     },
                     sequence_number: 0,
                 };
-                contract.submitJobVerification(tx_).send().await?.watch().await?
+                contract.submitComputeVerification(tx_).send().await?.watch().await?
             },
             _ => return Ok(()),
         };
@@ -130,19 +129,19 @@ impl JobManagerClient {
         // collect all txs
         let mut txs = Vec::new();
 
-        let mut create_commitment_txs: Vec<Tx> = self
+        let mut compute_commitment_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::CreateCommitment.into(), None)
+            .read_from_end(Kind::ComputeCommitment.into(), None)
             .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut create_commitment_txs);
-        drop(create_commitment_txs);
+        txs.append(&mut compute_commitment_txs);
+        drop(compute_commitment_txs);
 
-        let mut job_verification_txs: Vec<Tx> = self
+        let mut compute_verification_txs: Vec<Tx> = self
             .db
-            .read_from_end(TxKind::JobVerification.into(), None)
+            .read_from_end(Kind::ComputeVerification.into(), None)
             .map_err(|e| eyre::eyre!(e))?;
-        txs.append(&mut job_verification_txs);
-        drop(job_verification_txs);
+        txs.append(&mut compute_verification_txs);
+        drop(compute_verification_txs);
 
         Ok(txs)
     }
@@ -169,7 +168,7 @@ mod tests {
 
     use openrank_common::{
         merkle::Hash,
-        txs::{CreateCommitment, JobRunRequest, JobVerification, TxHash},
+        txs::{compute, TxHash},
     };
 
     use super::*;
@@ -199,8 +198,8 @@ mod tests {
             .wallet(wallet)
             .on_http(rpc_url.clone());
 
-        // Deploy the `JobManager` contract.
-        let contract = JobManager::deploy(
+        // Deploy the `ComputeManager` contract.
+        let contract = ComputeManager::deploy(
             &provider,
             vec![address!("13978aee95f38490e9769c39b2773ed763d9cd5f")],
             vec![address!("cd2a3d9f938e13cd947ec05abc7fe734df8dd826")],
@@ -210,23 +209,23 @@ mod tests {
         // Create a contract instance.
         let contract_address = *contract.address();
         let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
-        let client = JobManagerClient::new(contract_address, rpc_url, signer, db);
+        let client = ComputeManagerClient::new(contract_address, rpc_url, signer, db);
 
-        // Try to submit "JobRunRequest" TX
+        // Try to submit "ComputeRequest" TX
         client
             .submit_openrank_tx(Tx::default_with(
-                TxKind::JobRunRequest,
-                encode(JobRunRequest::default()),
+                Kind::ComputeRequest,
+                encode(compute::Request::default()),
             ))
             .await?;
 
-        // Try to submit "CreateCommitment" TX
+        // Try to submit "ComputeCommitment" TX
         let sk_bytes_hex = "c87f65ff3f271bf5dc8643484f66b200109caffe4bf98c4cb393dc35740b28c0";
         let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();
         let mut tx = Tx::default_with(
-            TxKind::CreateCommitment,
-            encode(CreateCommitment::default_with(
+            Kind::ComputeCommitment,
+            encode(compute::Commitment::new(
                 TxHash::from_bytes(
                     hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
                         .unwrap(),
@@ -240,15 +239,15 @@ mod tests {
 
         client.submit_openrank_tx(tx).await?;
 
-        // Try to submit "JobVerification" TX
+        // Try to submit "ComputeVerification" TX
         let sk_bytes_hex = "c85ef7d79691fe79573b1a7064c19c1a9819ebdbd1faaab1a8ec92344438aaf4";
         let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();
 
         let mut tx = Tx::default_with(
-            TxKind::JobVerification,
-            encode(JobVerification {
-                job_run_assignment_tx_hash: TxHash::from_bytes(
+            Kind::ComputeVerification,
+            encode(compute::Verification {
+                assignment_tx_hash: TxHash::from_bytes(
                     hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
                         .unwrap(),
                 ),
