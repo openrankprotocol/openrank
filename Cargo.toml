@@ -41,6 +41,3 @@ k256 = "0.13.3"
 directories = "5.0.1"
 thiserror = "1.0.63"
 clap = "4.5.9"
-
-[profile.release]
-overflow-checks = true

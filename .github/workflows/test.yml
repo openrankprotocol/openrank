@@ -40,8 +40,5 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
-      - name: Test(release)
-        run: cargo test --all --release
-
-      - name: Test(debug)
+      - name: Test
         run: cargo test --all
