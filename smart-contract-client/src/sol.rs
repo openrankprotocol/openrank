@@ -4,6 +4,6 @@ use alloy::sol;
 sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
-    JobManager,
-    "./abi/JobManager.json"
+    ComputeManager,
+    "./abi/ComputeManager.json"
 );

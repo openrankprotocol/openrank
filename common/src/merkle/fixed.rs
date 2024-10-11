@@ -1,4 +1,4 @@
-use super::{hash_two, Hash, MerkleError};
+use super::{hash_two, Hash};
 use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
@@ -25,12 +25,12 @@ where
     H: Digest,
 {
     /// Returns the root of the tree.
-    pub fn root(&self) -> Result<Hash, MerkleError> {
-        self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(MerkleError::RootNotFound)
+    pub fn root(&self) -> Result<Hash, super::Error> {
+        self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(super::Error::RootNotFound)
     }
 
     /// Builds a Merkle tree from the given leaf nodes.
-    pub fn new(mut leaves: Vec<Hash>) -> Result<Self, MerkleError> {
+    pub fn new(mut leaves: Vec<Hash>) -> Result<Self, super::Error> {
         let next_power_of_two = leaves.len().next_power_of_two();
         if leaves.len() < next_power_of_two {
             let diff = next_power_of_two - leaves.len();
@@ -49,7 +49,7 @@ where
         tree.insert(0u8, leaves);
 
         for i in 0..num_levels {
-            let nodes = tree.get(&i).ok_or(MerkleError::NodesNotFound)?;
+            let nodes = tree.get(&i).ok_or(super::Error::NodesNotFound)?;
             let next: Vec<Hash> = nodes
                 .chunks(2)
                 .map(|chunk| {

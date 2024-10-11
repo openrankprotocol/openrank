@@ -81,16 +81,16 @@ pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
 
 #[derive(Debug)]
 /// An error type for the merkle tree.
-pub enum MerkleError {
+pub enum Error {
     /// The root of the merkle tree is not found.
     RootNotFound,
     /// The nodes are not found in the merkle tree.
     NodesNotFound,
 }
 
-impl StdError for MerkleError {}
+impl StdError for Error {}
 
-impl Display for MerkleError {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::RootNotFound => write!(f, "RootNotFound"),
