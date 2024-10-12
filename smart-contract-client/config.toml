@@ -1,4 +1,4 @@
-contract_address = "0x32a50e761d08680640b77766a999ff4fc67c24bc"
+contract_address = "0x5d010a095c3d442490100d57f01ad203ece65a61"
 rpc_url = "https://rpc-amoy.polygon.technology/" # polygon amoy testnet
 chain_id = 80002
 
