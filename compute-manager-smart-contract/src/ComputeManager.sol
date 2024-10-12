@@ -9,6 +9,7 @@ contract ComputeManager {
     }
 
     // Whitelisted addresses
+    mapping(address => bool) public submitters;
     mapping(address => bool) public computers;
     mapping(address => bool) public verifiers;
 
@@ -21,8 +22,17 @@ contract ComputeManager {
     event ComputeCommitted(bytes32 txHash, address indexed computer);
     event ComputeVerified(bytes32 txHash, address indexed verifier);
 
+    modifier onlySubmitter {
+        require(submitters[msg.sender], "Only submitters can call this function");
+        _;
+    }
+
     // Initialize the contract with whitelisted addresses
-    constructor(address[] memory _computers, address[] memory _verifiers) {
+    constructor(address[] memory _submitters, address[] memory _computers, address[] memory _verifiers) {
+        for (uint256 i = 0; i < _submitters.length; i++) {
+            submitters[_submitters[i]] = true;
+        }
+
         for (uint256 i = 0; i < _computers.length; i++) {
             computers[_computers[i]] = true;
         }
@@ -38,7 +48,7 @@ contract ComputeManager {
         bytes32 computeCommitTxHash,
         bytes32 computeRootHash,
         Signature calldata sig
-    ) external {
+    ) external onlySubmitter {
         address signer = recoverSigner(computeCommitTxHash, sig);
         require(computers[signer], "Computer not whitelisted");
 
@@ -58,7 +68,7 @@ contract ComputeManager {
         bytes32 computeVerifyTxHash,
         bytes32 computeAssignTxHash,
         Signature calldata sig
-    ) external {
+    ) external onlySubmitter {
         address signer = recoverSigner(computeVerifyTxHash, sig);
         require(verifiers[signer], "Verifier not whitelisted");
 
