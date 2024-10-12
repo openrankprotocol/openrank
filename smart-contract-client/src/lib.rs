@@ -10,7 +10,7 @@ use alloy::{
     network::EthereumWallet,
     primitives::Address,
     providers::ProviderBuilder,
-    signers::{k256::ecdsa::SigningKey, local::LocalSigner},
+    signers::{k256::ecdsa::SigningKey, local::LocalSigner, Signer},
     transports::http::reqwest::Url,
 };
 use dotenv::dotenv;
@@ -28,6 +28,7 @@ pub struct Config {
     pub contract_address: String,
     pub rpc_url: String,
     pub database: db::Config,
+    pub chain_id: u64,
 }
 
 pub struct ComputeManagerClient {
@@ -49,8 +50,10 @@ impl ComputeManagerClient {
 
         let contract_address = Address::from_str(&config.contract_address)?;
         let rpc_url = Url::parse(&config.rpc_url)?;
+        let mut signer: LocalSigner<SigningKey> = secret_key.into();
+        signer.set_chain_id(Some(config.chain_id));
         let db = Db::new_secondary(&config.database, &[&Tx::get_cf()])?;
-        let client = Self::new(contract_address, rpc_url, secret_key.into(), db);
+        let client = Self::new(contract_address, rpc_url, signer, db);
         Ok(client)
     }
 
