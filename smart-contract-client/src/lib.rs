@@ -41,7 +41,7 @@ pub struct ComputeManagerClient {
 impl ComputeManagerClient {
     pub fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
-        let secret_key_hex = std::env::var("SECRET_KEY")?;
+        let secret_key_hex = std::env::var("SC_CLIENT_WALLET_SECRET_KEY")?;
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
