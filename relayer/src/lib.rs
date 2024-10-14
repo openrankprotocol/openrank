@@ -36,7 +36,7 @@ pub struct SQLRelayer {
     // todo use only common db, here because common lib db does not expose iterator
     dbs: HashMap<String, (DBWithThreadMode<MultiThreaded>, String)>,
     last_processed_keys: HashMap<String, Option<usize>>,
-    target_db: postgres::SQLDatabase, // sql
+    target_db: postgres::SQLDatabase, 
 }
 
 impl SQLRelayer {
@@ -45,8 +45,6 @@ impl SQLRelayer {
 
         let mut dbs = HashMap::new();
         let mut last_processed_keys = HashMap::new();
-
-        // let common_db = Db::new("../block-builder/local-storage", &[&Tx::get_cf(), &JobResult::get_cf()]).expect("Failed to initialize common_db");
 
         for (db_path, topic) in db_configs {
             let last_processed_key = target_db
@@ -108,6 +106,11 @@ impl SQLRelayer {
                                 .expect("Failed to deserialize JSON");
                             //let tx: JobResult = serde_json::from_str(value_str.as_ref())
                             // .expect("Failed to deserialize JSON");
+
+                            let tx_body_raw = tx.body();
+                            let tx_body = TxKind::decode(tx_body_raw.as_slice())?;
+
+                            println!("tx body {:?}",tx_body_raw);  
 
                             let tx_with_hash = TxWithHash { tx: tx.clone(), hash: tx.hash() };
                             let serialized_tx = serde_json
