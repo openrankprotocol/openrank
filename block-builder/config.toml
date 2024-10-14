@@ -5,7 +5,23 @@ seed_owner = "ae6d6efbd163a3df27304a84c366c21ebe50be24"
 seed_id = 1
 algo_id = 0
 
+[[domains]]
+trust_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+trust_id = 2
+seed_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+seed_id = 2
+algo_id = 0
+
 [whitelist]
 computer = ["b2de664eb3c4c11adb0ddf3e056494e2c92e3df7"]
 verifier = ["18863e77fe15d3f8faf64951593153fd0206a4b8"]
 users = ["ae6d6efbd163a3df27304a84c366c21ebe50be24"]
+
+[database]
+directory = "./local-storage"
+
+[p2p]
+listen_on = [
+    "/ip4/0.0.0.0/udp/9000/quic-v1",
+    "/ip4/0.0.0.0/tcp/9000",
+]

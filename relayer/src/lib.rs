@@ -1,28 +1,30 @@
 use log::{ debug, error, info };
 use openrank_common::{
     db::Db,
-    result::JobResult,
+    // result::JobResult,
     topics::{ Domain, Topic },
     tx_event::TxEvent,
     txs::{
         Address,
-        CreateCommitment,
-        CreateScores,
-        JobRunAssignment,
-        JobRunRequest,
-        JobVerification,
+        // CreateCommitment,
+        // CreateScores,
+        // JobRunAssignment,
+        // JobRunRequest,
+        // JobVerification,
         Tx,
-        TxKind,
-        TxHash
+        Kind,
+        TxHash,
     },
 };
-
+// use alloy_rlp::decode::Decodable;
 use openrank_common::db::DbItem;
 use rocksdb::{ ColumnFamilyDescriptor, DBWithThreadMode, MultiThreaded, Options, DB };
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::time::{ sleep, Duration };
-use serde::{Serialize, Deserialize};
+use serde::{ Serialize, Deserialize };
+// use alloy_rlp::decode::Decodable;
+use alloy_rlp::Decodable;
 
 mod postgres;
 
@@ -36,7 +38,7 @@ pub struct SQLRelayer {
     // todo use only common db, here because common lib db does not expose iterator
     dbs: HashMap<String, (DBWithThreadMode<MultiThreaded>, String)>,
     last_processed_keys: HashMap<String, Option<usize>>,
-    target_db: postgres::SQLDatabase, 
+    target_db: postgres::SQLDatabase,
 }
 
 impl SQLRelayer {
@@ -56,7 +58,7 @@ impl SQLRelayer {
             opts.create_if_missing(false);
             opts.create_missing_column_families(true);
 
-            let cfs = &[&Tx::get_cf(), &JobResult::get_cf()];
+            let cfs = &["tx", "metadata"];
             let db = DBWithThreadMode::<MultiThreaded>
                 ::open_cf_for_read_only(&opts, path, cfs, false)
                 .expect("Failed to open RocksDB with column families");
@@ -107,10 +109,12 @@ impl SQLRelayer {
                             //let tx: JobResult = serde_json::from_str(value_str.as_ref())
                             // .expect("Failed to deserialize JSON");
 
-                            let tx_body_raw = tx.body();
-                            let tx_body = TxKind::decode(tx_body_raw.as_slice())?;
+                            println!("tx kind {:?}", tx.kind());
+                            let mut tx_body_raw = tx.body();
 
-                            println!("tx body {:?}",tx_body_raw);  
+                            let tx_body = Kind::decode(&mut tx_body_raw.as_slice());
+
+                            println!("tx body {:?}", tx_body);
 
                             let tx_with_hash = TxWithHash { tx: tx.clone(), hash: tx.hash() };
                             let serialized_tx = serde_json

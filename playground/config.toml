@@ -1,0 +1,10 @@
+[domain]
+trust_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+trust_id = 1
+seed_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+seed_id = 1
+algo_id = 0
+
+[sequencer]
+endpoint = "tcp://127.0.0.1:60000"
+result_size = 10

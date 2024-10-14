@@ -1,57 +1,100 @@
 use alloy_rlp::encode;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
 use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
 use karyon_jsonrpc::Client;
 use openrank_common::{
     address_from_sk,
+    algos::et::is_converged_org,
     merkle::hash_leaf,
+    result::GetResultsQuery,
     topics::Domain,
     tx_event::TxEvent,
-    txs::{Address, JobRunRequest, ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate, Tx, TxKind},
+    txs::{
+        compute,
+        trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
+        Address, Kind, Tx, TxHash,
+    },
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha3::Keccak256;
-use std::fs::File;
-use std::{error::Error, io::Read};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+};
+use std::{error::Error, io::BufWriter};
 
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
 
-#[derive(Parser, Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, Subcommand)]
+/// The method to call.
 enum Method {
-    TrustUpdate,
-    SeedUpdate,
-    JobRunRequest,
-    GetResults,
+    /// Trust update. The method takes a list of trust entries and updates the trust graph.
+    TrustUpdate { path: String, config_path: String, output_path: Option<String> },
+    /// Seed update. The method takes a list of seed entries and updates the seed vector.
+    SeedUpdate { path: String, config_path: String, output_path: Option<String> },
+    /// The method creates a ComputeRequest TX.
+    ComputeRequest { path: String, output_path: Option<String> },
+    /// The method takes a ComputeRequest TX hash and returns the computed results.
+    GetResults { request_id: String, config_path: String, output_path: Option<String> },
+    /// The method takes a ComputeRequest TX hash and returns the computed results,
+    /// and also checks the integrity/correctness of the results.
+    GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
+    /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
+    /// The method shows the address of the node, given the private key.
     ShowAddress,
 }
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
+/// The command line arguments.
 struct Args {
-    #[arg(value_enum)]
+    #[command(subcommand)]
     method: Method,
-    arg1: Option<String>,
-    arg2: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the Sequencer.
 pub struct Sequencer {
     endpoint: String,
+    result_size: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// The configuration for the SDK.
 pub struct Config {
+    /// The domain to be updated.
     pub domain: Domain,
+    /// The Sequencer configuration. It contains the endpoint of the Sequencer.
     pub sequencer: Sequencer,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeRequestResult {
+    compute_tx_hash: TxHash,
+    tx_event: TxEvent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeResults {
+    votes: Vec<bool>,
+    scores: Vec<ScoreEntry>,
+}
+
+impl ComputeRequestResult {
+    pub fn new(compute_tx_hash: TxHash, tx_event: TxEvent) -> Self {
+        Self { compute_tx_hash, tx_event }
+    }
+}
+
+/// Creates a new `Config` from a local TOML file, given file path.
 fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
     let mut f = File::open(path)?;
     let mut toml_config = String::new();
@@ -60,16 +103,19 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
-async fn update_trust(sk: SigningKey, path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+/// 1. Reads a CSV file and get a list of `TrustEntry`.
+/// 2. Creates a new `Client`, which can be used to call the Sequencer.
+/// 3. Sends the list of `TrustEntry` to the Sequencer.
+async fn update_trust(
+    sk: SigningKey, path: &str, config_path: &str,
+) -> Result<Vec<TxEvent>, Box<dyn Error>> {
     let f = File::open(path)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
     for result in rdr.records() {
         let record: StringRecord = result?;
-        let (from, to, value): (u32, u32, f32) = record.deserialize(None)?;
-        let from_addr = Address::from(from);
-        let to_addr = Address::from(to);
-        let trust_entry = TrustEntry::new(from_addr, to_addr, value);
+        let (from, to, value): (String, String, f32) = record.deserialize(None)?;
+        let trust_entry = TrustEntry::new(from, to, value);
         entries.push(trust_entry);
     }
 
@@ -77,31 +123,36 @@ async fn update_trust(sk: SigningKey, path: &str, config_path: &str) -> Result<(
     // Creates a new client
     let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 
+    let mut results = Vec::new();
     for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
         let data = encode(TrustUpdate::new(
             config.domain.trust_namespace(),
             chunk.to_vec(),
         ));
-        let mut tx = Tx::default_with(TxKind::TrustUpdate, data);
+        let mut tx = Tx::default_with(Kind::TrustUpdate, data);
         tx.sign(&sk)?;
 
         let result: Value = client.call("Sequencer.trust_update", hex::encode(encode(tx))).await?;
         let tx_event: TxEvent = serde_json::from_value(result)?;
 
-        println!("Res: {:?}", tx_event);
+        results.push(tx_event);
     }
-    Ok(())
+    Ok(results)
 }
 
-async fn update_seed(sk: SigningKey, path: &str, config_path: &str) -> Result<(), Box<dyn Error>> {
+/// 1. Reads a CSV file and get a list of `ScoreEntry`.
+/// 2. Creates a new `Client`, which can be used to call the Sequencer.
+/// 3. Sends the list of `ScoreEntry` to the Sequencer.
+async fn update_seed(
+    sk: SigningKey, path: &str, config_path: &str,
+) -> Result<Vec<TxEvent>, Box<dyn Error>> {
     let f = File::open(path)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
     for result in rdr.records() {
         let record: StringRecord = result?;
-        let (i, value): (u32, f32) = record.deserialize(None)?;
-        let i_addr = Address::from(i);
-        let score_entry = ScoreEntry::new(i_addr, value);
+        let (i, value): (String, f32) = record.deserialize(None)?;
+        let score_entry = ScoreEntry::new(i, value);
         entries.push(score_entry);
     }
 
@@ -109,23 +160,28 @@ async fn update_seed(sk: SigningKey, path: &str, config_path: &str) -> Result<()
     // Creates a new client
     let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
 
+    let mut results = Vec::new();
     for chunk in entries.chunks(SEED_CHUNK_SIZE) {
         let data = encode(SeedUpdate::new(
             config.domain.seed_namespace(),
             chunk.to_vec(),
         ));
-        let mut tx = Tx::default_with(TxKind::SeedUpdate, data);
+        let mut tx = Tx::default_with(Kind::SeedUpdate, data);
         tx.sign(&sk)?;
 
         let result: Value = client.call("Sequencer.seed_update", hex::encode(encode(tx))).await?;
         let tx_event: TxEvent = serde_json::from_value(result)?;
 
-        println!("Res: {:?}", tx_event);
+        results.push(tx_event);
     }
-    Ok(())
+    Ok(results)
 }
 
-async fn job_run_request(sk: SigningKey, path: &str) -> Result<(), Box<dyn Error>> {
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Sends a `ComputeRequest` transaction to the Sequencer.
+async fn compute_request(
+    sk: SigningKey, path: &str,
+) -> Result<ComputeRequestResult, Box<dyn Error>> {
     let config = read_config(path)?;
     // Creates a new client
     let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
@@ -133,37 +189,83 @@ async fn job_run_request(sk: SigningKey, path: &str) -> Result<(), Box<dyn Error
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(JobRunRequest::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(TxKind::JobRunRequest, data);
+    let data = encode(compute::Request::new(domain_id, 0, hash));
+    let mut tx = Tx::default_with(Kind::ComputeRequest, data);
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
-    let hex_encoded_tx_hash = hex::encode(tx_hash.0);
-    println!("JobRunRequest TX_HASH: {}", hex_encoded_tx_hash);
 
-    let result: Value = client.call("Sequencer.job_run_request", hex::encode(encode(tx))).await?;
+    let result: Value = client.call("Sequencer.compute_request", hex::encode(encode(tx))).await?;
     let tx_event: TxEvent = serde_json::from_value(result)?;
 
-    println!("Res: {:?}", tx_event);
-    Ok(())
+    let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
+    Ok(compute_result)
 }
 
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
 async fn get_results(
-    arg: String, path: &str,
+    arg: String, config_path: &str,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
-    let config = read_config(path)?;
+    let config = read_config(config_path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
-    let result: Value = client.call("Sequencer.get_results", arg).await?;
+    let client =
+        Client::builder(config.sequencer.endpoint.as_str())?.set_timeout(900000).build().await?;
+    let tx_hash_bytes = hex::decode(arg)?;
+    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let results_query =
+        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
+    let result: Value = client.call("Sequencer.get_results", results_query).await?;
     let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
     Ok(scores)
 }
 
+/// Generates a new ECDSA keypair and returns the address and the private key.
 fn generate_keypair<R: CryptoRngCore>(rng: &mut R) -> (SigningKey, Address) {
     let sk = SigningKey::random(rng);
     let addr = address_from_sk(&sk);
     (sk, addr)
 }
 
+/// Checks the score integrity against the ones stored in `path`.
+fn check_score_integrity(
+    votes: Vec<bool>, scores: Vec<ScoreEntry>, path: &str,
+) -> Result<bool, Box<dyn Error>> {
+    let f = File::open(path)?;
+    let mut rdr = csv::Reader::from_reader(f);
+    let mut test_vector = Vec::new();
+    for result in rdr.records() {
+        let record: StringRecord = result?;
+        let (i, value): (String, f32) = record.deserialize(None)?;
+        let score_entry = ScoreEntry::new(i, value);
+        test_vector.push(score_entry);
+    }
+
+    let mut test_map = HashMap::new();
+    for score in test_vector {
+        test_map.insert(score.id, score.value);
+    }
+
+    let mut score_map = HashMap::new();
+    for score in scores {
+        score_map.insert(score.id, score.value);
+    }
+
+    let is_converged = is_converged_org(&test_map, &score_map);
+    let votes = votes.iter().fold(true, |acc, vote| acc & vote);
+
+    Ok(is_converged & votes)
+}
+
+/// Utility function for writing json to a file.
+fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), Box<dyn Error>> {
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer(&mut writer, &data)?;
+    writer.flush()?;
+    Ok(())
+}
+
+/// Returns the secret key from the environment variable.
 fn get_secret_key() -> Result<SigningKey, Box<dyn Error>> {
     let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
     let secret_key_bytes = hex::decode(secret_key_hex)?;
@@ -177,56 +279,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Args::parse();
 
     match cli.method {
-        Method::TrustUpdate => {
+        Method::TrustUpdate { path, config_path, output_path } => {
             let secret_key = get_secret_key()?;
-            let arg1 = cli.arg1.unwrap_or_else(|| {
-                eprintln!("Missing argument");
-                std::process::exit(1);
-            });
-            let arg2 = cli.arg2.unwrap_or_else(|| {
-                eprintln!("Missing argument");
-                std::process::exit(1);
-            });
-            update_trust(secret_key, arg1.as_str(), arg2.as_str()).await?;
-        },
-        Method::SeedUpdate => {
-            let secret_key = get_secret_key()?;
-            let arg1 = cli.arg1.unwrap_or_else(|| {
-                eprintln!("Missing argument");
-                std::process::exit(1);
-            });
-            let arg2 = cli.arg2.unwrap_or_else(|| {
-                eprintln!("Missing argument");
-                std::process::exit(1);
-            });
-            update_seed(secret_key, arg1.as_str(), arg2.as_str()).await?;
-        },
-        Method::JobRunRequest => {
-            let secret_key = get_secret_key()?;
-            let arg1 = cli.arg1.unwrap_or_else(|| {
-                eprintln!("Missing argument");
-                std::process::exit(1);
-            });
-            job_run_request(secret_key, arg1.as_str()).await?;
-        },
-        Method::GetResults => {
-            let arg1 = cli.arg1.unwrap_or_else(|| {
-                eprintln!("Missing argument");
-                std::process::exit(1);
-            });
-            let arg2 = cli.arg2.unwrap_or_else(|| {
-                eprintln!("Missing argument");
-                std::process::exit(1);
-            });
-            let (votes, mut results) = get_results(arg1, arg2.as_str()).await?;
-            println!("votes: {:?}", votes);
-            results.reverse();
-            let chunk = results.chunks(100).next();
-            if let Some(scores) = chunk {
-                for res in scores {
-                    println!("{}: {}", res.id, res.value);
-                }
+            let res = update_trust(secret_key, path.as_str(), config_path.as_str()).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
             }
+        },
+        Method::SeedUpdate { path, config_path, output_path } => {
+            let secret_key = get_secret_key()?;
+            let res = update_seed(secret_key, path.as_str(), config_path.as_str()).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::ComputeRequest { path, output_path } => {
+            let secret_key = get_secret_key()?;
+            let res = compute_request(secret_key, path.as_str()).await?;
+            let hex_encoded_tx_hash = hex::encode(res.compute_tx_hash.0);
+            println!("{}", hex_encoded_tx_hash);
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::GetResults { request_id, config_path, output_path } => {
+            let (votes, scores) = get_results(request_id, config_path.as_str()).await?;
+
+            println!("votes: {:?}", votes);
+            for res in &scores {
+                println!("{}: {}", res.id, res.value);
+            }
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, scores)?;
+            }
+        },
+        Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
+            let (votes, results) = get_results(request_id, config_path.as_str()).await?;
+            let res = check_score_integrity(votes, results, &test_vector)?;
+            println!("Integrity check result: {}", res);
+            assert!(res);
         },
         Method::GenerateKeypair => {
             let rng = &mut thread_rng();
