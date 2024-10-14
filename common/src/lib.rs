@@ -22,7 +22,7 @@ use std::{error::Error, io, time::Duration};
 use topics::Topic;
 use tracing::info;
 use tx_event::TxEvent;
-use txs::{Address, Tx, TxKind};
+use txs::{Address, Kind, Tx};
 
 #[derive(NetworkBehaviour)]
 /// A custom libp2p [network behavior](libp2p::swarm::NetworkBehaviour) used by OpenRank nodes.
@@ -77,7 +77,7 @@ pub async fn build_node(keypair: identity::Keypair) -> Result<Swarm<MyBehaviour>
 
 /// Broadcasts a default transaction event to the given topic.
 pub fn broadcast_default_event(
-    swarm: &mut Swarm<MyBehaviour>, kind: TxKind, data: Vec<u8>, topic: Topic,
+    swarm: &mut Swarm<MyBehaviour>, kind: Kind, data: Vec<u8>, topic: Topic,
 ) -> Result<MessageId, PublishError> {
     info!("PUBLISH: {}", topic.clone());
     let tx = Tx::default_with(kind, data);

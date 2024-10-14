@@ -1,7 +1,7 @@
 use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
-use super::{hash_two, next_index, num_to_bits_vec, Hash, MerkleError};
+use super::{hash_two, next_index, num_to_bits_vec, Hash};
 
 #[derive(Clone, Debug)]
 /// Dense incremental Merkle tree.
@@ -27,8 +27,8 @@ where
     H: Digest,
 {
     /// Returns the root of the tree.
-    pub fn root(&self) -> Result<Hash, MerkleError> {
-        self.nodes.get(&(self.num_levels, 0)).cloned().ok_or(MerkleError::RootNotFound)
+    pub fn root(&self) -> Result<Hash, super::Error> {
+        self.nodes.get(&(self.num_levels, 0)).cloned().ok_or(super::Error::RootNotFound)
     }
 
     /// Builds a Merkle tree from given height (`num_levels`).

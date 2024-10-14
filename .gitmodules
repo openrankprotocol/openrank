@@ -1,7 +1,6 @@
 [submodule "datasets"]
 	path = datasets
 	url = https://github.com/openrankprotocol/datasets
-
-[submodule "jobmanager-smart-contract/lib/forge-std"]
-	path = jobmanager-smart-contract/lib/forge-std
+[submodule "compute-manager-smart-contract/lib/forge-std"]
+	path = compute-manager-smart-contract/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std

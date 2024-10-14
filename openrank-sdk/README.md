@@ -54,17 +54,17 @@ SeedUpdate - Updating a bulk of Seed scores to a specific namespace. It will exp
 openrank-sdk seed-update [SEED_DB_FILE_PATH] [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
 ```
 
-JobRunRequest - Request a compute job in a domain specified inside `OPENRANK_SDK_CONFIG_PATH` file. The hash of JobRunRequest TX will be returned:
+ComputeRequest - Request a compute in a domain specified inside `OPENRANK_SDK_CONFIG_PATH` file. The hash of ComputeRequest TX will be returned:
 ```
 openrank-sdk job-run-request [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
 ```
 
-Get Results - Get results of a specific compute job identified by it TX hash:
+Get Results - Get results of a specific compute request identified by it's TX hash:
 ```
 openrank-sdk get-results [JobRunRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
 ```
 
-Get Results and Check Integrity - Get the results of a specific job, and perform the convergence check of top X amount of scores.
+Get Results and Check Integrity - Get the results of a specific compute request, and perform the convergence check of top X amount of scores.
 The scores will be compared against a predefined test vector with `TEST_VECTOR_PATH` path:
 ```
 openrank-sdk get-results-and-check-integrity [JobRunRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
@@ -78,9 +78,9 @@ Where:
 
 `OUTPUT_PATH` = Path to of the file to write result of the JsonRPC call
 
-`JobRunRequest_TX_HASH` = TX Hash of JobRunRequest TX that was submitted to the protocol
+`ComputeRequest_TX_HASH` = TX Hash of ComputeRequest TX that was submitted to the protocol
 
 `TEST_VECTOR_PATH` = Path to a file that will contain a vector of scores in csv format (i,v entries),
-and will be used for comparing with the scores resulted from the compute job
+and will be used for comparing with the scores resulted from the compute
 
 Parameters marked with `*` are optional
