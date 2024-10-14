@@ -34,7 +34,6 @@ pub trait Rpc {
 }
 
 /// The Sequencer JsonRPC server. It contains the sender, the whitelisted users, and the database connection.
-#[derive(Debug)]
 pub struct SequencerServer {
     sender: Sender<(Vec<u8>, Topic)>,
     whitelisted_users: Vec<Address>,
