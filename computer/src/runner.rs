@@ -18,13 +18,13 @@ use std::{
 
 /// Struct containing the state of the computer compute runner.
 pub struct ComputeRunner {
-    count: HashMap<DomainHash, u32>,
-    indices: HashMap<DomainHash, HashMap<String, u32>>,
-    local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
-    seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
-    lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
+    count: HashMap<DomainHash, u64>,
+    indices: HashMap<DomainHash, HashMap<String, u64>>,
+    local_trust: HashMap<DomainHash, HashMap<(u64, u64), f32>>,
+    seed_trust: HashMap<DomainHash, HashMap<u64, f32>>,
+    lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
-    compute_results: HashMap<DomainHash, Vec<(u32, f32)>>,
+    compute_results: HashMap<DomainHash, Vec<(u64, f32)>>,
     compute_tree: HashMap<DomainHash, DenseMerkleTree<Keccak256>>,
 }
 
@@ -47,7 +47,7 @@ impl ComputeRunner {
                 domain.clone(),
                 DenseIncrementalMerkleTree::<Keccak256>::new(32),
             );
-            compute_results.insert(domain, Vec::<(u32, f32)>::new());
+            compute_results.insert(domain, Vec::<(u64, f32)>::new());
         }
         Self {
             count,
@@ -208,7 +208,7 @@ impl ComputeRunner {
             .compute_results
             .get(&domain.to_hash())
             .ok_or(Error::ComputeResultsNotFound(domain.to_hash()))?;
-        let index_to_address: HashMap<&u32, &String> =
+        let index_to_address: HashMap<&u64, &String> =
             domain_indices.iter().map(|(k, v)| (v, k)).collect();
         let mut compute_scores_txs = Vec::new();
         for chunk in scores.chunks(1000) {
@@ -251,7 +251,7 @@ pub enum Error {
     /// The local trust sub trees for the domain are not found.
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
     /// The local trust sub tree for the index is not found.
-    LocalTrustSubTreesNotFoundWithIndex(u32),
+    LocalTrustSubTreesNotFoundWithIndex(u64),
     /// The local trust master tree for the domain are not found.
     LocalTrustMasterTreeNotFound(DomainHash),
     /// The local trust for the domain are not found.
@@ -261,7 +261,7 @@ pub enum Error {
     /// The compute results for the domain are not found.
     ComputeResultsNotFound(DomainHash),
     /// The index to address mapping for the domain are not found.
-    IndexToAddressNotFound(u32),
+    IndexToAddressNotFound(u64),
     /// The compute tree for the domain are not found.
     ComputeTreeNotFound(DomainHash),
 
