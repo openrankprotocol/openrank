@@ -1,10 +1,10 @@
 [domain]
-trust_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+trust_owner = "da3bd8cdf6412e705d89b9c83c0c87064512696a"
 trust_id = 1
-seed_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+seed_owner = "da3bd8cdf6412e705d89b9c83c0c87064512696a"
 seed_id = 1
 algo_id = 0
 
 [sequencer]
-endpoint = "tcp://127.0.0.1:60000"
+endpoint = "http://127.0.0.1:60000"
 result_size = 10

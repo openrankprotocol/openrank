@@ -131,7 +131,8 @@ async fn update_trust(
         let mut tx = Tx::default_with(Kind::TrustUpdate, data);
         tx.sign(&sk)?;
 
-        let result: TxEvent = client.request("trust_update", vec![hex::encode(encode(tx))]).await?;
+        let result: TxEvent =
+            client.request("sequencer_trust_update", vec![hex::encode(encode(tx))]).await?;
         results.push(result);
     }
     Ok(results)
@@ -167,7 +168,7 @@ async fn update_seed(
         tx.sign(&sk)?;
 
         let tx_event: TxEvent =
-            client.request("seed_update", vec![hex::encode(encode(tx))]).await?;
+            client.request("sequencer_seed_update", vec![hex::encode(encode(tx))]).await?;
         results.push(tx_event);
     }
     Ok(results)
@@ -191,7 +192,7 @@ async fn compute_request(
     let tx_hash = tx.hash();
 
     let tx_event: TxEvent =
-        client.request("compute_request", vec![hex::encode(encode(tx))]).await?;
+        client.request("sequencer_compute_request", vec![hex::encode(encode(tx))]).await?;
 
     let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
     Ok(compute_result)
@@ -210,7 +211,7 @@ async fn get_results(
     let results_query =
         GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
     let scores: (Vec<bool>, Vec<ScoreEntry>) =
-        client.request("get_results", vec![results_query]).await?;
+        client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
 }
 

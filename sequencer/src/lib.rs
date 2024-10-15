@@ -34,6 +34,7 @@ pub struct Config {
     pub whitelist: Whitelist,
     pub database: db::Config,
     pub p2p: net::Config,
+    pub rpc: net::RpcConfig,
 }
 
 /// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
@@ -74,8 +75,9 @@ impl Node {
     /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
-        let server = Server::builder().build("127.0.0.1:60000").await?;
-        server.start(self.rpc.clone());
+        let server = Server::builder().build(self.config.rpc.address).await?;
+        let handle = server.start(self.rpc.clone());
+        tokio::spawn(handle.stopped());
 
         // Kick it off
         loop {
