@@ -1,11 +1,14 @@
 use openrank_common::{
-    algos::{et::positive_run, AlgoError},
+    algos::{self, et::positive_run},
     merkle::{
-        fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash,
-        MerkleError,
+        self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
+        Hash,
     },
     topics::{Domain, DomainHash},
-    txs::{CreateScores, ScoreEntry, TrustEntry},
+    txs::{
+        compute,
+        trust::{ScoreEntry, TrustEntry},
+    },
 };
 use sha3::Keccak256;
 use std::{
@@ -13,19 +16,19 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
-/// Struct containing the state of the computer job runner.
-pub struct ComputeJobRunner {
-    count: HashMap<DomainHash, u32>,
-    indices: HashMap<DomainHash, HashMap<String, u32>>,
-    local_trust: HashMap<DomainHash, HashMap<(u32, u32), f32>>,
-    seed_trust: HashMap<DomainHash, HashMap<u32, f32>>,
-    lt_sub_trees: HashMap<DomainHash, HashMap<u32, DenseIncrementalMerkleTree<Keccak256>>>,
+/// Struct containing the state of the computer compute runner.
+pub struct ComputeRunner {
+    count: HashMap<DomainHash, u64>,
+    indices: HashMap<DomainHash, HashMap<String, u64>>,
+    local_trust: HashMap<DomainHash, HashMap<(u64, u64), f32>>,
+    seed_trust: HashMap<DomainHash, HashMap<u64, f32>>,
+    lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
-    compute_results: HashMap<DomainHash, Vec<(u32, f32)>>,
+    compute_results: HashMap<DomainHash, Vec<(u64, f32)>>,
     compute_tree: HashMap<DomainHash, DenseMerkleTree<Keccak256>>,
 }
 
-impl ComputeJobRunner {
+impl ComputeRunner {
     pub fn new(domains: Vec<DomainHash>) -> Self {
         let mut count = HashMap::new();
         let mut indices = HashMap::new();
@@ -44,7 +47,7 @@ impl ComputeJobRunner {
                 domain.clone(),
                 DenseIncrementalMerkleTree::<Keccak256>::new(32),
             );
-            compute_results.insert(domain, Vec::<(u32, f32)>::new());
+            compute_results.insert(domain, Vec::<(u64, f32)>::new());
         }
         Self {
             count,
@@ -61,29 +64,28 @@ impl ComputeJobRunner {
     /// Update the state of trees for certain domain, with the given trust entries.
     pub fn update_trust(
         &mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
-    ) -> Result<(), JobRunnerError> {
+    ) -> Result<(), Error> {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::IndexNotFound(domain.to_hash()))?;
-        let count = self
-            .count
-            .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::CountNotFound(domain.to_hash()))?;
+            .ok_or(Error::IndexNotFound(domain.to_hash()))?;
+        let count =
+            self.count.get_mut(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
         let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
+            Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
         )?;
-        let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
-        )?;
+        let lt_master_tree = self
+            .lt_master_tree
+            .get_mut(&domain.to_hash())
+            .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
         let lt = self
             .local_trust
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::LocalTrustNotFound(domain.to_hash()))?;
+            .ok_or(Error::LocalTrustNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(&entry.from) {
@@ -106,13 +108,13 @@ impl ComputeJobRunner {
             lt.insert((from_index, to_index), entry.value + old_value);
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
-            let sub_tree = lt_sub_trees.get_mut(&from_index).ok_or(
-                JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(from_index),
-            )?;
+            let sub_tree = lt_sub_trees
+                .get_mut(&from_index)
+                .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
             let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
-            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+            let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
             let seed_value = seed.get(&to_index).unwrap_or(&0.0);
             let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
@@ -125,25 +127,24 @@ impl ComputeJobRunner {
     /// Update the state of trees for certain domain, with the given seed entries.
     pub fn update_seed(
         &mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
-    ) -> Result<(), JobRunnerError> {
+    ) -> Result<(), Error> {
         let domain_indices = self
             .indices
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::IndexNotFound(domain.to_hash()))?;
-        let count = self
-            .count
-            .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::CountNotFound(domain.to_hash()))?;
+            .ok_or(Error::IndexNotFound(domain.to_hash()))?;
+        let count =
+            self.count.get_mut(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
         let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
+            Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
         )?;
-        let lt_master_tree = self.lt_master_tree.get_mut(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
-        )?;
+        let lt_master_tree = self
+            .lt_master_tree
+            .get_mut(&domain.to_hash())
+            .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get_mut(&domain.to_hash())
-            .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
+            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
             let index = if let Some(i) = domain_indices.get(&entry.id) {
@@ -158,8 +159,8 @@ impl ComputeJobRunner {
             lt_sub_trees.entry(index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
                 .get_mut(&index)
-                .ok_or(JobRunnerError::LocalTrustSubTreesNotFoundWithIndex(index))?;
-            let sub_tree_root = sub_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+                .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(index))?;
+            let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
             let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
@@ -171,81 +172,78 @@ impl ComputeJobRunner {
     }
 
     /// Compute the EigenTrust scores for certain domain.
-    pub fn compute(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
+    pub fn compute(&mut self, domain: Domain) -> Result<(), Error> {
         let lt = self
             .local_trust
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::LocalTrustNotFound(domain.to_hash()))?;
+            .ok_or(Error::LocalTrustNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::SeedTrustNotFound(domain.to_hash()))?;
-        let res = positive_run::<20>(lt.clone(), seed.clone())
-            .map_err(JobRunnerError::ComputeAlgoError)?;
+            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
+        let res = positive_run::<20>(lt.clone(), seed.clone()).map_err(Error::Algo)?;
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
     }
 
     /// Create the compute tree for certain domain.
-    pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), JobRunnerError> {
+    pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), Error> {
         let scores = self
             .compute_results
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::ComputeResultsNotFound(domain.to_hash()))?;
+            .ok_or(Error::ComputeResultsNotFound(domain.to_hash()))?;
         let score_hashes: Vec<Hash> =
             scores.iter().map(|(_, x)| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
-        let compute_tree = DenseMerkleTree::<Keccak256>::new(score_hashes)
-            .map_err(JobRunnerError::ComputeMerkleError)?;
+        let compute_tree =
+            DenseMerkleTree::<Keccak256>::new(score_hashes).map_err(Error::Merkle)?;
         self.compute_tree.insert(domain.to_hash(), compute_tree);
         Ok(())
     }
 
-    /// Get the create scores for certain domain.
-    pub fn get_create_scores(&self, domain: Domain) -> Result<Vec<CreateScores>, JobRunnerError> {
-        let domain_indices = self
-            .indices
-            .get(&domain.to_hash())
-            .ok_or(JobRunnerError::IndexNotFound(domain.to_hash()))?;
+    /// Get the compute scores for certain domain.
+    pub fn get_compute_scores(&self, domain: Domain) -> Result<Vec<compute::Scores>, Error> {
+        let domain_indices =
+            self.indices.get(&domain.to_hash()).ok_or(Error::IndexNotFound(domain.to_hash()))?;
         let scores = self
             .compute_results
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::ComputeResultsNotFound(domain.to_hash()))?;
-        let index_to_address: HashMap<&u32, &String> =
+            .ok_or(Error::ComputeResultsNotFound(domain.to_hash()))?;
+        let index_to_address: HashMap<&u64, &String> =
             domain_indices.iter().map(|(k, v)| (v, k)).collect();
-        let mut create_scores_txs = Vec::new();
+        let mut compute_scores_txs = Vec::new();
         for chunk in scores.chunks(1000) {
             let mut entries = Vec::new();
             for (index, val) in chunk {
-                let address = index_to_address
-                    .get(&index)
-                    .ok_or(JobRunnerError::IndexToAddressNotFound(*index))?;
+                let address =
+                    index_to_address.get(&index).ok_or(Error::IndexToAddressNotFound(*index))?;
                 let score_entry = ScoreEntry::new((*address).clone(), *val);
                 entries.push(score_entry);
             }
-            let create_scores = CreateScores::new(entries);
-            create_scores_txs.push(create_scores);
+            let compute_scores = compute::Scores::new(entries);
+            compute_scores_txs.push(compute_scores);
         }
-        Ok(create_scores_txs)
+        Ok(compute_scores_txs)
     }
 
     /// Get the local trust root hash and compute tree root hash for certain domain.
-    pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), JobRunnerError> {
-        let lt_tree = self.lt_master_tree.get(&domain.to_hash()).ok_or(
-            JobRunnerError::LocalTrustMasterTreeNotFound(domain.to_hash()),
-        )?;
+    pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), Error> {
+        let lt_tree = self
+            .lt_master_tree
+            .get(&domain.to_hash())
+            .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
         let compute_tree = self
             .compute_tree
             .get(&domain.to_hash())
-            .ok_or(JobRunnerError::ComputeTreeNotFound(domain.to_hash()))?;
-        let lt_tree_root = lt_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
-        let ct_tree_root = compute_tree.root().map_err(JobRunnerError::ComputeMerkleError)?;
+            .ok_or(Error::ComputeTreeNotFound(domain.to_hash()))?;
+        let lt_tree_root = lt_tree.root().map_err(Error::Merkle)?;
+        let ct_tree_root = compute_tree.root().map_err(Error::Merkle)?;
         Ok((lt_tree_root, ct_tree_root))
     }
 }
 
 #[derive(Debug)]
-/// Errors that can arise while using the job runner.
-pub enum JobRunnerError {
+/// Errors that can arise while using the compute runner.
+pub enum Error {
     /// The index for the domain are not found.
     IndexNotFound(DomainHash),
     /// The count for the domain is not found.
@@ -253,7 +251,7 @@ pub enum JobRunnerError {
     /// The local trust sub trees for the domain are not found.
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
     /// The local trust sub tree for the index is not found.
-    LocalTrustSubTreesNotFoundWithIndex(u32),
+    LocalTrustSubTreesNotFoundWithIndex(u64),
     /// The local trust master tree for the domain are not found.
     LocalTrustMasterTreeNotFound(DomainHash),
     /// The local trust for the domain are not found.
@@ -263,16 +261,17 @@ pub enum JobRunnerError {
     /// The compute results for the domain are not found.
     ComputeResultsNotFound(DomainHash),
     /// The index to address mapping for the domain are not found.
-    IndexToAddressNotFound(u32),
+    IndexToAddressNotFound(u64),
     /// The compute tree for the domain are not found.
     ComputeTreeNotFound(DomainHash),
+
     /// The compute merkle tree error.
-    ComputeMerkleError(MerkleError),
+    Merkle(merkle::Error),
     /// The compute algorithm error.
-    ComputeAlgoError(AlgoError),
+    Algo(algos::Error),
 }
 
-impl Display for JobRunnerError {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::IndexNotFound(domain) => {
@@ -311,8 +310,8 @@ impl Display for JobRunnerError {
                 write!(f, "compute_tree not found for domain: {:?}", domain)
             },
 
-            Self::ComputeMerkleError(err) => err.fmt(f),
-            Self::ComputeAlgoError(err) => err.fmt(f),
+            Self::Merkle(err) => err.fmt(f),
+            Self::Algo(err) => err.fmt(f),
         }
     }
 }

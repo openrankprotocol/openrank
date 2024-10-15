@@ -9,7 +9,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openrank-common = { path = "../common", version = "0.0.1" }
+openrank-common = { path = "../common", version = "0.1.0" }
 futures = { workspace = true }
 libp2p = { workspace = true, features = [
     "noise",

@@ -1,7 +1,5 @@
 use clap::{Parser, Subcommand};
-use openrank_block_builder::{self, BlockBuilderNode};
-use openrank_sequencer::{self, SequencerNode};
-use openrank_smart_contract_client::JobManagerClient;
+use openrank_smart_contract_client::ComputeManagerClient;
 use std::error::Error;
 
 #[derive(Parser)]
@@ -23,7 +21,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match cli.command {
         Some(Commands::PostOnChain) => {
-            let smc = JobManagerClient::init()?;
+            let smc = ComputeManagerClient::init()?;
             let res = smc.run().await;
             if let Err(e) = res {
                 eprintln!("{}", e);
@@ -31,8 +29,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
         None => {
-            let mut bb = BlockBuilderNode::init().await?;
-            let mut sequencer = SequencerNode::init().await?;
+            let mut bb = openrank_block_builder::Node::init().await?;
+            let mut sequencer = openrank_sequencer::Node::init().await?;
             let block_builder_task = tokio::spawn(async move {
                 let res = bb.run().await;
                 if let Err(e) = res {

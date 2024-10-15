@@ -32,7 +32,7 @@ impl Hash {
 }
 
 /// Converts given index to the next index.
-fn next_index(i: u32) -> u32 {
+fn next_index(i: u64) -> u64 {
     if i % 2 == 1 {
         (i - 1) / 2
     } else {
@@ -52,10 +52,10 @@ pub fn to_bits(num: &[u8]) -> Vec<bool> {
 }
 
 /// Converts given field element to the bits.
-pub fn num_to_bits_vec(num: u32) -> Vec<bool> {
-    let bits = to_bits(&num.to_be_bytes());
+pub fn num_to_bits_vec(num: u64) -> Vec<bool> {
+    let bits = to_bits(&num.to_le_bytes());
 
-    bits[..u32::BITS as usize].to_vec()
+    bits[..u64::BITS as usize].to_vec()
 }
 
 /// Computes the hash from two hashes.
@@ -81,16 +81,16 @@ pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
 
 #[derive(Debug)]
 /// An error type for the merkle tree.
-pub enum MerkleError {
+pub enum Error {
     /// The root of the merkle tree is not found.
     RootNotFound,
     /// The nodes are not found in the merkle tree.
     NodesNotFound,
 }
 
-impl StdError for MerkleError {}
+impl StdError for Error {}
 
-impl Display for MerkleError {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
             Self::RootNotFound => write!(f, "RootNotFound"),

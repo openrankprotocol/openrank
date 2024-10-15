@@ -5,9 +5,8 @@ use openrank_common::{
     build_node, config,
     db::{self, Db, DbItem},
     net,
-    result::JobResult,
     topics::Topic,
-    txs::{Address, Tx},
+    txs::{compute, Address, Tx},
     MyBehaviour, MyBehaviourEvent,
 };
 use rpc::{RpcServer, SequencerServer};
@@ -38,14 +37,14 @@ pub struct Config {
 }
 
 /// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
-pub struct SequencerNode {
+pub struct Node {
     config: Config,
     swarm: Swarm<MyBehaviour>,
     rpc: RpcModule<SequencerServer>,
     receiver: Receiver<(Vec<u8>, Topic)>,
 }
 
-impl SequencerNode {
+impl Node {
     /// Initialize the node:
     /// - Load the config from config.toml
     /// - Initialize the Swarm
@@ -54,7 +53,10 @@ impl SequencerNode {
     pub async fn init() -> Result<Self, Box<dyn Error>> {
         let config_loader = config::Loader::new("openrank-sequencer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new_secondary(&config.database, &[&Tx::get_cf(), &JobResult::get_cf()])?;
+        let db = Db::new_secondary(
+            &config.database,
+            &[&Tx::get_cf(), &compute::Result::get_cf()],
+        )?;
         let (sender, receiver) = mpsc::channel(100);
         let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db);
         let rpc = seq_server.into_rpc();
