@@ -1,7 +1,6 @@
 use alloy_rlp::{encode, Decodable};
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::server::Server;
 use jsonrpsee::types::error::{INVALID_REQUEST_CODE, PARSE_ERROR_CODE};
 use jsonrpsee::types::{ErrorCode, ErrorObjectOwned};
 use openrank_common::db::Db;
@@ -12,7 +11,6 @@ use openrank_common::txs::{
 };
 use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::cmp::Ordering;
-use std::net::SocketAddr;
 use tokio::sync::mpsc::Sender;
 use tracing::error;
 
@@ -44,13 +42,10 @@ impl SequencerServer {
     pub fn new(sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>, db: Db) -> Self {
         Self { sender, whitelisted_users, db }
     }
-}
 
-#[async_trait]
-impl RpcServer for SequencerServer {
-    /// Handles incoming `TrustUpdate` transactions from the network,
-    /// and forward them to the network for processing.
-    async fn trust_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
+    pub fn decode_tx<D: Decodable>(
+        &self, tx_str: String, kind: TxKind,
+    ) -> Result<(Vec<u8>, D), ErrorObjectOwned> {
         let tx_bytes = hex::decode(tx_str).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::owned(
@@ -67,7 +62,7 @@ impl RpcServer for SequencerServer {
                 Some(e.to_string()),
             )
         })?;
-        if tx.kind() != TxKind::TrustUpdate {
+        if tx.kind() != kind {
             return Err(ErrorObjectOwned::owned(
                 INVALID_REQUEST_CODE,
                 "Invalid tx kind".to_string(),
@@ -88,13 +83,24 @@ impl RpcServer for SequencerServer {
                 None::<String>,
             ));
         }
-        let body = TrustUpdate::decode(&mut tx.body().as_slice()).map_err(|e| {
+        let body = D::decode(&mut tx.body().as_slice()).map_err(|e| {
             ErrorObjectOwned::owned(
                 PARSE_ERROR_CODE,
                 "Failed to parse TX data".to_string(),
                 Some(e.to_string()),
             )
         })?;
+
+        Ok((tx_bytes, body))
+    }
+}
+
+#[async_trait]
+impl RpcServer for SequencerServer {
+    /// Handles incoming `TrustUpdate` transactions from the network,
+    /// and forward them to the network for processing.
+    async fn trust_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
+        let (tx_bytes, body) = self.decode_tx::<TrustUpdate>(tx_str, TxKind::TrustUpdate)?;
 
         // Build Tx Event
         // TODO: Replace with DA call
@@ -113,53 +119,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `SeedUpdate` transactions from the network,
     /// and forward them to the network node for processing.
     async fn seed_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        let tx_bytes = hex::decode(tx_str).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-
-        let tx = Tx::decode(&mut tx_bytes.as_slice()).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-        if tx.kind() != TxKind::SeedUpdate {
-            return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid tx kind".to_string(),
-                None::<String>,
-            ));
-        }
-        let address = tx.verify().map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Failed to verify TX Signature".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-        if !self.whitelisted_users.contains(&address) {
-            return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid TX signer".to_string(),
-                None::<String>,
-            ));
-        }
-        let body = SeedUpdate::decode(&mut tx.body().as_slice()).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
+        let (tx_bytes, body) = self.decode_tx::<SeedUpdate>(tx_str, TxKind::SeedUpdate)?;
 
         // Build Tx Event
         // TODO: Replace with DA call
@@ -178,53 +138,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `ComputeRequest` transactions from the network,
     /// and forward them to the network node for processing
     async fn compute_request(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        let tx_bytes = hex::decode(tx_str).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-
-        let tx = Tx::decode(&mut tx_bytes.as_slice()).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-        if tx.kind() != TxKind::JobRunRequest {
-            return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid tx kind".to_string(),
-                None::<String>,
-            ));
-        }
-        let address = tx.verify().map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Failed to verify TX Signature".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
-        if !self.whitelisted_users.contains(&address) {
-            return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid TX signer".to_string(),
-                None::<String>,
-            ));
-        }
-        let body = JobRunRequest::decode(&mut tx.body().as_slice()).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
+        let (tx_bytes, body) = self.decode_tx::<JobRunRequest>(tx_str, TxKind::JobRunRequest)?;
 
         // Build Tx Event
         // TODO: Replace with DA call
@@ -340,28 +254,4 @@ impl RpcServer for SequencerServer {
 
         Ok((verification_results_bools, score_entries))
     }
-}
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::FmtSubscriber::builder()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()
-        .expect("setting default subscriber failed");
-
-    let server_addr = run_server().await;
-    println!("server_addr: {}", server_addr);
-}
-
-async fn run_server() -> SocketAddr {
-    let server = Server::builder().build("127.0.0.1:0").await.unwrap();
-
-    let addr = server.local_addr().unwrap();
-    // let handle = server.start(SequencerServer.into_rpc());
-
-    // In this example we don't care about doing shutdown so let's it run forever.
-    // You may use the `ServerHandle` to shut it down or manage it yourself.
-    // tokio::spawn(handle.stopped());
-
-    addr
 }
