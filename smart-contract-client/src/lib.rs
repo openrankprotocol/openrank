@@ -166,18 +166,16 @@ impl ComputeManagerClient {
 
 #[cfg(test)]
 mod tests {
+    use crate::*;
     use alloy::{
         network::EthereumWallet, node_bindings::Anvil, primitives::address,
         signers::local::PrivateKeySigner,
     };
     use alloy_rlp::encode;
-
     use openrank_common::{
         merkle::Hash,
         txs::{compute, TxHash},
     };
-
-    use super::*;
 
     fn config_for_dir(directory: &str) -> db::Config {
         db::Config { directory: directory.to_string(), secondary: None }

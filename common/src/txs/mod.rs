@@ -309,7 +309,7 @@ impl Signature {
 
 #[cfg(test)]
 mod test {
-    use super::{
+    use crate::txs::{
         trust::{ScoreEntry, TrustEntry, TrustUpdate},
         Kind, Tx,
     };

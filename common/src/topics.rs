@@ -163,9 +163,8 @@ impl Display for Topic {
 
 #[cfg(test)]
 mod test {
+    use crate::topics::{Domain, Topic};
     use crate::txs::Address;
-
-    use super::{Domain, Topic};
 
     #[test]
     fn test_domain_to_hash() {

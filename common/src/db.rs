@@ -130,7 +130,7 @@ impl Db {
 
 #[cfg(test)]
 mod test {
-    use super::{Config, Db, DbItem};
+    use crate::db::{Config, Db, DbItem};
     use crate::txs::{compute, Kind, Tx};
     use alloy_rlp::encode;
 

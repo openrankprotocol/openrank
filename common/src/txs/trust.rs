@@ -1,4 +1,4 @@
-use super::{Address, TxHash};
+use crate::txs::{Address, TxHash};
 use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};

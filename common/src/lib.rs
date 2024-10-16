@@ -114,7 +114,7 @@ pub fn address_from_sk(sk: &SigningKey) -> Address {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn test_address_from_sk() {

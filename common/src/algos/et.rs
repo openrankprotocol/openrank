@@ -1,3 +1,4 @@
+use crate::algos;
 use std::collections::HashMap;
 
 /// The trust weight given to the seed trust vector in the trust matrix calculation.
@@ -22,7 +23,7 @@ fn pre_process(lt: &mut HashMap<(u64, u64), f32>) {
 }
 
 /// Normalizes the `lt` matrix by dividing each element by the sum of its row.
-fn normalise_lt(lt: &mut HashMap<(u64, u64), f32>) -> Result<(), super::Error> {
+fn normalise_lt(lt: &mut HashMap<(u64, u64), f32>) -> Result<(), algos::Error> {
     // Calculate the sum of each row in the local trust matrix.
     let mut sum_map: HashMap<u64, f32> = HashMap::new();
     for ((from, _), value) in lt.iter() {
@@ -32,9 +33,9 @@ fn normalise_lt(lt: &mut HashMap<(u64, u64), f32>) -> Result<(), super::Error> {
 
     // Divide each element in the local trust matrix by the sum of its row.
     for ((from, _), value) in lt {
-        let sum = sum_map.get(from).ok_or(super::Error::ZeroSum)?;
+        let sum = sum_map.get(from).ok_or(algos::Error::ZeroSum)?;
         if *sum == 0.0 {
-            return Err(super::Error::ZeroSum);
+            return Err(algos::Error::ZeroSum);
         }
         *value /= sum;
     }
@@ -42,13 +43,13 @@ fn normalise_lt(lt: &mut HashMap<(u64, u64), f32>) -> Result<(), super::Error> {
 }
 
 /// Normalizes the seed trust (`seed`) values by dividing each value by the sum of all seed trust values.
-fn normalise_seed(seed: &mut HashMap<u64, f32>) -> Result<(), super::Error> {
+fn normalise_seed(seed: &mut HashMap<u64, f32>) -> Result<(), algos::Error> {
     // Calculate the sum of all seed trust values.
     let sum: f32 = seed.iter().map(|(_, v)| v).sum();
 
     // Divide each seed trust value by the sum to normalise.
     if sum == 0.0 {
-        return Err(super::Error::ZeroSum);
+        return Err(algos::Error::ZeroSum);
     }
     for value in seed.values_mut() {
         *value /= sum;
@@ -61,7 +62,7 @@ fn normalise_seed(seed: &mut HashMap<u64, f32>) -> Result<(), super::Error> {
 /// It returns a vector of tuples containing the node ID and the final score.
 pub fn positive_run<const NUM_ITER: usize>(
     mut lt: HashMap<(u64, u64), f32>, mut seed: HashMap<u64, f32>,
-) -> Result<Vec<(u64, f32)>, super::Error> {
+) -> Result<Vec<(u64, f32)>, algos::Error> {
     pre_process(&mut lt);
     normalise_lt(&mut lt)?;
     normalise_seed(&mut seed)?;
@@ -132,7 +133,7 @@ pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<Str
 /// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
     mut lt: HashMap<(u64, u64), f32>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
-) -> Result<bool, super::Error> {
+) -> Result<bool, algos::Error> {
     // Normalize the local trust matrix
     normalise_lt(&mut lt)?;
     // Calculate the next scores of each node

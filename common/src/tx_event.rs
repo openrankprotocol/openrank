@@ -55,7 +55,7 @@ impl DbItem for TxEvent {
 
 #[cfg(test)]
 mod test {
-    use super::TxEvent;
+    use crate::tx_event::TxEvent;
     use crate::{
         db::DbItem,
         txs::{compute, Kind, Tx},
