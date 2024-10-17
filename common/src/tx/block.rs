@@ -1,4 +1,4 @@
-use crate::txs::TxHash;
+use crate::tx::TxHash;
 use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 

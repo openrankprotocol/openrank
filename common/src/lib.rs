@@ -5,8 +5,8 @@ pub mod merkle;
 pub mod net;
 pub mod result;
 pub mod topics;
+pub mod tx;
 pub mod tx_event;
-pub mod txs;
 
 use alloy_rlp::encode;
 use k256::ecdsa::SigningKey;
@@ -21,8 +21,8 @@ use sha3::Keccak256;
 use std::{error::Error, io, time::Duration};
 use topics::Topic;
 use tracing::info;
+use tx::{Address, Tx};
 use tx_event::TxEvent;
-use txs::{Address, Kind, Tx};
 
 #[derive(NetworkBehaviour)]
 /// A custom libp2p [network behavior](libp2p::swarm::NetworkBehaviour) used by OpenRank nodes.
@@ -77,7 +77,7 @@ pub async fn build_node(keypair: identity::Keypair) -> Result<Swarm<MyBehaviour>
 
 /// Broadcasts a default transaction event to the given topic.
 pub fn broadcast_default_event(
-    swarm: &mut Swarm<MyBehaviour>, kind: Kind, data: Vec<u8>, topic: Topic,
+    swarm: &mut Swarm<MyBehaviour>, kind: tx::Kind, data: Vec<u8>, topic: Topic,
 ) -> Result<MessageId, PublishError> {
     info!("PUBLISH: {}", topic.clone());
     let tx = Tx::default_with(kind, data);
@@ -109,7 +109,7 @@ pub fn address_from_sk(sk: &SigningKey) -> Address {
     let mut address_bytes = [0u8; 20];
     address_bytes.copy_from_slice(&hash.0[12..]);
 
-    Address(address_bytes)
+    Address::from_slice(&address_bytes)
 }
 
 #[cfg(test)]

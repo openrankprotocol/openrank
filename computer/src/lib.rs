@@ -8,12 +8,12 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::{Domain, Topic},
-    tx_event::TxEvent,
-    txs::{
+    tx::{
         compute,
         trust::{SeedUpdate, TrustUpdate},
         Address, Kind, Tx, TxHash,
     },
+    tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
 use runner::ComputeRunner;

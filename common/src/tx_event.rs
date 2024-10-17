@@ -58,7 +58,7 @@ mod test {
     use crate::tx_event::TxEvent;
     use crate::{
         db::DbItem,
-        txs::{compute, Kind, Tx},
+        tx::{compute, Kind, Tx},
     };
     use alloy_rlp::encode;
 

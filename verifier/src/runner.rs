@@ -5,7 +5,7 @@ use openrank_common::{
         Hash,
     },
     topics::{Domain, DomainHash},
-    txs::{
+    tx::{
         compute,
         trust::{ScoreEntry, TrustEntry},
         TxHash,

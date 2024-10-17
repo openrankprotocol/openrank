@@ -1,4 +1,4 @@
-use crate::txs::TxHash;
+use crate::tx::TxHash;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

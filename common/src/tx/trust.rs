@@ -1,4 +1,4 @@
-use crate::txs::{Address, TxHash};
+use crate::tx::{Address, TxHash};
 use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
@@ -15,7 +15,7 @@ pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 24]);
 impl OwnedNamespace {
     pub fn new(owner: Address, id: u32) -> Self {
         let mut bytes = [0; 24];
-        bytes[..20].copy_from_slice(&owner.0);
+        bytes[..20].copy_from_slice(&owner.to_vec());
         bytes[20..24].copy_from_slice(&id.to_be_bytes());
         Self(bytes)
     }
@@ -27,7 +27,7 @@ impl OwnedNamespace {
     pub fn owner(&self) -> Address {
         let mut bytes = [0; 20];
         bytes.copy_from_slice(&self.0[..20]);
-        Address(bytes)
+        Address::from_slice(&bytes)
     }
 }
 

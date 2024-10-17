@@ -19,7 +19,7 @@ use eyre::Result;
 use openrank_common::{
     config,
     db::{self, Db, DbItem},
-    txs::{Kind, Tx},
+    tx::{Kind, Tx},
 };
 use sol::ComputeManager::{self, Signature};
 
@@ -87,7 +87,7 @@ impl ComputeManagerClient {
         let _result_hash = match tx.kind() {
             Kind::ComputeCommitment => {
                 let compute_commitment =
-                    openrank_common::txs::compute::Commitment::decode(&mut tx.body().as_slice())?;
+                    openrank_common::tx::compute::Commitment::decode(&mut tx.body().as_slice())?;
                 let compute_assignment_tx_hash = compute_commitment.assignment_tx_hash.0.into();
                 let compute_commitment_tx_hash = tx.hash().0.into();
                 let compute_root_hash = compute_commitment.compute_root_hash.0.into();
@@ -174,7 +174,7 @@ mod tests {
     use alloy_rlp::encode;
     use openrank_common::{
         merkle::Hash,
-        txs::{compute, TxHash},
+        tx::{compute, TxHash},
     };
 
     fn config_for_dir(directory: &str) -> db::Config {

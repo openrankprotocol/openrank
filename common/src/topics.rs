@@ -1,4 +1,4 @@
-use crate::txs::{trust::OwnedNamespace, Address};
+use crate::tx::{trust::OwnedNamespace, Address};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -70,9 +70,9 @@ impl Domain {
     /// Returns the domain hash, created from the trust and seed namespace + algo id.
     pub fn to_hash(&self) -> DomainHash {
         let mut s = DefaultHasher::new();
-        s.write(&self.trust_owner.0);
+        s.write(&self.trust_owner.to_vec());
         s.write(&self.trust_id.to_be_bytes());
-        s.write(&self.seed_owner.0);
+        s.write(&self.seed_owner.to_vec());
         s.write(&self.seed_id.to_be_bytes());
         s.write(&self.algo_id.to_be_bytes());
         let res = s.finish();
@@ -164,7 +164,7 @@ impl Display for Topic {
 #[cfg(test)]
 mod test {
     use crate::topics::{Domain, Topic};
-    use crate::txs::Address;
+    use crate::tx::Address;
 
     #[test]
     fn test_domain_to_hash() {

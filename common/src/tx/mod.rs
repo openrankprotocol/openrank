@@ -2,14 +2,12 @@ use crate::db::DbItem;
 use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
-use hex::FromHex;
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{
     Error as EcdsaError, RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey,
 };
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
-use std::fmt::Display;
 use std::io::Read;
 
 pub mod block;
@@ -178,7 +176,7 @@ impl Tx {
         let mut address_bytes = [0u8; 20];
         address_bytes.copy_from_slice(&hash.0[12..]);
 
-        if Address(address_bytes) != address {
+        if Address::from_slice(&address_bytes) != address {
             return Err(EcdsaError::new());
         }
 
@@ -202,7 +200,7 @@ impl Tx {
         let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
         address_bytes.copy_from_slice(&hash.0[12..]);
-        let address = Address(address_bytes);
+        let address = Address::from_slice(&address_bytes);
 
         Ok(address)
     }
@@ -230,38 +228,7 @@ impl DbItem for Tx {
     }
 }
 
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize, Hash,
-)]
-pub struct Address(#[serde(with = "hex")] pub [u8; 20]);
-
-impl From<u32> for Address {
-    fn from(value: u32) -> Self {
-        let mut bytes = [0; 20];
-        bytes[..4].copy_from_slice(&value.to_be_bytes());
-        Address(bytes)
-    }
-}
-
-impl Address {
-    pub fn to_hex(&self) -> String {
-        hex::encode(self.0)
-    }
-}
-
-impl Display for Address {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!("Address({})", self.to_hex()))
-    }
-}
-
-impl FromHex for Address {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        Ok(Address(<[u8; 20]>::from_hex(hex)?))
-    }
-}
+pub type Address = alloy_primitives::Address;
 
 #[derive(
     Debug, Clone, Hash, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
@@ -309,7 +276,7 @@ impl Signature {
 
 #[cfg(test)]
 mod test {
-    use crate::txs::{
+    use crate::tx::{
         trust::{ScoreEntry, TrustEntry, TrustUpdate},
         Kind, Tx,
     };

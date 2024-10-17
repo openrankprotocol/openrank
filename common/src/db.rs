@@ -131,7 +131,7 @@ impl Db {
 #[cfg(test)]
 mod test {
     use crate::db::{Config, Db, DbItem};
-    use crate::txs::{compute, Kind, Tx};
+    use crate::tx::{compute, Kind, Tx};
     use alloy_rlp::encode;
 
     fn config_for_dir(directory: &str) -> Config {

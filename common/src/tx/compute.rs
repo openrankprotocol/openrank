@@ -1,4 +1,4 @@
-use crate::txs::{trust::ScoreEntry, Address, TxHash};
+use crate::tx::{trust::ScoreEntry, Address, TxHash};
 use crate::{db::DbItem, merkle::Hash, topics::DomainHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};

@@ -8,12 +8,12 @@ use openrank_common::{
     net,
     result::GetResultsQuery,
     topics::Topic,
-    tx_event::TxEvent,
-    txs::{
+    tx::{
         compute,
         trust::{ScoreEntry, SeedUpdate, TrustUpdate},
         Address, Kind, Tx,
     },
+    tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
 use serde::{Deserialize, Serialize};

@@ -10,12 +10,12 @@ use openrank_common::{
     merkle::hash_leaf,
     result::GetResultsQuery,
     topics::Domain,
-    tx_event::TxEvent,
-    txs::{
+    tx::{
         compute,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
         Address, Kind, Tx, TxHash,
     },
+    tx_event::TxEvent,
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
@@ -324,12 +324,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let (sk, address) = generate_keypair(rng);
             let sk_bytes = sk.to_bytes();
             println!("SIGNING_KEY: {}", hex::encode(sk_bytes));
-            println!("ADDRESS:     {}", address.to_hex());
+            println!("ADDRESS:     {}", address);
         },
         Method::ShowAddress => {
             let secret_key = get_secret_key()?;
             let addr = address_from_sk(&secret_key);
-            println!("ADDRESS: {}", addr.to_hex());
+            println!("ADDRESS: {}", addr);
         },
     }
     Ok(())

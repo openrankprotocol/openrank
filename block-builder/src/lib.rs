@@ -9,8 +9,8 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::{Domain, Topic},
+    tx::{compute, Address, Kind, Tx},
     tx_event::TxEvent,
-    txs::{compute, Address, Kind, Tx},
     MyBehaviour, MyBehaviourEvent,
 };
 use serde::{Deserialize, Serialize};
