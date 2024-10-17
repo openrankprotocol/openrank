@@ -70,9 +70,9 @@ impl Domain {
     /// Returns the domain hash, created from the trust and seed namespace + algo id.
     pub fn to_hash(&self) -> DomainHash {
         let mut s = DefaultHasher::new();
-        s.write(&self.trust_owner.to_vec());
+        s.write(self.trust_owner.as_slice());
         s.write(&self.trust_id.to_be_bytes());
-        s.write(&self.seed_owner.to_vec());
+        s.write(self.seed_owner.as_slice());
         s.write(&self.seed_id.to_be_bytes());
         s.write(&self.algo_id.to_be_bytes());
         let res = s.finish();

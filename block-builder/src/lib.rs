@@ -334,7 +334,7 @@ impl Node {
             .domains
             .clone()
             .into_iter()
-            .map(|domain| Topic::NamespaceTrustUpdate(domain.trust_namespace()))
+            .map(|domain| Topic::NamespaceSeedUpdate(domain.seed_namespace()))
             .collect();
         let topics_requests: Vec<Topic> = self
             .config

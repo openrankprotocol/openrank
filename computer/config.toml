@@ -1,26 +1,23 @@
 [[domains]]
-trust_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+trust_owner = "da3bd8cdf6412e705d89b9c83c0c87064512696a"
 trust_id = 1
-seed_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+seed_owner = "da3bd8cdf6412e705d89b9c83c0c87064512696a"
 seed_id = 1
 algo_id = 0
 
 [[domains]]
-trust_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+trust_owner = "da3bd8cdf6412e705d89b9c83c0c87064512696a"
 trust_id = 2
-seed_owner = "b79aafc95c8866e65ed51a7856e75587feb481ff"
+seed_owner = "da3bd8cdf6412e705d89b9c83c0c87064512696a"
 seed_id = 2
 algo_id = 0
 
 [whitelist]
-block_builder = ["4d40f98096410aa4235292343cc5fa559afcc780"]
+block_builder = ["f39fd6e51aad88f6f4ce6ab8827279cfffb92266"]
 verifier = ["40a28b7ca8509395b93165bea28ba614b4a6bdd9"]
 
 [database]
 directory = "./local-storage"
 
 [p2p]
-listen_on = [
-    "/ip4/0.0.0.0/udp/10000/quic-v1",
-    "/ip4/0.0.0.0/tcp/10000",
-]
+listen_on = ["/ip4/0.0.0.0/udp/10000/quic-v1", "/ip4/0.0.0.0/tcp/10000"]

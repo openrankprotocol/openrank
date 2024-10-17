@@ -15,7 +15,7 @@ pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 24]);
 impl OwnedNamespace {
     pub fn new(owner: Address, id: u32) -> Self {
         let mut bytes = [0; 24];
-        bytes[..20].copy_from_slice(&owner.to_vec());
+        bytes[..20].copy_from_slice(&owner.as_slice());
         bytes[20..24].copy_from_slice(&id.to_be_bytes());
         Self(bytes)
     }
