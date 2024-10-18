@@ -8,11 +8,7 @@ use openrank_common::{
     net,
     result::GetResultsQuery,
     topics::Topic,
-    tx::{
-        compute,
-        trust::{ScoreEntry, SeedUpdate, TrustUpdate},
-        Address, Kind, Tx,
-    },
+    tx::{self, compute, trust::ScoreEntry, Address, Tx},
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
@@ -69,29 +65,27 @@ impl Sequencer {
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-        if tx.kind() != Kind::TrustUpdate {
+        if let tx::Body::TrustUpdate(body) = tx.body() {
+            let address = tx
+                .verify()
+                .map_err(|_| RPCError::ParseError("Failed to verify TX Signature".to_string()))?;
+            if !self.whitelisted_users.contains(&address) {
+                return Err(RPCError::InvalidRequest("Invalid TX signer"));
+            }
+            // Build Tx Event
+            // TODO: Replace with DA call
+            let tx_event = TxEvent::default_with_data(tx_bytes);
+            let channel_message = (
+                encode(tx_event.clone()),
+                Topic::NamespaceTrustUpdate(body.trust_id),
+            );
+            self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
+
+            let tx_event_value = serde_json::to_value(tx_event)?;
+            Ok(tx_event_value)
+        } else {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
-        let address = tx
-            .verify()
-            .map_err(|_| RPCError::ParseError("Failed to verify TX Signature".to_string()))?;
-        if !self.whitelisted_users.contains(&address) {
-            return Err(RPCError::InvalidRequest("Invalid TX signer"));
-        }
-        let body: TrustUpdate = TrustUpdate::decode(&mut tx.body().as_slice())
-            .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-
-        // Build Tx Event
-        // TODO: Replace with DA call
-        let tx_event = TxEvent::default_with_data(tx_bytes);
-        let channel_message = (
-            encode(tx_event.clone()),
-            Topic::NamespaceTrustUpdate(body.trust_id),
-        );
-        self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
-
-        let tx_event_value = serde_json::to_value(tx_event)?;
-        Ok(tx_event_value)
     }
 
     /// Handles incoming `SeedUpdate` transactions from the network,
@@ -107,29 +101,28 @@ impl Sequencer {
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-        if tx.kind() != Kind::SeedUpdate {
+        if let tx::Body::SeedUpdate(body) = tx.body() {
+            let address = tx
+                .verify()
+                .map_err(|_| RPCError::ParseError("Failed to verify TX Signature".to_string()))?;
+            if !self.whitelisted_users.contains(&address) {
+                return Err(RPCError::InvalidRequest("Invalid TX signature"));
+            }
+
+            // Build Tx Event
+            // TODO: Replace with DA call
+            let tx_event = TxEvent::default_with_data(tx_bytes);
+            let channel_message = (
+                encode(tx_event.clone()),
+                Topic::NamespaceSeedUpdate(body.seed_id),
+            );
+            self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
+
+            let tx_event_value = serde_json::to_value(tx_event)?;
+            Ok(tx_event_value)
+        } else {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
-        let address = tx
-            .verify()
-            .map_err(|_| RPCError::ParseError("Failed to verify TX Signature".to_string()))?;
-        if !self.whitelisted_users.contains(&address) {
-            return Err(RPCError::InvalidRequest("Invalid TX signature"));
-        }
-        let body = SeedUpdate::decode(&mut tx.body().as_slice())
-            .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-
-        // Build Tx Event
-        // TODO: Replace with DA call
-        let tx_event = TxEvent::default_with_data(tx_bytes);
-        let channel_message = (
-            encode(tx_event.clone()),
-            Topic::NamespaceSeedUpdate(body.seed_id),
-        );
-        self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
-
-        let tx_event_value = serde_json::to_value(tx_event)?;
-        Ok(tx_event_value)
     }
 
     /// Handles incoming `ComputeRequest` transactions from the network,
@@ -147,29 +140,28 @@ impl Sequencer {
             error!("{}", e);
             RPCError::ParseError("Failed to parse TX data".to_string())
         })?;
-        if tx.kind() != Kind::ComputeRequest {
+        if let tx::Body::ComputeRequest(body) = tx.body() {
+            let address = tx
+                .verify()
+                .map_err(|_| RPCError::ParseError("Failed to verify TX Signature".to_string()))?;
+            if !self.whitelisted_users.contains(&address) {
+                return Err(RPCError::InvalidRequest("Invalid tx signature"));
+            }
+
+            // Build Tx Event
+            // TODO: Replace with DA call
+            let tx_event = TxEvent::default_with_data(tx_bytes);
+            let channel_message = (
+                encode(tx_event.clone()),
+                Topic::DomainRequest(body.domain_id),
+            );
+            self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
+
+            let tx_event_value = serde_json::to_value(tx_event)?;
+            Ok(tx_event_value)
+        } else {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
-        let address = tx
-            .verify()
-            .map_err(|_| RPCError::ParseError("Failed to verify TX Signature".to_string()))?;
-        if !self.whitelisted_users.contains(&address) {
-            return Err(RPCError::InvalidRequest("Invalid tx signature"));
-        }
-        let body = compute::Request::decode(&mut tx.body().as_slice())
-            .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-
-        // Build Tx Event
-        // TODO: Replace with DA call
-        let tx_event = TxEvent::default_with_data(tx_bytes);
-        let channel_message = (
-            encode(tx_event.clone()),
-            Topic::DomainRequest(body.domain_id),
-        );
-        self.sender.send(channel_message).await.map_err(|_| RPCError::InternalError)?;
-
-        let tx_event_value = serde_json::to_value(tx_event)?;
-        Ok(tx_event_value)
     }
 
     /// Gets the results(EigenTrust scores) of the `ComputeRequest` with the ComputeRequest TX hash,
@@ -187,20 +179,19 @@ impl Sequencer {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let key =
-            Tx::construct_full_key(Kind::ComputeCommitment, result.compute_commitment_tx_hash);
+        let key = Tx::construct_full_key("compute_commitment", result.compute_commitment_tx_hash);
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let commitment = compute::Commitment::decode(&mut tx.body().as_slice()).map_err(|e| {
-            error!("{}", e);
-            RPCError::InternalError
-        })?;
+        let commitment = match tx.body() {
+            tx::Body::ComputeCommitment(commitment) => commitment,
+            _ => return Err(RPCError::InternalError),
+        };
         let compute_scores_tx: Vec<Tx> = {
             let mut compute_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
-                let key = Tx::construct_full_key(Kind::ComputeScores, tx_hash);
+                let key = Tx::construct_full_key("compute_scores", tx_hash);
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
@@ -212,12 +203,14 @@ impl Sequencer {
         let compute_scores: Vec<compute::Scores> = {
             let mut compute_scores = Vec::new();
             for tx in compute_scores_tx.into_iter() {
-                compute_scores.push(compute::Scores::decode(&mut tx.body().as_slice()).map_err(
-                    |e| {
-                        error!("{}", e);
-                        RPCError::InternalError
+                match tx.body() {
+                    tx::Body::ComputeScores(scores) => {
+                        compute_scores.push(scores);
                     },
-                )?);
+                    _ => {
+                        return Err(RPCError::InternalError);
+                    },
+                }
             }
             compute_scores
         };
@@ -247,7 +240,7 @@ impl Sequencer {
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
             for tx_hash in result.compute_verification_tx_hashes.iter() {
-                let key = Tx::construct_full_key(Kind::ComputeVerification, tx_hash.clone());
+                let key = Tx::construct_full_key("compute_verification", tx_hash.clone());
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
@@ -259,12 +252,12 @@ impl Sequencer {
         let verification_results: Vec<compute::Verification> = {
             let mut verification_results = Vec::new();
             for tx in verificarion_results_tx.into_iter() {
-                let result =
-                    compute::Verification::decode(&mut tx.body().as_slice()).map_err(|e| {
-                        error!("{}", e);
-                        RPCError::InternalError
-                    })?;
-                verification_results.push(result);
+                match tx.body() {
+                    tx::Body::ComputeVerification(result) => {
+                        verification_results.push(result);
+                    },
+                    _ => return Err(RPCError::InternalError),
+                };
             }
             verification_results
         };

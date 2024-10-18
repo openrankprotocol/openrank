@@ -77,10 +77,10 @@ pub async fn build_node(keypair: identity::Keypair) -> Result<Swarm<MyBehaviour>
 
 /// Broadcasts a default transaction event to the given topic.
 pub fn broadcast_default_event(
-    swarm: &mut Swarm<MyBehaviour>, kind: tx::Kind, data: Vec<u8>, topic: Topic,
+    swarm: &mut Swarm<MyBehaviour>, body: tx::Body, topic: Topic,
 ) -> Result<MessageId, PublishError> {
     info!("PUBLISH: {}", topic.clone());
-    let tx = Tx::default_with(kind, data);
+    let tx = Tx::default_with(body);
     let tx_event = TxEvent::default_with_data(encode(tx));
     let topic_wrapper = gossipsub::IdentTopic::new(topic);
     swarm.behaviour_mut().gossipsub.publish(topic_wrapper, encode(tx_event))

@@ -8,7 +8,17 @@ use std::{
 };
 
 #[derive(
-    Clone, Debug, Default, Hash, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Hash,
+    PartialEq,
+    Eq,
+    RlpEncodable,
+    RlpDecodable,
+    Serialize,
+    Deserialize,
 )]
 /// Hash of the [Domain].
 pub struct DomainHash(u64);
@@ -59,12 +69,12 @@ impl Domain {
 
     /// Returns the trust namespace of the domain.
     pub fn trust_namespace(&self) -> OwnedNamespace {
-        OwnedNamespace::new(self.trust_owner.clone(), self.trust_id)
+        OwnedNamespace::new(self.trust_owner, self.trust_id)
     }
 
     /// Returns the seed namespace of the domain.
     pub fn seed_namespace(&self) -> OwnedNamespace {
-        OwnedNamespace::new(self.seed_owner.clone(), self.seed_id)
+        OwnedNamespace::new(self.seed_owner, self.seed_id)
     }
 
     /// Returns the domain hash, created from the trust and seed namespace + algo id.

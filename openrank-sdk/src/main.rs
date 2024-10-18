@@ -13,7 +13,7 @@ use openrank_common::{
     tx::{
         compute,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
-        Address, Kind, Tx, TxHash,
+        Address, Body, Tx, TxHash,
     },
     tx_event::TxEvent,
 };
@@ -125,11 +125,10 @@ async fn update_trust(
 
     let mut results = Vec::new();
     for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
-        let data = encode(TrustUpdate::new(
+        let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
             config.domain.trust_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::TrustUpdate, data);
+        )));
         tx.sign(&sk)?;
 
         let result: Value = client.call("Sequencer.trust_update", hex::encode(encode(tx))).await?;
@@ -162,11 +161,10 @@ async fn update_seed(
 
     let mut results = Vec::new();
     for chunk in entries.chunks(SEED_CHUNK_SIZE) {
-        let data = encode(SeedUpdate::new(
+        let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
             config.domain.seed_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::SeedUpdate, data);
+        )));
         tx.sign(&sk)?;
 
         let result: Value = client.call("Sequencer.seed_update", hex::encode(encode(tx))).await?;
@@ -189,8 +187,9 @@ async fn compute_request(
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(compute::Request::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(Kind::ComputeRequest, data);
+    let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
+        domain_id, 0, hash,
+    )));
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
 
