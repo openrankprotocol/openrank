@@ -10,7 +10,7 @@ edition.workspace = true
 
 [dependencies]
 hex = { workspace = true, features = ["serde"] }
-openrank-common = { path = "../common", version = "0.1.0" }
+openrank-common = { path = "../common", version = "0.1.1" }
 futures = { workspace = true }
 libp2p = { workspace = true, features = [
     "noise",
