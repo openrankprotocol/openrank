@@ -38,15 +38,12 @@ impl ComputeRunner {
         let mut lt_master_tree = HashMap::new();
         let mut compute_results = HashMap::new();
         for domain in domains {
-            count.insert(domain.clone(), 0);
-            indices.insert(domain.clone(), HashMap::new());
-            local_trust.insert(domain.clone(), HashMap::new());
-            seed_trust.insert(domain.clone(), HashMap::new());
-            lt_sub_trees.insert(domain.clone(), HashMap::new());
-            lt_master_tree.insert(
-                domain.clone(),
-                DenseIncrementalMerkleTree::<Keccak256>::new(32),
-            );
+            count.insert(domain, 0);
+            indices.insert(domain, HashMap::new());
+            local_trust.insert(domain, HashMap::new());
+            seed_trust.insert(domain, HashMap::new());
+            lt_sub_trees.insert(domain, HashMap::new());
+            lt_master_tree.insert(domain, DenseIncrementalMerkleTree::<Keccak256>::new(32));
             compute_results.insert(domain, Vec::<(u64, f32)>::new());
         }
         Self {

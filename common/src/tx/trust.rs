@@ -179,7 +179,7 @@ impl Assignment {
     }
 
     pub fn get_domain_id(&self) -> DomainHash {
-        self.domain_id.clone()
+        self.domain_id
     }
 
     pub fn get_trust_builder(&self) -> Address {

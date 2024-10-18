@@ -140,7 +140,7 @@ impl Node {
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -162,7 +162,7 @@ impl Node {
                     },
                     Topic::DomainRequest(domain_id) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -176,7 +176,7 @@ impl Node {
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert_eq!(&compute_request.domain_id, domain_id);
 
-                            let assignment_topic = Topic::DomainAssignent(domain_id.clone());
+                            let assignment_topic = Topic::DomainAssignent(*domain_id);
                             let computer = self.config.whitelist.computer[0];
                             let verifier = self.config.whitelist.verifier[0];
                             let compute_assignment =
@@ -199,7 +199,7 @@ impl Node {
                     },
                     Topic::DomainCommitment(_) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -246,7 +246,7 @@ impl Node {
                     },
                     Topic::DomainScores(_) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -268,7 +268,9 @@ impl Node {
                     },
                     Topic::DomainVerification(_) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {}
+                        if message.topic != topic_wrapper.hash() {
+                            continue;
+                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let tx =
@@ -339,7 +341,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainRequest(domain_hash.clone()))
+            .map(Topic::DomainRequest)
             .collect();
         let topics_commitment: Vec<Topic> = self
             .config
@@ -347,7 +349,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
+            .map(Topic::DomainCommitment)
             .collect();
         let topics_scores: Vec<Topic> = self
             .config
@@ -355,7 +357,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+            .map(Topic::DomainScores)
             .collect();
         let topics_verification: Vec<Topic> = self
             .config
@@ -363,7 +365,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
+            .map(Topic::DomainVerification)
             .collect();
 
         for topic in topics_verification

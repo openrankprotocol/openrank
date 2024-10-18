@@ -160,7 +160,7 @@ impl Node {
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -189,7 +189,7 @@ impl Node {
                     },
                     Topic::DomainAssignent(domain_id) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -212,7 +212,7 @@ impl Node {
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
                             self.verification_runner
                                 .update_assigment(domain.clone(), tx.hash())
                                 .map_err(Error::Runner)?;
@@ -230,7 +230,7 @@ impl Node {
                                 broadcast_event(
                                     &mut self.swarm,
                                     tx,
-                                    Topic::DomainVerification(domain_id.clone()),
+                                    Topic::DomainVerification(*domain_id),
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
@@ -244,7 +244,7 @@ impl Node {
                     },
                     Topic::DomainScores(domain_id) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -259,7 +259,7 @@ impl Node {
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
                             self.verification_runner
                                 .update_scores(domain.clone(), tx.hash(), compute_scores.clone())
                                 .map_err(Error::Runner)?;
@@ -277,7 +277,7 @@ impl Node {
                                 broadcast_event(
                                     &mut self.swarm,
                                     tx,
-                                    Topic::DomainVerification(domain_id.clone()),
+                                    Topic::DomainVerification(*domain_id),
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
@@ -291,7 +291,7 @@ impl Node {
                     },
                     Topic::DomainCommitment(domain_id) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -306,7 +306,7 @@ impl Node {
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound(domain_id.to_hex()))?;
                             self.verification_runner.update_commitment(compute_commitment.clone());
                             let res = self
                                 .verification_runner
@@ -322,7 +322,7 @@ impl Node {
                                 broadcast_event(
                                     &mut self.swarm,
                                     tx,
-                                    Topic::DomainVerification(domain_id.clone()),
+                                    Topic::DomainVerification(*domain_id),
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
@@ -425,7 +425,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+            .map(Topic::DomainAssignent)
             .collect();
         let topics_scores: Vec<Topic> = self
             .config
@@ -433,7 +433,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+            .map(Topic::DomainScores)
             .collect();
         let topics_commitment: Vec<Topic> = self
             .config
@@ -441,7 +441,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
+            .map(Topic::DomainCommitment)
             .collect();
 
         let iter_chain = topics_assignment

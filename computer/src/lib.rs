@@ -104,7 +104,6 @@ impl Node {
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::TrustUpdate(trust_update) = tx.body() {
-                            if tx.body().prefix() != "trust_update" {}
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
@@ -157,7 +156,7 @@ impl Node {
                     },
                     Topic::DomainAssignent(domain_id) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
+                        if message.topic != topic_wrapper.hash() {
                             continue;
                         }
                         let tx_event =
@@ -180,7 +179,7 @@ impl Node {
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
                             self.compute_runner.compute(domain.clone()).map_err(Error::Runner)?;
                             self.compute_runner
                                 .create_compute_tree(domain.clone())
@@ -207,8 +206,8 @@ impl Node {
                             let compute_scores_tx = compute_scores_tx_res?;
                             let compute_scores_tx_hashes: Vec<TxHash> =
                                 compute_scores_tx.iter().map(|x| x.hash()).collect();
-                            let compute_scores_topic = Topic::DomainScores(domain_id.clone());
-                            let commitment_topic = Topic::DomainCommitment(domain_id.clone());
+                            let compute_scores_topic = Topic::DomainScores(*domain_id);
+                            let commitment_topic = Topic::DomainCommitment(*domain_id);
                             let compute_commitment = compute::Commitment::new(
                                 tx.hash(),
                                 lt_root,
@@ -287,7 +286,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.trust_namespace())
-            .map(|namespace| Topic::NamespaceTrustUpdate(namespace.clone()))
+            .map(Topic::NamespaceTrustUpdate)
             .collect();
         let topics_seed_update: Vec<Topic> = self
             .config
@@ -295,7 +294,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.seed_namespace())
-            .map(|namespace| Topic::NamespaceSeedUpdate(namespace.clone()))
+            .map(Topic::NamespaceSeedUpdate)
             .collect();
         let topics_assignment: Vec<Topic> = self
             .config
@@ -303,7 +302,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+            .map(Topic::DomainAssignent)
             .collect();
 
         let iter_chain = topics_assignment

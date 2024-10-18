@@ -84,7 +84,7 @@ impl Sequencer {
             let tx_event_value = serde_json::to_value(tx_event)?;
             Ok(tx_event_value)
         } else {
-            return Err(RPCError::InvalidRequest("Invalid tx kind"));
+            Err(RPCError::InvalidRequest("Invalid tx kind"))
         }
     }
 
@@ -121,7 +121,7 @@ impl Sequencer {
             let tx_event_value = serde_json::to_value(tx_event)?;
             Ok(tx_event_value)
         } else {
-            return Err(RPCError::InvalidRequest("Invalid tx kind"));
+            Err(RPCError::InvalidRequest("Invalid tx kind"))
         }
     }
 
@@ -160,7 +160,7 @@ impl Sequencer {
             let tx_event_value = serde_json::to_value(tx_event)?;
             Ok(tx_event_value)
         } else {
-            return Err(RPCError::InvalidRequest("Invalid tx kind"));
+            Err(RPCError::InvalidRequest("Invalid tx kind"))
         }
     }
 
