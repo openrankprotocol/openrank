@@ -184,7 +184,6 @@ impl Node {
                             let mut tx =
                                 Tx::default_with(tx::Body::ComputeAssignment(compute_assignment));
                             tx.sign(&self.secret_key).map_err(Error::Signature)?;
-                            self.db.put(tx.clone()).map_err(Error::Db)?;
                             broadcast_event(&mut self.swarm, tx.clone(), assignment_topic)
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             // After broadcasting ComputeAssignment, save to db
@@ -213,7 +212,7 @@ impl Node {
                             self.db.put(tx.clone()).map_err(Error::Db)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
-                                "compute_commitment", commitment.assignment_tx_hash,
+                                "compute_assignment", commitment.assignment_tx_hash,
                             );
                             let assignment_tx: Tx =
                                 self.db.get(assignment_tx_key).map_err(Error::Db)?;
