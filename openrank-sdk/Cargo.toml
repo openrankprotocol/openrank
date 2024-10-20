@@ -7,7 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-openrank-common = { path = "../common", version = "0.1.0" }
+openrank-common = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
 hex = { workspace = true }

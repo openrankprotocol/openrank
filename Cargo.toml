@@ -21,6 +21,10 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
+openrank-sequencer = { path = "sequencer", version = "0.1.0" }
+openrank-common = { path = "common", version = "0.1.0" }
+openrank-smart-contract-client = { path = "smart-contract-client", version = "0.1.0" }
+
 alloy-primitives = "0.8.8"
 libp2p = "0.53.2"
 futures = "0.3.30"
