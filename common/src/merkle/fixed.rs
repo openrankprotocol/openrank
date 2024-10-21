@@ -1,4 +1,4 @@
-use super::{hash_two, Hash, MerkleError};
+use super::{hash_two, Hash};
 use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
@@ -25,18 +25,18 @@ where
     H: Digest,
 {
     /// Returns the root of the tree.
-    pub fn root(&self) -> Result<Hash, MerkleError> {
-        self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(MerkleError::RootNotFound)
+    pub fn root(&self) -> Result<Hash, super::Error> {
+        self.nodes.get(&self.num_levels).map(|h| h[0].clone()).ok_or(super::Error::RootNotFound)
     }
 
     /// Builds a Merkle tree from the given leaf nodes.
-    pub fn new(mut leaves: Vec<Hash>) -> Result<Self, MerkleError> {
+    pub fn new(mut leaves: Vec<Hash>) -> Result<Self, super::Error> {
         let next_power_of_two = leaves.len().next_power_of_two();
         if leaves.len() < next_power_of_two {
             let diff = next_power_of_two - leaves.len();
             leaves.extend(vec![Hash::default(); diff]);
         }
-        let num_levels = (u32::BITS - next_power_of_two.leading_zeros()) as u8;
+        let num_levels = (u64::BITS - next_power_of_two.leading_zeros()) as u8;
 
         let mut default = Vec::new();
         default.push(Hash::default());
@@ -49,7 +49,7 @@ where
         tree.insert(0u8, leaves);
 
         for i in 0..num_levels {
-            let nodes = tree.get(&i).ok_or(MerkleError::NodesNotFound)?;
+            let nodes = tree.get(&i).ok_or(super::Error::NodesNotFound)?;
             let next: Vec<Hash> = nodes
                 .chunks(2)
                 .map(|chunk| {
@@ -102,7 +102,7 @@ mod test {
 
         assert_eq!(
             root.to_hex(),
-            "485da52d1d8900a627e2f3cc9f3cf6e653b8effed5972cd10a38990f2fefc494".to_string()
+            "887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968".to_string()
         );
     }
 }
