@@ -262,7 +262,6 @@ impl BlockBuilderNode {
                     },
                     Topic::DomainVerification(_) => {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        println!("{} {}", message.topic, topic_wrapper.hash());
                         if message.topic == topic_wrapper.hash() {
                             let tx_event = TxEvent::decode(&mut message.data.as_slice())
                                 .map_err(BlockBuilderNodeError::DecodeError)?;
@@ -384,7 +383,6 @@ impl BlockBuilderNode {
             .map(|x| x.to_hash())
             .map(|domain_hash| Topic::DomainVerification(domain_hash.clone()))
             .collect();
-        println!("topics_verification: {:?}", topics_verification);
 
         for topic in topics_verification
             .iter()
