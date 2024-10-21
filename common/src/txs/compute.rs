@@ -105,9 +105,9 @@ impl Result {
     }
 
     /// Constructs the full key for the given tx hash.
-    pub fn construct_full_key(seq_number: u64) -> Vec<u8> {
+    pub fn construct_full_key(tx_hash: TxHash) -> Vec<u8> {
         let mut prefix = "result".to_string().as_bytes().to_vec();
-        prefix.extend(seq_number.to_be_bytes());
+        prefix.extend(tx_hash.0);
         prefix
     }
 
