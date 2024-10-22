@@ -14,12 +14,14 @@ The above command will install the cargo (Rust package manager) and openrank-sdk
 It will also generate a new keypair that will be used for signing messages using `generate-keypair` command.
 The output of the command is:
 ```
-SIGNING_KEY: b0f6d4b7865e1128eebfe4eb37b96522d2e58cbd7892c7e0759907c5f4c6ede4
-ADDRESS: b79aafc95c8866e65ed51a7856e75587feb481ff
+SECRET_KEY="b0f6d4b7865e1128eebfe4eb37b96522d2e58cbd7892c7e0759907c5f4c6ede4"
+# ADDRESS: b79aafc95c8866e65ed51a7856e75587feb481ff
 ```
-The generated secret key should be added to local `.env` file that will be used by OpenRankSDK. So, create `.env` file:
+The generated secret key should be added to local `.env` file that will be used by OpenRankSDK. So, create `.env` file,
+and copy-paste the output from the `generate-keypair` command:
 ```bash
 SIGNING_KEY="b0f6d4b7865e1128eebfe4eb37b96522d2e58cbd7892c7e0759907c5f4c6ede4"
+# ADDRESS: b79aafc95c8866e65ed51a7856e75587feb481ff
 ```
 If you wish for you address to be whitelisted, send us a request at devs@karma3labs.com.
 
