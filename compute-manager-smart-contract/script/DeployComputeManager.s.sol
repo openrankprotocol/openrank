@@ -24,7 +24,7 @@ contract ComputeManagerScript is Script {
 
         address[] memory verifiers = new address[](2);
         verifiers[0] = address(bytes20(bytes(hex"e62ace9c2512b2ad4ff50959b7a6a327e8befc93")));
-        verifiers[0] = address(bytes20(bytes(hex"40a28b7ca8509395b93165bea28ba614b4a6bdd9")));
+        verifiers[1] = address(bytes20(bytes(hex"40a28b7ca8509395b93165bea28ba614b4a6bdd9")));
 
         ComputeManager computeManager = new ComputeManager(submitters, computers, verifiers);
 
