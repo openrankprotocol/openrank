@@ -79,6 +79,7 @@ impl Default for Verification {
 
 /// Combination of several tx hashes representing the result of a compute run by `Computer`.
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
+#[rlp(trailing)]
 pub struct Result {
     /// Hash of the ComputeCommitment TX.
     pub compute_commitment_tx_hash: TxHash,
@@ -86,6 +87,8 @@ pub struct Result {
     pub compute_verification_tx_hashes: Vec<TxHash>,
     /// Hash of the original ComputeRequest TX.
     compute_request_tx_hash: TxHash,
+    /// Sequence number assigned by the block builder.
+    pub seq_number: Option<u64>,
 }
 
 impl Result {
@@ -97,6 +100,7 @@ impl Result {
             compute_commitment_tx_hash,
             compute_verification_tx_hashes,
             compute_request_tx_hash,
+            seq_number: None,
         }
     }
 
@@ -105,6 +109,11 @@ impl Result {
         let mut prefix = "result".to_string().as_bytes().to_vec();
         prefix.extend(tx_hash.0);
         prefix
+    }
+
+    /// Set sequence number
+    pub fn set_seq_number(&mut self, seq_number: u64) {
+        self.seq_number = Some(seq_number);
     }
 }
 
@@ -119,5 +128,34 @@ impl DbItem for Result {
 
     fn get_prefix(&self) -> String {
         "result".to_string()
+    }
+}
+
+/// Object connecting the sequence number with the original compute request
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
+pub struct ResultReference {
+    /// Hash of the original job run request transaction.
+    pub compute_request_tx_hash: TxHash,
+    /// Sequence number assigned by the block builder.
+    pub seq_number: u64,
+}
+
+impl ResultReference {
+    pub fn new(compute_request_tx_hash: TxHash, seq_number: u64) -> Self {
+        Self { compute_request_tx_hash, seq_number }
+    }
+}
+
+impl DbItem for ResultReference {
+    fn get_key(&self) -> Vec<u8> {
+        self.compute_request_tx_hash.0.to_vec()
+    }
+
+    fn get_prefix(&self) -> String {
+        String::new()
+    }
+
+    fn get_cf() -> String {
+        "result_reference".to_string()
     }
 }

@@ -1,7 +1,12 @@
 use alloy_rlp::{encode, Decodable};
 use futures::StreamExt;
 use karyon_jsonrpc::{rpc_impl, RPCError, Server};
-use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
+use libp2p::{
+    gossipsub::{self},
+    mdns,
+    swarm::SwarmEvent,
+    Swarm,
+};
 use openrank_common::{
     build_node, config,
     db::{self, Db, DbItem},
@@ -10,7 +15,7 @@ use openrank_common::{
     topics::Topic,
     tx_event::TxEvent,
     txs::{
-        compute,
+        compute::{self, ResultReference},
         trust::{ScoreEntry, SeedUpdate, TrustUpdate},
         Address, Kind, Tx,
     },
@@ -182,7 +187,14 @@ impl Sequencer {
         let query: GetResultsQuery = serde_json::from_value(get_results_query)
             .map_err(|e| RPCError::ParseError(e.to_string()))?;
 
-        let key = compute::Result::construct_full_key(query.compute_request_tx_hash);
+        let result_reference = self
+            .db
+            .get::<ResultReference>(query.compute_request_tx_hash.0.to_vec())
+            .map_err(|e| {
+                error!("{}", e);
+                RPCError::InternalError
+            })?;
+        let key = compute::Result::construct_full_key(result_reference.compute_request_tx_hash);
         let result = self.db.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
@@ -299,7 +311,7 @@ impl Node {
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new_secondary(
             &config.database,
-            &[&Tx::get_cf(), &compute::Result::get_cf()],
+            &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
         )?;
         let (sender, receiver) = mpsc::channel(100);
         let sequencer = Arc::new(Sequencer::new(
