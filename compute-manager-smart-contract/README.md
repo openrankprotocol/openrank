@@ -1,32 +1,37 @@
-# ComputeManager smart contract
+# ComputeManager Smart Contract
 
-## How to deploy
-- Go to `compute-manager-smart-contract`
-```
-cd compute-manager-smart-contract
-```
+## Deployment Instructions
 
-- Build the smart contract
-```
-forge build
-```
+1. **Navigate to the Project Directory**
+   ```sh
+   cd compute-manager-smart-contract
+   ```
 
-- (Optional) Create `.env` file by copying the `.env.example` & add the prvate key
-The wallet related to private key is used for submitting the deployment transaction to blockchain.
+2. **Build the Smart Contract**
+   ```sh
+   forge build
+   ```
 
-- (Optional) Update the addresses of `submitters`, `computers` and `verifiers` in `DeployComputeManager.s.sol` file, if you want
+3. **(Optional) Configure Environment**
+   - Create a `.env` file by copying `.env.example` and add your private key.  
+     This key is used for submitting the deployment transaction to the blockchain.
 
-- Run the simulation before real deployment
-```
-forge script script/DeployComputeManager.s.sol
-```
-This simulation provides you with deployment guarantee + gas cost estimation.
-NOTE: This simulation requires the `.env`.
+4. **(Optional) Update Addresses**
+   - Modify the addresses of `submitters`, `computers`, and `verifiers` in `DeployComputeManager.s.sol` if needed.
 
-- Run the following command to deploy the contract into Polygon testnet
-If you wanna deploy the contract to other network(e.g. Ethereum mainnet), you need to change the `rpc-url` accordingly.
-```
-forge script script/DeployComputeManager.s.sol --rpc-url https://rpc-amoy.polygon.technology/ --broadcast --optimize --optimizer-runs 4000
-```
+5. **Simulate Deployment**
+   ```sh
+   forge script script/DeployComputeManager.s.sol
+   ```
+   - This simulation provides deployment guarantees and gas cost estimates.  
+   - **Note**: Ensure the `.env` file is present.
 
-- Copy the contract address into `smart-contract-client/config.toml` file for use in smart contract client
+6. **Deploy to Polygon Testnet**
+   - To deploy on a different network (e.g., Ethereum mainnet), adjust the `rpc-url` accordingly.
+   ```sh
+   forge script script/DeployComputeManager.s.sol --rpc-url https://rpc-amoy.polygon.technology/ --broadcast --optimize --optimizer-runs 4000
+   ```
+
+7. **Update Configuration**
+   - Copy the deployed contract address into `smart-contract-client/config.toml` for use in the smart contract client.
+
