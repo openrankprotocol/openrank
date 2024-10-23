@@ -56,7 +56,7 @@ impl Node {
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new_secondary(
             &config.database,
-            &[&Tx::get_cf(), &compute::Result::get_cf()],
+            &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
         )?;
         let (sender, receiver) = mpsc::channel(100);
         let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db);

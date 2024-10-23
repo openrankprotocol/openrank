@@ -10,7 +10,7 @@ use alloy::{
     network::EthereumWallet,
     primitives::Address,
     providers::ProviderBuilder,
-    signers::{k256::ecdsa::SigningKey, local::LocalSigner},
+    signers::{k256::ecdsa::SigningKey, local::LocalSigner, Signer},
     transports::http::reqwest::Url,
 };
 use dotenv::dotenv;
@@ -21,13 +21,14 @@ use openrank_common::{
     db::{self, Db, DbItem},
     txs::{Kind, Tx},
 };
-use sol::ComputeManager::{self, OpenrankTx, Signature};
+use sol::ComputeManager::{self, Signature};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub contract_address: String,
     pub rpc_url: String,
     pub database: db::Config,
+    pub chain_id: u64,
 }
 
 pub struct ComputeManagerClient {
@@ -40,7 +41,7 @@ pub struct ComputeManagerClient {
 impl ComputeManagerClient {
     pub fn init() -> Result<Self, Box<dyn Error>> {
         dotenv().ok();
-        let secret_key_hex = std::env::var("SECRET_KEY")?;
+        let secret_key_hex = std::env::var("SC_CLIENT_WALLET_SECRET_KEY")?;
         let secret_key_bytes = hex::decode(secret_key_hex)?;
         let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
 
@@ -49,8 +50,10 @@ impl ComputeManagerClient {
 
         let contract_address = Address::from_str(&config.contract_address)?;
         let rpc_url = Url::parse(&config.rpc_url)?;
+        let mut signer: LocalSigner<SigningKey> = secret_key.into();
+        signer.set_chain_id(Some(config.chain_id));
         let db = Db::new_secondary(&config.database, &[&Tx::get_cf()])?;
-        let client = Self::new(contract_address, rpc_url, secret_key.into(), db);
+        let client = Self::new(contract_address, rpc_url, signer, db);
         Ok(client)
     }
 
@@ -104,20 +107,23 @@ impl ComputeManagerClient {
                     .await?
             },
             Kind::ComputeVerification => {
-                let tx_ = OpenrankTx {
-                    nonce: tx.nonce(),
-                    from: tx.from().0.into(),
-                    to: tx.to().0.into(),
-                    kind: tx.kind() as u8,
-                    body: tx.body().into(),
-                    signature: Signature {
-                        s: tx.signature().s.into(),
-                        r: tx.signature().r.into(),
-                        r_id: tx.signature().r_id(),
-                    },
-                    sequence_number: 0,
+                let compute_verification =
+                    openrank_common::txs::compute::Verification::decode(&mut tx.body().as_slice())?;
+                let compute_verification_tx_hash = tx.hash().0.into();
+                let compute_assignment_tx_hash = compute_verification.assignment_tx_hash.0.into();
+                let sig = Signature {
+                    s: tx.signature().s.into(),
+                    r: tx.signature().r.into(),
+                    r_id: tx.signature().r_id(),
                 };
-                contract.submitComputeVerification(tx_).send().await?.watch().await?
+                contract
+                    .submitComputeVerification(
+                        compute_verification_tx_hash, compute_assignment_tx_hash, sig,
+                    )
+                    .send()
+                    .await?
+                    .watch()
+                    .await?
             },
             _ => return Ok(()),
         };
@@ -199,12 +205,10 @@ mod tests {
             .on_http(rpc_url.clone());
 
         // Deploy the `ComputeManager` contract.
-        let contract = ComputeManager::deploy(
-            &provider,
-            vec![address!("13978aee95f38490e9769c39b2773ed763d9cd5f")],
-            vec![address!("cd2a3d9f938e13cd947ec05abc7fe734df8dd826")],
-        )
-        .await?;
+        let submitters = vec![signer.address()];
+        let computers = vec![address!("13978aee95f38490e9769c39b2773ed763d9cd5f")];
+        let verifiers = vec![address!("cd2a3d9f938e13cd947ec05abc7fe734df8dd826")];
+        let contract = ComputeManager::deploy(&provider, submitters, computers, verifiers).await?;
 
         // Create a contract instance.
         let contract_address = *contract.address();

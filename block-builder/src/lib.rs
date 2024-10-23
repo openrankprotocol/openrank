@@ -1,4 +1,5 @@
 use alloy_rlp::{encode, Decodable};
+use coordinator::JobCoordinator;
 use dotenv::dotenv;
 use futures::StreamExt;
 use k256::ecdsa;
@@ -19,6 +20,8 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+mod coordinator;
 
 #[derive(Debug)]
 /// Errors that can arise while using the block builder node.
@@ -77,6 +80,7 @@ pub struct Node {
     config: Config,
     db: Db,
     secret_key: SigningKey,
+    coordinator: JobCoordinator,
 }
 
 impl Node {
@@ -98,13 +102,15 @@ impl Node {
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new(
             &config.database,
-            &[&Tx::get_cf(), &compute::Result::get_cf()],
+            &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
         )?;
 
         let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, db, secret_key })
+        let coordinator = JobCoordinator::new();
+
+        Ok(Self { swarm, config, db, secret_key, coordinator })
     }
 
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
@@ -228,15 +234,20 @@ impl Node {
                                 assignment_body.request_tx_hash.clone(),
                             );
                             let request: Tx = self.db.get(request_tx_key).map_err(Error::Db)?;
-                            let compute_result_key = compute::Result::construct_full_key(
-                                assignment_body.request_tx_hash,
-                            );
                             if let Err(db::Error::NotFound) =
-                                self.db.get::<compute::Result>(compute_result_key)
+                                self.db.get::<compute::ResultReference>(
+                                    assignment_body.request_tx_hash.0.to_vec(),
+                                )
                             {
-                                let result =
+                                let mut result =
                                     compute::Result::new(tx.hash(), Vec::new(), request.hash());
-                                self.db.put(result).map_err(Error::Db)?;
+                                self.coordinator.add_job_result(&mut result);
+                                self.db.put(result.clone()).map_err(Error::Db)?;
+                                let reference = compute::ResultReference::new(
+                                    assignment_body.request_tx_hash,
+                                    result.seq_number.unwrap(),
+                                );
+                                self.db.put(reference).map_err(Error::Db)?;
                             }
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -293,13 +304,18 @@ impl Node {
                             let assignment_body =
                                 compute::Assignment::decode(&mut assignment_tx.body().as_slice())
                                     .map_err(Error::Decode)?;
-                            let compute_result_key = compute::Result::construct_full_key(
-                                assignment_body.request_tx_hash,
+                            let result_reference: compute::ResultReference = self
+                                .db
+                                .get(assignment_body.request_tx_hash.0.to_vec())
+                                .map_err(Error::Db)?;
+                            let result_key = compute::Result::construct_full_key(
+                                result_reference.compute_request_tx_hash,
                             );
-                            let mut compute_result: compute::Result =
-                                self.db.get(compute_result_key).map_err(Error::Db)?;
-                            compute_result.compute_verification_tx_hashes.push(tx.hash());
-                            self.db.put(compute_result).map_err(Error::Db)?;
+                            let mut result: compute::Result =
+                                self.db.get(result_key).map_err(Error::Db)?;
+                            result.compute_verification_tx_hashes.push(tx.hash());
+                            self.coordinator.add_job_result(&mut result);
+                            self.db.put(result).map_err(Error::Db)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
@@ -311,6 +327,16 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    /// Node recovery method. Used for loading results from the DB into the memory, for future indexing.
+    pub fn node_recovery(&mut self) -> Result<(), Error> {
+        let job_results: Vec<compute::Result> =
+            self.db.read_from_end("result".to_string(), None).map_err(Error::Db)?;
+        for mut job_result in job_results {
+            self.coordinator.add_job_result(&mut job_result);
+        }
         Ok(())
     }
 
