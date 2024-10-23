@@ -186,7 +186,7 @@ impl Sequencer {
                 error!("{}", e);
                 RPCError::InternalError
             })?;
-        let key = compute::Result::construct_full_key(result_reference.compute_request_tx_hash);
+        let key = compute::Result::construct_full_key(result_reference.seq_number);
         let result = self.db.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError

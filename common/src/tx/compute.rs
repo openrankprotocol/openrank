@@ -105,9 +105,9 @@ impl Result {
     }
 
     /// Constructs the full key for the given tx hash.
-    pub fn construct_full_key(tx_hash: TxHash) -> Vec<u8> {
+    pub fn construct_full_key(seq_number: u64) -> Vec<u8> {
         let mut prefix = "result".to_string().as_bytes().to_vec();
-        prefix.extend(tx_hash.0);
+        prefix.extend(seq_number.to_be_bytes());
         prefix
     }
 
@@ -119,7 +119,7 @@ impl Result {
 
 impl DbItem for Result {
     fn get_key(&self) -> Vec<u8> {
-        self.compute_request_tx_hash.0.to_vec()
+        self.seq_number.unwrap().to_be_bytes().to_vec()
     }
 
     fn get_cf() -> String {

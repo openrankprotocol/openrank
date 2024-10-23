@@ -286,9 +286,8 @@ impl Node {
                                 .db
                                 .get(assignment_body.request_tx_hash.0.to_vec())
                                 .map_err(Error::Db)?;
-                            let compute_result_key = compute::Result::construct_full_key(
-                                result_reference.compute_request_tx_hash,
-                            );
+                            let compute_result_key =
+                                compute::Result::construct_full_key(result_reference.seq_number);
                             let mut result: compute::Result =
                                 self.db.get(compute_result_key).map_err(Error::Db)?;
                             result.compute_verification_tx_hashes.push(tx.hash());
