@@ -1,2 +1,5 @@
-todo 
-select event_body->>'signature' from events limit 1;
+use `reindex` command line argument drop db, state and resync explorer
+
+```
+RUST_LOG=info cargo run reindex
+```

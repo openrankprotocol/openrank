@@ -2,6 +2,7 @@ use dotenv::dotenv;
 use log::{error, info, warn};
 use serde_json::Value;
 use std::env;
+use std::fs;
 use tokio_postgres::{Client, Error, NoTls};
 
 pub struct SQLDatabase {
@@ -29,6 +30,41 @@ impl SQLDatabase {
         });
 
         Ok(SQLDatabase { client })
+    }
+
+    pub async fn init(&self) -> Result<(), Error> {
+        let schema_path = "assets/schema.sql";
+        log::info!("Executing schema SQL from: {}", schema_path);
+        let schema_sql = fs::read_to_string(schema_path).expect("Failed to read schema.sql file");
+        self.client.batch_execute(&schema_sql).await?;
+
+        Ok(())
+    }
+
+    pub async fn drop_tables(&self) -> Result<(), Error> {
+        let drop_events = self.client.execute("DROP TABLE IF EXISTS events", &[]).await;
+        match drop_events {
+            Ok(_) => {
+                log::info!("Dropped events table.");
+            },
+            Err(e) => {
+                log::error!("Error dropping events table: {}", e);
+                return Err(e);
+            },
+        }
+
+        let drop_state = self.client.execute("DROP TABLE IF EXISTS state", &[]).await;
+        match drop_state {
+            Ok(_) => {
+                log::info!("Dropped state table.");
+            },
+            Err(e) => {
+                log::error!("Error dropping state table: {}", e);
+                return Err(e);
+            },
+        }
+
+        Ok(())
     }
 
     pub async fn insert_events(&self, event_id: &str, event_body: &str) -> Result<(), Error> {
