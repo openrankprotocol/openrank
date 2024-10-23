@@ -112,8 +112,7 @@ impl VerificationRunner {
                 *count += 1;
                 curr_count
             };
-            let old_value = lt.get(&(from_index, to_index)).unwrap_or(&0.0);
-            lt.insert((from_index, to_index), entry.value + old_value);
+            lt.insert((from_index, to_index), entry.value);
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees

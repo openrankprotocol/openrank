@@ -33,6 +33,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         None => {
             let mut bb = block_builder::Node::init().await?;
             let mut sequencer = sequencer::Node::init().await?;
+
+            // Recover the state from the local DB
+            bb.node_recovery()?;
+
             let block_builder_task = tokio::spawn(async move {
                 let res = bb.run().await;
                 if let Err(e) = res {

@@ -24,6 +24,7 @@ pub mod consts {
     pub const COMPUTE_SCORES: &str = "compute_scores";
     pub const COMPUTE_COMMITMENT: &str = "compute_commitment";
     pub const COMPUTE_VERIFICATION: &str = "compute_verification";
+    pub const COMPUTE_RESULT: &str = "compute_result";
     pub const PROPOSED_BLOCK: &str = "proposed_block";
     pub const FINALISED_BLOCK: &str = "finalised_block";
 }
