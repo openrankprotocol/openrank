@@ -8,7 +8,7 @@ use openrank_common::{
     net,
     result::GetResultsQuery,
     topics::Topic,
-    tx::{self, compute, trust::ScoreEntry, Address, Tx},
+    tx::{self, compute, consts, trust::ScoreEntry, Address, Tx},
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
@@ -179,7 +179,10 @@ impl Sequencer {
             error!("{}", e);
             RPCError::InternalError
         })?;
-        let key = Tx::construct_full_key("compute_commitment", result.compute_commitment_tx_hash);
+        let key = Tx::construct_full_key(
+            consts::COMPUTE_COMMITMENT,
+            result.compute_commitment_tx_hash,
+        );
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             RPCError::InternalError
@@ -191,7 +194,7 @@ impl Sequencer {
         let compute_scores_tx: Vec<Tx> = {
             let mut compute_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
-                let key = Tx::construct_full_key("compute_scores", tx_hash);
+                let key = Tx::construct_full_key(consts::COMPUTE_SCORES, tx_hash);
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError
@@ -240,7 +243,7 @@ impl Sequencer {
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
             for tx_hash in result.compute_verification_tx_hashes.iter() {
-                let key = Tx::construct_full_key("compute_verification", tx_hash.clone());
+                let key = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx_hash.clone());
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     RPCError::InternalError

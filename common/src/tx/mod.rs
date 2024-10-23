@@ -16,6 +16,18 @@ pub mod block;
 pub mod compute;
 pub mod trust;
 
+pub mod consts {
+    pub const TRUST_UPDATE: &str = "trust_update";
+    pub const SEED_UPDATE: &str = "seed_update";
+    pub const COMPUTE_REQUEST: &str = "compute_request";
+    pub const COMPUTE_ASSIGNMENT: &str = "compute_assignment";
+    pub const COMPUTE_SCORES: &str = "compute_scores";
+    pub const COMPUTE_COMMITMENT: &str = "compute_commitment";
+    pub const COMPUTE_VERIFICATION: &str = "compute_verification";
+    pub const PROPOSED_BLOCK: &str = "proposed_block";
+    pub const FINALISED_BLOCK: &str = "finalised_block";
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Body {
     TrustUpdate(TrustUpdate),
@@ -75,15 +87,15 @@ impl Decodable for Body {
 impl Body {
     pub fn prefix(&self) -> &str {
         match self {
-            Body::TrustUpdate(_) => "trust_update",
-            Body::SeedUpdate(_) => "seed_update",
-            Body::ComputeRequest(_) => "compute_request",
-            Body::ComputeAssignment(_) => "compute_assignment",
-            Body::ComputeScores(_) => "compute_scores",
-            Body::ComputeCommitment(_) => "compute_commitment",
-            Body::ComputeVerification(_) => "compute_verification",
-            Body::ProposedBlock(_) => "proposed_block",
-            Body::FinalisedBlock(_) => "finalised_block",
+            Body::TrustUpdate(_) => consts::TRUST_UPDATE,
+            Body::SeedUpdate(_) => consts::SEED_UPDATE,
+            Body::ComputeRequest(_) => consts::COMPUTE_REQUEST,
+            Body::ComputeAssignment(_) => consts::COMPUTE_ASSIGNMENT,
+            Body::ComputeScores(_) => consts::COMPUTE_SCORES,
+            Body::ComputeCommitment(_) => consts::COMPUTE_COMMITMENT,
+            Body::ComputeVerification(_) => consts::COMPUTE_VERIFICATION,
+            Body::ProposedBlock(_) => consts::PROPOSED_BLOCK,
+            Body::FinalisedBlock(_) => consts::FINALISED_BLOCK,
         }
     }
 }

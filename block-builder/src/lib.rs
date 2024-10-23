@@ -9,7 +9,7 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::{Domain, Topic},
-    tx::{self, compute, Address, Tx},
+    tx::{self, compute, consts, Address, Tx},
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
@@ -115,12 +115,12 @@ impl Node {
     ) -> Result<(), Error> {
         if let gossipsub::Event::Message { message_id, message, propagation_source } = event {
             for topic in topics {
+                let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                if message.topic != topic_wrapper.hash() {
+                    continue;
+                }
                 match topic {
                     Topic::NamespaceTrustUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
@@ -139,10 +139,6 @@ impl Node {
                         }
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
@@ -161,10 +157,6 @@ impl Node {
                         }
                     },
                     Topic::DomainRequest(domain_id) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let tx =
@@ -197,10 +189,6 @@ impl Node {
                         }
                     },
                     Topic::DomainCommitment(_) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let tx =
@@ -212,7 +200,8 @@ impl Node {
                             self.db.put(tx.clone()).map_err(Error::Db)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
-                                "compute_assignment", commitment.assignment_tx_hash,
+                                consts::COMPUTE_ASSIGNMENT,
+                                commitment.assignment_tx_hash,
                             );
                             let assignment_tx: Tx =
                                 self.db.get(assignment_tx_key).map_err(Error::Db)?;
@@ -221,7 +210,7 @@ impl Node {
                                 _ => return Err(Error::InvalidTxKind),
                             };
                             let request_tx_key = Tx::construct_full_key(
-                                "compute_request",
+                                consts::COMPUTE_REQUEST,
                                 assignment_body.request_tx_hash.clone(),
                             );
                             let request: Tx = self.db.get(request_tx_key).map_err(Error::Db)?;
@@ -244,10 +233,6 @@ impl Node {
                         }
                     },
                     Topic::DomainScores(_) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let tx =
@@ -266,10 +251,6 @@ impl Node {
                         }
                     },
                     Topic::DomainVerification(_) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let tx =
@@ -281,7 +262,8 @@ impl Node {
                             self.db.put(tx.clone()).map_err(Error::Db)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
-                                "compute_assignment", compute_verification.assignment_tx_hash,
+                                consts::COMPUTE_ASSIGNMENT,
+                                compute_verification.assignment_tx_hash,
                             );
                             let assignment_tx: Tx =
                                 self.db.get(assignment_tx_key).map_err(Error::Db)?;

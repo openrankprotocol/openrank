@@ -8,7 +8,7 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::{Domain, Topic},
-    tx::{compute, Address, Body, Tx, TxHash},
+    tx::{compute, consts, Address, Body, Tx, TxHash},
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
@@ -93,12 +93,12 @@ impl Node {
     ) -> Result<(), Error> {
         if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
             for topic in topics {
+                let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                if message.topic != topic_wrapper.hash() {
+                    continue;
+                }
                 match topic {
                     Topic::NamespaceTrustUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
@@ -125,10 +125,6 @@ impl Node {
                         }
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
@@ -155,10 +151,6 @@ impl Node {
                         }
                     },
                     Topic::DomainAssignent(domain_id) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic != topic_wrapper.hash() {
-                            continue;
-                        }
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let tx =
@@ -361,12 +353,12 @@ impl Node {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
-            self.db.read_from_end("trust_update", None).map_err(Error::Db)?;
+            self.db.read_from_end(consts::TRUST_UPDATE, None).map_err(Error::Db)?;
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
         let mut seed_update_txs: Vec<Tx> =
-            self.db.read_from_end("seed_update", None).map_err(Error::Db)?;
+            self.db.read_from_end(consts::SEED_UPDATE, None).map_err(Error::Db)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
 

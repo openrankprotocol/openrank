@@ -1,4 +1,4 @@
-use crate::tx::{trust::OwnedNamespace, Address};
+use crate::tx::{consts, trust::OwnedNamespace, Address};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -124,44 +124,31 @@ pub enum Topic {
 
 impl From<Topic> for String {
     fn from(value: Topic) -> Self {
-        let mut s = String::new();
         match value {
             Topic::NamespaceTrustUpdate(namespace) => {
-                s.push_str(&namespace.to_hex());
-                s.push_str(":trust_update");
+                format!("{}:{}", namespace.to_hex(), consts::TRUST_UPDATE)
             },
-            Topic::NamespaceSeedUpdate(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":seed_update");
+            Topic::NamespaceSeedUpdate(namespace) => {
+                format!("{}:{}", namespace.to_hex(), consts::SEED_UPDATE)
             },
             Topic::DomainRequest(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":request");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_REQUEST)
             },
             Topic::DomainAssignent(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":assignment");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_ASSIGNMENT)
             },
             Topic::DomainCommitment(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":commitment");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_COMMITMENT)
             },
             Topic::DomainScores(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":scores");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_SCORES)
             },
             Topic::DomainVerification(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":verification");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_VERIFICATION)
             },
-            Topic::ProposedBlock => {
-                s.push_str("proposed_block");
-            },
-            Topic::FinalisedBlock => {
-                s.push_str("finalised_block");
-            },
+            Topic::ProposedBlock => consts::PROPOSED_BLOCK.to_string(),
+            Topic::FinalisedBlock => consts::FINALISED_BLOCK.to_string(),
         }
-        s
     }
 }
 

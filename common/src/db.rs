@@ -131,7 +131,7 @@ impl Db {
 #[cfg(test)]
 mod test {
     use crate::db::{Config, Db, DbItem};
-    use crate::tx::{compute, Body, Tx};
+    use crate::tx::{compute, consts, Body, Tx};
 
     fn config_for_dir(directory: &str) -> Config {
         Config { directory: directory.to_string(), secondary: None }
@@ -142,7 +142,7 @@ mod test {
         let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
         let tx = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         db.put(tx.clone()).unwrap();
-        let key = Tx::construct_full_key("compute_request", tx.hash());
+        let key = Tx::construct_full_key(consts::COMPUTE_REQUEST, tx.hash());
         let item = db.get::<Tx>(key).unwrap();
         assert_eq!(tx, item);
     }
@@ -158,9 +158,9 @@ mod test {
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>("compute_request", Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>("compute_assignment", Some(1)).unwrap();
-        let items3 = db.read_from_end::<Tx>("compute_verification", Some(1)).unwrap();
+        let items1 = db.read_from_end::<Tx>(consts::COMPUTE_REQUEST, Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(consts::COMPUTE_ASSIGNMENT, Some(1)).unwrap();
+        let items3 = db.read_from_end::<Tx>(consts::COMPUTE_VERIFICATION, Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);

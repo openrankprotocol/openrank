@@ -18,7 +18,7 @@ use eyre::Result;
 use openrank_common::{
     config,
     db::{self, Db, DbItem},
-    tx::{self, Tx},
+    tx::{self, consts, Tx},
 };
 use sol::ComputeManager::{self, Signature};
 
@@ -131,12 +131,14 @@ impl ComputeManagerClient {
         let mut txs = Vec::new();
 
         let mut compute_commitment_txs: Vec<Tx> =
-            self.db.read_from_end("compute_commitment", None).map_err(|e| eyre::eyre!(e))?;
+            self.db.read_from_end(consts::COMPUTE_COMMITMENT, None).map_err(|e| eyre::eyre!(e))?;
         txs.append(&mut compute_commitment_txs);
         drop(compute_commitment_txs);
 
-        let mut compute_verification_txs: Vec<Tx> =
-            self.db.read_from_end("compute_verification", None).map_err(|e| eyre::eyre!(e))?;
+        let mut compute_verification_txs: Vec<Tx> = self
+            .db
+            .read_from_end(consts::COMPUTE_VERIFICATION, None)
+            .map_err(|e| eyre::eyre!(e))?;
         txs.append(&mut compute_verification_txs);
         drop(compute_verification_txs);
 
