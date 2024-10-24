@@ -24,12 +24,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::time::{sleep, Duration};
 // use alloy_rlp::decode::Decodable;
+use crate::types::TxWithHash;
 use alloy_rlp::Decodable;
 use std::panic;
-use crate::types::TxWithHash;
 
-mod types;
 mod postgres;
+mod types;
 
 pub struct SQLRelayer {
     // todo use only common db, here because common lib db does not expose iterator

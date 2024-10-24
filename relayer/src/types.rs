@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use log::{debug, error, info};
 use openrank_common::{
     topics::{Domain, Topic},
@@ -15,6 +14,7 @@ use openrank_common::{
         TxHash,
     },
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct TxWithHash {
