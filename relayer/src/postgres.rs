@@ -1,9 +1,10 @@
 use dotenv::dotenv;
-use log::{error, info, warn};
+use log::{ error, info, warn };
 use serde_json::Value;
 use std::env;
 use std::fs;
-use tokio_postgres::{Client, Error, NoTls};
+use tokio_postgres::{ Client, Error, NoTls };
+use crate::types::TxWithHash;
 
 pub struct SQLDatabase {
     client: Client,
@@ -18,7 +19,10 @@ impl SQLDatabase {
 
         let conn_str = format!(
             "host={} user={} password={} dbname={}",
-            host, user, password, dbname
+            host,
+            user,
+            password,
+            dbname
         );
         info!("Connecting to database: {}", conn_str);
 
@@ -46,38 +50,41 @@ impl SQLDatabase {
         match drop_events {
             Ok(_) => {
                 log::info!("Dropped events table.");
-            },
+            }
             Err(e) => {
                 log::error!("Error dropping events table: {}", e);
                 return Err(e);
-            },
+            }
         }
 
         let drop_state = self.client.execute("DROP TABLE IF EXISTS state", &[]).await;
         match drop_state {
             Ok(_) => {
                 log::info!("Dropped state table.");
-            },
+            }
             Err(e) => {
                 log::error!("Error dropping state table: {}", e);
                 return Err(e);
-            },
+            }
         }
 
         Ok(())
     }
 
-    pub async fn insert_events(&self, event_id: &str, event_body: &str) -> Result<(), Error> {
-        let event_body_json: Value = serde_json::from_str(event_body).unwrap();
-        let event_body_json_str = event_body_json.to_string();
+    pub async fn insert_events(
+        &self,
+        event_id: &str,
+        tx_with_hash: &TxWithHash
+    ) -> Result<(), Error> {
+        let serialized_tx = serde_json
+            ::to_string(&tx_with_hash)
+            .expect("Failed to serialize TxWithHash");
+        let event_body_json: Value = serde_json::from_str(&serialized_tx).unwrap();
 
-        if let Some(name) = event_body_json.get("to") {
-            println!("Name: {}", name.as_str().unwrap());
-        }
-
+        let hash = serde_json::to_string(&tx_with_hash.hash).unwrap();
         let result = self.client.execute(
-            "INSERT INTO events (event_id, event_body) VALUES ($1, $2) ON CONFLICT (event_id) DO NOTHING",
-            &[&event_id, &event_body_json]
+            "INSERT INTO events (event_id, event_body, hash) VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING",
+            &[&event_id, &event_body_json, &hash]
         ).await;
 
         match result {
@@ -91,10 +98,13 @@ impl SQLDatabase {
                     log::info!("Inserted {} row(s) into events table.", rows);
                 }
                 Ok(())
-            },
+            }
             Err(e) => {
                 if let Some(db_error) = e.as_db_error() {
-                    if db_error.message().contains("duplicate key value violates unique constraint")
+                    if
+                        db_error
+                            .message()
+                            .contains("duplicate key value violates unique constraint")
                     {
                         log::warn!("Conflict occurred: event_id '{}' already exists", event_id);
                     } else {
@@ -104,18 +114,15 @@ impl SQLDatabase {
                     log::error!("Error inserting event: {}", e);
                 }
                 Err(e)
-            },
+            }
         }
     }
 
     pub async fn load_last_processed_key(&self, key_name: &str) -> Result<Option<usize>, Error> {
-        let row = self
-            .client
-            .query_opt(
-                "SELECT last_processed_key FROM state WHERE key_name = $1",
-                &[&key_name],
-            )
-            .await?;
+        let row = self.client.query_opt(
+            "SELECT last_processed_key FROM state WHERE key_name = $1",
+            &[&key_name]
+        ).await?;
 
         if let Some(row) = row {
             let last_processed_key: usize = row.get::<usize, i32>(0) as usize;
@@ -126,15 +133,13 @@ impl SQLDatabase {
     }
 
     pub async fn save_last_processed_key(&self, key_name: &str, key: i32) -> Result<(), Error> {
-        self.client
-            .execute(
-                "INSERT INTO state (key_name, last_processed_key, updated_at) 
+        self.client.execute(
+            "INSERT INTO state (key_name, last_processed_key, updated_at) 
                  VALUES ($1, $2, NOW()) 
                  ON CONFLICT (key_name) 
                  DO UPDATE SET last_processed_key = $2, updated_at = NOW()",
-                &[&key_name, &key],
-            )
-            .await?;
+            &[&key_name, &key]
+        ).await?;
         Ok(())
     }
 }

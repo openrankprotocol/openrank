@@ -35,6 +35,7 @@ pub struct Event {
     pub id: i32,
     pub event_id: String,
     pub event_body: Value,
+    pub hash: String,
 }
 
 pub type MySchema =

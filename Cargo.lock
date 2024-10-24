@@ -4422,7 +4422,6 @@ dependencies = [
  "dotenv",
  "env_logger",
  "futures",
- "hex",
  "k256",
  "libp2p",
  "log",

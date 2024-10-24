@@ -26,14 +26,10 @@ use tokio::time::{sleep, Duration};
 // use alloy_rlp::decode::Decodable;
 use alloy_rlp::Decodable;
 use std::panic;
+use crate::types::TxWithHash;
 
+mod types;
 mod postgres;
-
-#[derive(Serialize, Deserialize, Debug)]
-struct TxWithHash {
-    tx: Tx,
-    hash: TxHash,
-}
 
 pub struct SQLRelayer {
     // todo use only common db, here because common lib db does not expose iterator
@@ -134,10 +130,8 @@ impl SQLRelayer {
                             }
 
                             let tx_with_hash = TxWithHash { tx: tx.clone(), hash: tx.hash() };
-                            let serialized_tx = serde_json::to_string(&tx_with_hash)
-                                .expect("Failed to serialize TxWithHash");
 
-                            self.target_db.insert_events(&key_str, &serialized_tx).await;
+                            self.target_db.insert_events(&key_str, &tx_with_hash).await;
 
                             self.last_processed_keys.insert(db_path.clone(), Some(count));
                             self.save_last_processed_key(db_path, topic, count).await;
