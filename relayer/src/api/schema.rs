@@ -18,7 +18,6 @@ impl QueryRoot {
         let offset = offset.unwrap_or(0);
 
         let query = if let Some(ref hash) = hash {
-            // If hash is provided, include it in the WHERE clause
             sqlx::query_as::<_, Event>(
                 "SELECT id, event_id, event_body, hash FROM events WHERE hash = $1 LIMIT $2 OFFSET $3"
             )
@@ -26,7 +25,6 @@ impl QueryRoot {
             .bind(limit)
             .bind(offset)
         } else {
-            // If no hash is provided, return all events
             sqlx::query_as::<_, Event>(
                 "SELECT id, event_id, event_body, hash FROM events LIMIT $1 OFFSET $2",
             )
@@ -57,6 +55,6 @@ pub fn build_schema(pool: PgPool) -> MySchema {
         async_graphql::EmptyMutation,
         async_graphql::EmptySubscription,
     )
-    .data(pool) // Injecting the database pool here
+    .data(pool) 
     .finish()
 }
