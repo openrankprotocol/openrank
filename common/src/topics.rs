@@ -182,8 +182,17 @@ mod test {
         let topic2_string = String::from(topic2);
         let topic3_string = String::from(topic3);
 
-        assert_eq!(topic1_string, "00902259a9dc1a51:request".to_string());
-        assert_eq!(topic2_string, "00902259a9dc1a51:assignment".to_string());
-        assert_eq!(topic3_string, "00902259a9dc1a51:verification".to_string());
+        assert_eq!(
+            topic1_string,
+            "00902259a9dc1a51:compute_request".to_string()
+        );
+        assert_eq!(
+            topic2_string,
+            "00902259a9dc1a51:compute_assignment".to_string()
+        );
+        assert_eq!(
+            topic3_string,
+            "00902259a9dc1a51:compute_verification".to_string()
+        );
     }
 }
