@@ -10,6 +10,7 @@ use openrank_common::txs::{
     trust::{ScoreEntry, SeedUpdate, TrustUpdate},
     Address, Tx,
 };
+use openrank_common::txs::{Kind, TxHash};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::cmp::Ordering;
 use tokio::sync::mpsc::Sender;
@@ -30,6 +31,17 @@ pub trait Rpc {
     async fn get_results(
         &self, query: GetResultsQuery,
     ) -> Result<(Vec<bool>, Vec<ScoreEntry>), ErrorObjectOwned>;
+
+    #[method(name = "get_compute_result")]
+    async fn get_compute_result(
+        &self, tx_hash: TxHash,
+    ) -> Result<compute::Result, ErrorObjectOwned>;
+
+    #[method(name = "get_tx")]
+    async fn get_tx(&self, kind: Kind, tx_hash: TxHash) -> Result<Tx, ErrorObjectOwned>;
+
+    #[method(name = "get_txs")]
+    async fn get_txs(&self, keys: Vec<(Kind, TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned>;
 }
 
 /// The Sequencer JsonRPC server. It contains the sender, the whitelisted users, and the database connection.
@@ -258,5 +270,59 @@ impl RpcServer for SequencerServer {
             verification_results.into_iter().map(|x| x.verification_result).collect();
 
         Ok((verification_results_bools, score_entries))
+    }
+
+    /// Fetch the ComputeResult TX by its sequence number
+    async fn get_compute_result(
+        &self, tx_hash: TxHash,
+    ) -> Result<compute::Result, ErrorObjectOwned> {
+        self.db.refresh().map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        let key = compute::Result::construct_full_key(tx_hash);
+        let result = self.db.get::<compute::Result>(key).map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        Ok(result)
+    }
+
+    /// Fetch the TX given its `kind` and `tx_hash`
+    async fn get_tx(&self, kind: txs::Kind, tx_hash: TxHash) -> Result<Tx, ErrorObjectOwned> {
+        self.db.refresh().map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        let key = Tx::construct_full_key(kind, tx_hash);
+        let tx = self.db.get::<Tx>(key).map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        Ok(tx)
+    }
+
+    /// Fetch multiple TXs given an array of `keys`.
+    async fn get_txs(&self, keys: Vec<(Kind, TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned> {
+        self.db.refresh().map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        let mut key_bytes = Vec::new();
+        for (kind, tx_hash) in keys {
+            let full_key = Tx::construct_full_key(kind, tx_hash);
+            key_bytes.push(full_key);
+        }
+        let txs = self.db.get_multi::<Tx>(key_bytes).map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        Ok(txs)
     }
 }
