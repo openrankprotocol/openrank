@@ -11,7 +11,7 @@ edition.workspace = true
 [dependencies]
 openrank-sequencer = { path = "../sequencer", version = "0.1.0" }
 openrank-common = { path = "../common", version = "0.1.0" }
-openrank-smart-contract-client = { path = "../smart-contract-client", version = "0.1.0" }
+openrank-smart-contract-client = { path = "../compute-manager-smart-contract/smart-contract-client", version = "0.1.0" }
 futures = { workspace = true }
 libp2p = { workspace = true, features = [
     "noise",
