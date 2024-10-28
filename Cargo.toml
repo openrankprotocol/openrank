@@ -8,7 +8,7 @@ members = [
     "da",
     "openrank-sdk",
     "verifier",
-    "smart-contract-client",
+    "compute-manager-smart-contract/smart-contract-client",
 ]
 
 [workspace.package]
