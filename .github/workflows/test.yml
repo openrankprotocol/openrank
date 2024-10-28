@@ -40,5 +40,11 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
+      - name: Build smart contract
+        run: |
+          cd compute-manager-smart-contract
+          forge build
+          cd ..
+
       - name: Test
         run: cargo test --all

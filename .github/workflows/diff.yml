@@ -37,5 +37,14 @@ jobs:
       - name: Set-Up
         run: ./init.sh
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Build smart contract
+        run: |
+          cd compute-manager-smart-contract
+          forge build
+          cd ..
+
       - name: Build & Diff
         run: cargo build --release && git diff --exit-code
