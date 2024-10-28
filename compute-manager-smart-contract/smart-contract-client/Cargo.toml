@@ -1,8 +1,20 @@
 [package]
-name = "smart-contract-client"
+name = "openrank-smart-contract-client"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+openrank-common = { path = "../../common", version = "0.1.0" }
+
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+dotenv = { workspace = true }
+tracing = { workspace = true }
+alloy-rlp = { workspace = true }
+
+alloy = { version = "0.3", features = ["full", "node-bindings"] }
+eyre = "0.6.12"
