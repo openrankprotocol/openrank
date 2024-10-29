@@ -1,7 +1,8 @@
 use crate::types::TxWithHash;
+use alloy_rlp::Decodable;
 use log::info;
 use openrank_common::db::{self, Db, DbItem};
-use openrank_common::txs::{self, compute, Tx};
+use openrank_common::txs::{self, compute, trust};
 use std::collections::HashMap;
 use tokio::time::Duration;
 
@@ -38,7 +39,7 @@ impl SQLRelayer {
 
         let db = Db::new_secondary(
             &db_config,
-            &[Tx::get_cf().as_str(), compute::Result::get_cf().as_str()],
+            &[txs::Tx::get_cf().as_str(), compute::Result::get_cf().as_str()],
         )
         .unwrap();
         last_processed_keys.insert(path, last_processed_key);
@@ -57,8 +58,8 @@ impl SQLRelayer {
     }
 
     fn get_tx_with_hash(&self, kind: txs::Kind, hash: txs::TxHash) -> (Vec<u8>, TxWithHash) {
-        let tx_key = Tx::construct_full_key(kind, hash);
-        let tx = self.db.get::<Tx>(tx_key.clone()).unwrap();
+        let tx_key = txs::Tx::construct_full_key(kind, hash);
+        let tx = self.db.get::<txs::Tx>(tx_key.clone()).unwrap();
         let tx_with_hash = TxWithHash { tx: tx.clone(), hash: tx.hash() };
         (tx_key, tx_with_hash)
     }
@@ -78,6 +79,13 @@ impl SQLRelayer {
                 txs::Kind::ComputeRequest,
                 res.compute_request_tx_hash.clone(),
             );
+
+            // Example for decoding the body of ComputeRequest --------------------------------
+            let request_body =
+                compute::Request::decode(&mut request_tx_with_hash.tx.body().as_slice()).unwrap();
+            // println!("{:?}", request_body);
+            // ---------------------------------------------------------------------------------
+
             let request_key_str = String::from_utf8_lossy(&request_key);
             self.target_db.insert_events(&request_key_str, &request_tx_with_hash).await.unwrap();
 
@@ -86,6 +94,14 @@ impl SQLRelayer {
                 txs::Kind::ComputeCommitment,
                 res.compute_commitment_tx_hash.clone(),
             );
+
+            // Example for decoding the body of ComputeCommitment ----------------------------
+            let commitment_body =
+                compute::Commitment::decode(&mut commitment_tx_with_hash.tx.body().as_slice())
+                    .unwrap();
+            // println!("{:?}", commitment_body);
+            // ---------------------------------------------------------------------------------
+
             let commitment_key_str = String::from_utf8_lossy(&commitment_key);
             self.target_db
                 .insert_events(&commitment_key_str, &commitment_tx_with_hash)
@@ -96,6 +112,14 @@ impl SQLRelayer {
             for verification_tx_hash in res.compute_verification_tx_hashes.clone() {
                 let (verification_key, verification_tx_with_hash) =
                     self.get_tx_with_hash(txs::Kind::ComputeVerification, verification_tx_hash);
+
+                // Example for decoding the body of ComputeVerification ----------------------------
+                let verification_body = compute::Verification::decode(
+                    &mut verification_tx_with_hash.tx.body().as_slice(),
+                )
+                .unwrap();
+                // println!("{:?}", verification_body);
+                // ---------------------------------------------------------------------------------
 
                 let verification_key_str = String::from_utf8_lossy(&verification_key);
                 self.target_db
@@ -108,6 +132,24 @@ impl SQLRelayer {
             self.save_last_processed_key(dir.as_str(), "tx", last_count).await;
             last_count += 1;
         }
+
+        // Example on how to read trust updates
+        let trust_updates =
+            self.db.read_from_end::<txs::Tx>(txs::Kind::TrustUpdate.into(), None).unwrap();
+        // println!("{:?}", trust_updates);
+
+        for update in trust_updates {
+            // Example for decoding the body of TrustUpdate ----------------------------
+            let trust_update_body =
+                trust::TrustUpdate::decode(&mut update.body().as_slice()).unwrap();
+            println!("{:?}", trust_update_body);
+            // ---------------------------------------------------------------------------------
+        }
+
+        // Example on how to read seed updates
+        let seed_updates =
+            self.db.read_from_end::<txs::Tx>(txs::Kind::SeedUpdate.into(), None).unwrap();
+        // println!("{:?}", seed_updates);
     }
 
     pub async fn start(&mut self) {
