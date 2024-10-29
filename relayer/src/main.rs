@@ -27,12 +27,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
     let mut relayer = SQLRelayer::init(config.database, is_reindex).await;
 
-    let server_task = tokio::spawn(async {
-        serve().await;
-    });
+    let serve_job = tokio::spawn(async move { serve().await });
+    let relayer_job = tokio::spawn(async move { relayer.start().await });
+    let (serve_res, relayer_res) = tokio::join!(serve_job, relayer_job);
 
-    relayer.start().await;
-    server_task.await.unwrap();
+    serve_res?;
+    relayer_res?;
 
     Ok(())
 }
