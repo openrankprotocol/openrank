@@ -44,6 +44,10 @@ enum Method {
     /// The method takes a ComputeRequest TX hash and returns the computed results,
     /// and also checks the integrity/correctness of the results.
     GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
+    /// Get ComputeResult TXs
+    GetComputeResult { tx_hash: String, config_path: String, output_path: Option<String> },
+    /// Get arbitrary TX
+    GetTx { tx_hash: String, config_path: String, output_path: Option<String> },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -215,6 +219,37 @@ async fn get_results(
     Ok(scores)
 }
 
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
+async fn get_compute_result(
+    arg: String, config_path: &str,
+) -> Result<compute::Result, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let tx_hash_bytes = hex::decode(arg)?;
+    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let result: compute::Result = client
+        .request(
+            "sequencer_get_compute_result",
+            vec![compute_request_tx_hash],
+        )
+        .await?;
+    Ok(result)
+}
+
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the TX given a TX hash.
+async fn get_tx(arg: String, config_path: &str) -> Result<Tx, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let tx_hash_bytes = hex::decode(arg)?;
+    let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let tx: Tx = client.request("sequencer_get_tx", vec![tx_hash]).await?;
+    Ok(tx)
+}
+
 /// Generates a new ECDSA keypair and returns the address and the private key.
 fn generate_keypair<R: CryptoRngCore>(rng: &mut R) -> (SigningKey, Address) {
     let sk = SigningKey::random(rng);
@@ -314,6 +349,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let res = check_score_integrity(votes, results, &test_vector)?;
             println!("Integrity check result: {}", res);
             assert!(res);
+        },
+        Method::GetComputeResult { tx_hash, config_path, output_path } => {
+            let res = get_compute_result(tx_hash, &config_path).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::GetTx { tx_hash, config_path, output_path } => {
+            let res = get_tx(tx_hash, &config_path).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
         },
         Method::GenerateKeypair => {
             let rng = &mut thread_rng();
