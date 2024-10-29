@@ -2,14 +2,11 @@ use crate::api::connect::get_db_pool;
 use crate::api::schema::build_schema;
 use crate::api::schema::MySchema;
 use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
-use async_graphql_warp::{graphql, GraphQLResponse};
+use async_graphql_warp::GraphQLResponse;
 use dotenv::dotenv;
-use sqlx::PgPool;
 use std::sync::Arc;
 use warp::http::Method;
 use warp::Filter;
-
-use crate::api::schema;
 
 pub async fn serve() {
     dotenv().ok();

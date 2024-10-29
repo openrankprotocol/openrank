@@ -4,6 +4,8 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::PgPool;
 
+const DEFAULT_LIMIT: i32 = 10;
+
 pub struct QueryRoot;
 
 #[Object]
@@ -12,7 +14,6 @@ impl QueryRoot {
         &self, ctx: &Context<'_>, limit: Option<i32>, offset: Option<i32>, hash: Option<String>,
     ) -> Vec<Event> {
         let pool = ctx.data::<PgPool>().unwrap();
-        let DEFAULT_LIMIT = 10;
 
         let limit = limit.unwrap_or(DEFAULT_LIMIT);
         let offset = offset.unwrap_or(0);
@@ -55,6 +56,6 @@ pub fn build_schema(pool: PgPool) -> MySchema {
         async_graphql::EmptyMutation,
         async_graphql::EmptySubscription,
     )
-    .data(pool) 
+    .data(pool)
     .finish()
 }

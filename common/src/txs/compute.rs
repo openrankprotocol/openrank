@@ -86,7 +86,7 @@ pub struct Result {
     /// Hashes of the ComputeVerification TXs.
     pub compute_verification_tx_hashes: Vec<TxHash>,
     /// Hash of the original ComputeRequest TX.
-    compute_request_tx_hash: TxHash,
+    pub compute_request_tx_hash: TxHash,
     /// Sequence number assigned by the block builder.
     pub seq_number: Option<u64>,
 }

@@ -1,6 +1,5 @@
 use crate::types::TxWithHash;
-use dotenv::dotenv;
-use log::{error, info, warn};
+use log::info;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -129,9 +128,9 @@ impl SQLDatabase {
     pub async fn save_last_processed_key(&self, key_name: &str, key: i32) -> Result<(), Error> {
         self.client
             .execute(
-                "INSERT INTO state (key_name, last_processed_key, updated_at) 
-                 VALUES ($1, $2, NOW()) 
-                 ON CONFLICT (key_name) 
+                "INSERT INTO state (key_name, last_processed_key, updated_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (key_name)
                  DO UPDATE SET last_processed_key = $2, updated_at = NOW()",
                 &[&key_name, &key],
             )
