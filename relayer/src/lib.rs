@@ -30,9 +30,9 @@ impl SQLRelayer {
 
         let mut last_processed_keys = HashMap::new();
 
-        let path = db_config.clone().secondary.expect("No seconday path found");
+        let path = db_config.clone().secondary.expect("No secondary path found");
         let last_processed_key = target_db
-            .load_last_processed_key(&format!("relayer_last_key_{}", path))
+            .load_last_processed_key(&format!("relayer_last_key_{}_{}", path, "tx"))
             .await
             .expect("Failed to load last processed key");
 
