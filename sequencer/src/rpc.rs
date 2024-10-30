@@ -63,7 +63,7 @@ impl SequencerServer {
                 Some(e.to_string()),
             )
         })?;
-        if tx.kind() != kind {
+        if *tx.kind() != kind {
             return Err(ErrorObjectOwned::owned(
                 INVALID_REQUEST_CODE,
                 "Invalid tx kind".to_string(),
