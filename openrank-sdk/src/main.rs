@@ -205,7 +205,7 @@ async fn get_results(
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let seq_number = u64::from_str_radix(&arg, 10).unwrap();
+    let seq_number = arg.parse::<u64>().unwrap();
     let results_query = GetResultsQuery::new(seq_number, 0, config.sequencer.result_size);
     let scores: (Vec<bool>, Vec<ScoreEntry>) =
         client.request("sequencer_get_results", vec![results_query]).await?;
