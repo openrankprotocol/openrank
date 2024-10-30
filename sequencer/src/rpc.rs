@@ -6,11 +6,7 @@ use jsonrpsee::types::{ErrorCode, ErrorObjectOwned};
 use openrank_common::db::Db;
 use openrank_common::result::GetResultsQuery;
 use openrank_common::tx::consts;
-use openrank_common::tx::{
-    self, compute,
-    trust::{ScoreEntry, SeedUpdate, TrustUpdate},
-    Address, Tx,
-};
+use openrank_common::tx::{self, compute, trust::ScoreEntry, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::cmp::Ordering;
 use tokio::sync::mpsc::Sender;
@@ -45,7 +41,7 @@ impl SequencerServer {
         Self { sender, whitelisted_users, db }
     }
 
-    pub fn decode_tx<D: Decodable>(
+    pub fn decode_tx(
         &self, tx_str: String, kind: &str,
     ) -> Result<(Vec<u8>, tx::Body), ErrorObjectOwned> {
         let tx_bytes = hex::decode(tx_str).map_err(|e| {
@@ -95,7 +91,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `TrustUpdate` transactions from the network,
     /// and forward them to the network for processing.
     async fn trust_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        let (tx_bytes, body) = self.decode_tx::<TrustUpdate>(tx_str, consts::TRUST_UPDATE)?;
+        let (tx_bytes, body) = self.decode_tx(tx_str, consts::TRUST_UPDATE)?;
         let trust_update = match body {
             tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
             _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
@@ -118,7 +114,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `SeedUpdate` transactions from the network,
     /// and forward them to the network node for processing.
     async fn seed_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        let (tx_bytes, body) = self.decode_tx::<SeedUpdate>(tx_str, consts::SEED_UPDATE)?;
+        let (tx_bytes, body) = self.decode_tx(tx_str, consts::SEED_UPDATE)?;
         let seed_update = match body {
             tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
             _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
@@ -141,8 +137,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `ComputeRequest` transactions from the network,
     /// and forward them to the network node for processing
     async fn compute_request(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        let (tx_bytes, body) =
-            self.decode_tx::<compute::Request>(tx_str, consts::COMPUTE_REQUEST)?;
+        let (tx_bytes, body) = self.decode_tx(tx_str, consts::COMPUTE_REQUEST)?;
         let compute_request = match body {
             tx::Body::ComputeRequest(compute_request) => Ok(compute_request),
             _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
