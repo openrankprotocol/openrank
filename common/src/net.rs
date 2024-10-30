@@ -3,6 +3,7 @@ use libp2p::identity::{DecodingError, Keypair};
 use libp2p::{swarm, Swarm, TransportError};
 use serde::{Deserialize, Serialize};
 use std::io;
+use std::net::SocketAddr;
 use tracing::info;
 
 #[derive(thiserror::Error, Debug)]
@@ -19,6 +20,12 @@ pub enum Error {
     CannotDecodeKey(DecodingError),
     #[error("cannot encode key: {0:?}")]
     CannotEncodeKey(DecodingError),
+}
+
+/// Rpc configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcConfig {
+    pub address: SocketAddr,
 }
 
 /// Network configuration.
