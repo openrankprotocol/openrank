@@ -5,6 +5,7 @@ CREATE TABLE events (
     event_type VARCHAR,
     event_id VARCHAR NOT NULL UNIQUE, 
     event_body JSONB NOT NULL,
+    decoded_body JSONB NOT NULL,
     "from" VARCHAR,   
     "to" VARCHAR,   
     hash VARCHAR,

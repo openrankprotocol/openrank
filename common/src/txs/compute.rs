@@ -3,7 +3,7 @@ use crate::{db::DbItem, merkle::Hash, topics::DomainHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable, Serialize)]
 pub struct Commitment {
     pub assignment_tx_hash: TxHash,
     pub lt_root_hash: Hash,
@@ -20,7 +20,7 @@ impl Commitment {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable, Serialize)]
 pub struct Scores {
     pub entries: Vec<ScoreEntry>,
 }
@@ -31,7 +31,7 @@ impl Scores {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable, Serialize)]
 pub struct Request {
     pub domain_id: DomainHash,
     pub block_height: u32,
@@ -44,7 +44,7 @@ impl Request {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable, Serialize)]
 pub struct Assignment {
     pub request_tx_hash: TxHash,
     pub assigned_compute_node: Address,
@@ -59,7 +59,7 @@ impl Assignment {
     }
 }
 
-#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize)]
 pub struct Verification {
     pub assignment_tx_hash: TxHash,
     pub verification_result: bool,

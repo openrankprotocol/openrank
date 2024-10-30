@@ -1,4 +1,5 @@
 use crate::types::TxWithHash;
+use base64::encode;
 use log::info;
 use serde_json::Value;
 use std::env;
@@ -20,7 +21,7 @@ impl SQLDatabase {
             "host={} user={} password={} dbname={}",
             host, user, password, dbname
         );
-        info!("Connecting to database: {}", conn_str);
+        info!("Connecting to database: postgres://{}:PASSWORD@{}/{}", user, host, dbname);
 
         let (client, connection) = tokio_postgres::connect(&conn_str, NoTls).await?;
         tokio::spawn(async move {
@@ -68,16 +69,19 @@ impl SQLDatabase {
     }
 
     pub async fn insert_events(
-        &self, event_id: &str, tx_with_hash: &TxWithHash,
+        &self, event_id: &str, tx: &TxWithHash, decoded_body: &str,
     ) -> Result<(), Error> {
-        let serialized_tx =
-            serde_json::to_string(&tx_with_hash).expect("Failed to serialize TxWithHash");
+        let serialized_tx = serde_json::to_string(&tx).expect("Failed to serialize TxWithHash");
         let event_body_json: Value = serde_json::from_str(&serialized_tx).unwrap();
 
-        let hash = serde_json::to_string(&tx_with_hash.hash).unwrap();
+        let event_id_base64 = encode(event_id);
+        let hash = serde_json::to_string(&tx.hash).unwrap();
+
+        let decoded_body_json: Value = serde_json::from_str(&decoded_body).unwrap();
+
         let result = self.client.execute(
-            "INSERT INTO events (event_id, event_body, hash) VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING",
-            &[&event_id, &event_body_json, &hash]
+            "INSERT INTO events (event_id, event_body, hash, decoded_body) VALUES ($1, $2, $3, $4) ON CONFLICT (event_id) DO NOTHING",
+            &[&event_id_base64, &event_body_json, &hash, &decoded_body_json]
         ).await;
 
         match result {

@@ -66,13 +66,14 @@ impl SQLRelayer {
 
     async fn index(&mut self) {
         let results = self.db.read_from_end::<compute::Result>("result".to_string(), None).unwrap();
-
         let dir = self.db.get_config().secondary.expect("Secondary path missing");
         let mut last_count = self.last_processed_keys[dir.as_str()].unwrap_or(0);
+        let mut current_count = 0;
 
-        for res in &results[last_count..] {
+        log::info!("Indexing db, last_count: {:?}", last_count);
+        for res in &results[0..] {
             // Ensure Result's are loaded in sequence
-            assert_eq!(last_count as u64, res.seq_number.unwrap());
+            // assert_eq!(last_count as u64, res.seq_number.unwrap());
 
             // ComputeRequest
             let (request_key, request_tx_with_hash) = self.get_tx_with_hash(
@@ -80,14 +81,23 @@ impl SQLRelayer {
                 res.compute_request_tx_hash.clone(),
             );
 
-            // Example for decoding the body of ComputeRequest --------------------------------
+            // println!("request_tx_with_hash {:?}",request_tx_with_hash.tx);
+
             let request_body =
                 compute::Request::decode(&mut request_tx_with_hash.tx.body().as_slice()).unwrap();
-            // println!("{:?}", request_body);
-            // ---------------------------------------------------------------------------------
 
+            current_count += 1;
+
+            let decoded_data =
+                serde_json::to_string(&request_body).expect("Failed to serialize request_body");
             let request_key_str = String::from_utf8_lossy(&request_key);
-            self.target_db.insert_events(&request_key_str, &request_tx_with_hash).await.unwrap();
+
+            if current_count > last_count {
+                self.target_db
+                    .insert_events(&request_key_str, &request_tx_with_hash, &decoded_data)
+                    .await
+                    .unwrap();
+            }
 
             // ComputeCommitment
             let (commitment_key, commitment_tx_with_hash) = self.get_tx_with_hash(
@@ -99,17 +109,24 @@ impl SQLRelayer {
             let commitment_body =
                 compute::Commitment::decode(&mut commitment_tx_with_hash.tx.body().as_slice())
                     .unwrap();
-            // println!("{:?}", commitment_body);
-            // ---------------------------------------------------------------------------------
+
+            let decoded_data = serde_json::to_string(&commitment_body)
+                .expect("Failed to serialize commitment_body");
+
+            current_count += 1;
 
             let commitment_key_str = String::from_utf8_lossy(&commitment_key);
-            self.target_db
-                .insert_events(&commitment_key_str, &commitment_tx_with_hash)
-                .await
-                .unwrap();
 
+            if current_count > last_count {
+                self.target_db
+                    .insert_events(&commitment_key_str, &commitment_tx_with_hash, &decoded_data)
+                    .await
+                    .unwrap();
+            }
             // ComputeVerification
             for verification_tx_hash in res.compute_verification_tx_hashes.clone() {
+                current_count += 1;
+
                 let (verification_key, verification_tx_with_hash) =
                     self.get_tx_with_hash(txs::Kind::ComputeVerification, verification_tx_hash);
 
@@ -118,38 +135,80 @@ impl SQLRelayer {
                     &mut verification_tx_with_hash.tx.body().as_slice(),
                 )
                 .unwrap();
-                // println!("{:?}", verification_body);
-                // ---------------------------------------------------------------------------------
+
+                let decoded_data = serde_json::to_string(&verification_body)
+                    .expect("Failed to serialize verification_body");
 
                 let verification_key_str = String::from_utf8_lossy(&verification_key);
-                self.target_db
-                    .insert_events(&verification_key_str, &verification_tx_with_hash)
-                    .await
-                    .unwrap();
-            }
 
-            self.last_processed_keys.insert(dir.clone(), Some(last_count));
-            self.save_last_processed_key(dir.as_str(), "tx", last_count).await;
-            last_count += 1;
+                if current_count > last_count {
+                    self.target_db
+                        .insert_events(
+                            &verification_key_str, &verification_tx_with_hash, &decoded_data,
+                        )
+                        .await
+                        .unwrap();
+                }
+            }
         }
 
         // Example on how to read trust updates
         let trust_updates =
             self.db.read_from_end::<txs::Tx>(txs::Kind::TrustUpdate.into(), None).unwrap();
-        // println!("{:?}", trust_updates);
 
         for update in trust_updates {
-            // Example for decoding the body of TrustUpdate ----------------------------
+            current_count += 1;
+
             let trust_update_body =
                 trust::TrustUpdate::decode(&mut update.body().as_slice()).unwrap();
-            println!("{:?}", trust_update_body);
-            // ---------------------------------------------------------------------------------
+
+            let (trust_update_key, trust_update_tx_with_hash) =
+                self.get_tx_with_hash(txs::Kind::TrustUpdate, update.hash());
+
+            let decoded_data = serde_json::to_string(&trust_update_body)
+                .expect("Failed to serialize trust_update_body");
+
+            let trust_update_key_str = String::from_utf8_lossy(&trust_update_key);
+
+            if current_count > last_count {
+                self.target_db
+                    .insert_events(
+                        &trust_update_key_str, &trust_update_tx_with_hash, &decoded_data,
+                    )
+                    .await
+                    .unwrap();
+            }
         }
 
-        // Example on how to read seed updates
         let seed_updates =
             self.db.read_from_end::<txs::Tx>(txs::Kind::SeedUpdate.into(), None).unwrap();
-        // println!("{:?}", seed_updates);
+
+        // disabled due
+        // called `Result::unwrap()` on an `Err` value: Custom("invalid string")
+        /*
+                for update in seed_updates {
+                    let seed_update_body = trust::SeedUpdate::decode(&mut update.body().as_slice()).unwrap();
+
+                    let (seed_update_key, seed_update_tx_with_hash) =
+                        self.get_tx_with_hash(txs::Kind::SeedUpdate, update.hash());
+
+                    let decoded_data = serde_json::to_string(&seed_update_body)
+                        .expect("Failed to serialize trust_update_body");
+
+                    let seed_update_key_str = String::from_utf8_lossy(&seed_update_key);
+                    self.target_db
+                        .insert_events(
+                            &seed_update_key_str, &seed_update_tx_with_hash, &decoded_data,
+                        )
+                        .await
+                        .unwrap();
+                }
+        */
+
+        if last_count < current_count {
+            self.last_processed_keys.insert(dir.clone(), Some(current_count));
+            self.save_last_processed_key(dir.as_str(), "tx", current_count).await;
+        }
     }
 
     pub async fn start(&mut self) {

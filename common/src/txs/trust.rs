@@ -39,7 +39,7 @@ impl FromHex for OwnedNamespace {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable, Serialize)]
 pub struct TrustUpdate {
     pub trust_id: OwnedNamespace,
     pub entries: Vec<TrustEntry>,
@@ -51,7 +51,7 @@ impl TrustUpdate {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable, Serialize)]
 pub struct SeedUpdate {
     pub seed_id: OwnedNamespace,
     pub entries: Vec<ScoreEntry>,

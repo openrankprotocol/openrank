@@ -4419,6 +4419,7 @@ dependencies = [
  "alloy-rlp",
  "async-graphql",
  "async-graphql-warp",
+ "base64 0.22.1",
  "dotenv",
  "env_logger",
  "futures",
