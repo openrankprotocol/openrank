@@ -1,12 +1,14 @@
 pub mod algos;
 pub mod config;
-pub mod db;
 pub mod merkle;
 pub mod net;
 pub mod result;
 pub mod topics;
 pub mod tx_event;
 pub mod txs;
+
+#[cfg(feature = "db")]
+pub mod db;
 
 use alloy_rlp::encode;
 use k256::ecdsa::SigningKey;
