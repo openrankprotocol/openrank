@@ -6,5 +6,5 @@ seed_id = 1
 algo_id = 0
 
 [sequencer]
-endpoint = "tcp://127.0.0.1:60000"
+endpoint = "http://127.0.0.1:60000"
 result_size = 10
