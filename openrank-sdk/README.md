@@ -58,19 +58,30 @@ openrank-sdk seed-update [SEED_DB_FILE_PATH] [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT
 
 ComputeRequest - Request a compute in a domain specified inside `OPENRANK_SDK_CONFIG_PATH` file. The hash of ComputeRequest TX will be returned:
 ```
-openrank-sdk job-run-request [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
+openrank-sdk compute-request [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
 ```
 
 Get Results - Get results of a specific compute request identified by it's TX hash:
 ```
-openrank-sdk get-results [JobRunRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
+openrank-sdk get-results [ComputeRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
 ```
 
 Get Results and Check Integrity - Get the results of a specific compute request, and perform the convergence check of top X amount of scores.
 The scores will be compared against a predefined test vector with `TEST_VECTOR_PATH` path:
 ```
-openrank-sdk get-results-and-check-integrity [JobRunRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
+openrank-sdk get-results-and-check-integrity [ComputeRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
 ```
+
+Get Compute Results - Get ComputeResult object given its identifier:
+```
+openrank-sdk get_compute_result [ComputeRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
+```
+
+Get TX - Get arbitrary TX object given its kind and hash:
+```
+openrank-sdk get_tx [!kind]:[TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
+```
+! - kind should be in format: "compute_request", "compute_commitment", etc.
 
 Where:
 

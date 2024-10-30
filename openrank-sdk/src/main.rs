@@ -47,7 +47,7 @@ enum Method {
     /// Get ComputeResult TXs
     GetComputeResult { tx_hash: String, config_path: String, output_path: Option<String> },
     /// Get arbitrary TX
-    GetTx { tx_hash: String, config_path: String, output_path: Option<String> },
+    GetTx { tx_id: String, config_path: String, output_path: Option<String> },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -244,9 +244,11 @@ async fn get_tx(arg: String, config_path: &str) -> Result<Tx, Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let tx_hash_bytes = hex::decode(arg)?;
+    let (prefix, tx_hash) = arg.split_once(":").ok_or("Failed to parse argument")?;
+    let tx_hash_bytes = hex::decode(tx_hash)?;
     let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let tx: Tx = client.request("sequencer_get_tx", vec![tx_hash]).await?;
+    let kind = Kind::from(prefix);
+    let tx: Tx = client.request("sequencer_get_tx", (kind, tx_hash)).await?;
     Ok(tx)
 }
 
@@ -356,8 +358,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetTx { tx_hash, config_path, output_path } => {
-            let res = get_tx(tx_hash, &config_path).await?;
+        Method::GetTx { tx_id, config_path, output_path } => {
+            let res = get_tx(tx_id, &config_path).await?;
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }

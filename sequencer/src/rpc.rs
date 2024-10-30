@@ -297,6 +297,7 @@ impl RpcServer for SequencerServer {
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
 
+        println!("{:?} {:?}", kind, tx_hash);
         let key = Tx::construct_full_key(kind, tx_hash);
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);

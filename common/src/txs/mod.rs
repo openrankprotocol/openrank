@@ -81,6 +81,23 @@ impl From<Kind> for String {
     }
 }
 
+impl From<&str> for Kind {
+    fn from(val: &str) -> Self {
+        match val {
+            "trust_update" => Kind::TrustUpdate,
+            "seed_update" => Kind::SeedUpdate,
+            "compute_request" => Kind::ComputeRequest,
+            "compute_assignment" => Kind::ComputeAssignment,
+            "compute_scores" => Kind::ComputeScores,
+            "compute_commitment" => Kind::ComputeCommitment,
+            "compute_verification" => Kind::ComputeVerification,
+            "proposed_block" => Kind::ProposedBlock,
+            "finalised_block" => Kind::FinalisedBlock,
+            _ => panic!("Invalid kind"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 #[rlp(trailing)]
 pub struct Tx {
