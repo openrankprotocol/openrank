@@ -21,7 +21,10 @@ impl SQLDatabase {
             "host={} user={} password={} dbname={}",
             host, user, password, dbname
         );
-        info!("Connecting to database: postgres://{}:PASSWORD@{}/{}", user, host, dbname);
+        info!(
+            "Connecting to database: postgres://{}:PASSWORD@{}/{}",
+            user, host, dbname
+        );
 
         let (client, connection) = tokio_postgres::connect(&conn_str, NoTls).await?;
         tokio::spawn(async move {
