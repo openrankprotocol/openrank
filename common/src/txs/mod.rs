@@ -275,7 +275,16 @@ impl TxHash {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize, Getters,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Default,
+    RlpDecodable,
+    RlpEncodable,
+    Serialize,
+    Deserialize,
+    Getters,
 )]
 pub struct Signature {
     #[getset(skip)]
