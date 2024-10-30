@@ -2,6 +2,7 @@ use super::{Address, TxHash};
 use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use getset::Getters;
 use core::result::Result as CoreResult;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -132,9 +133,13 @@ impl Decodable for TrustEntry {
     }
 }
 
+#[derive(Getters)]
 pub struct AcceptedTrustUpdates {
+    #[get = "pub with_prefix"]
     sequence_number: u64,
+    #[getset(skip)]
     trust_update_tx_hashes: Vec<TxHash>,
+    #[getset(skip)]
     seed_update_tx_hashes: Vec<TxHash>,
 }
 
@@ -146,10 +151,6 @@ impl AcceptedTrustUpdates {
         Self { sequence_number, trust_update_tx_hashes, seed_update_tx_hashes }
     }
 
-    pub fn get_sequence_number(&self) -> u64 {
-        self.sequence_number
-    }
-
     pub fn get_trust_update_tx_hashes(&self) -> &Vec<TxHash> {
         &self.trust_update_tx_hashes
     }
@@ -159,10 +160,15 @@ impl AcceptedTrustUpdates {
     }
 }
 
+#[derive(Getters)]
 pub struct Assignment {
+    #[get = "pub with_prefix"]
     to_sequence: u64,
+    #[get = "pub with_prefix"]
     domain_id: DomainHash,
+    #[get = "pub with_prefix"]
     trust_builder: Address,
+    #[getset(skip)]
     trust_verifier: Vec<Address>,
 }
 
@@ -174,25 +180,16 @@ impl Assignment {
         Self { to_sequence, domain_id, trust_builder, trust_verifier }
     }
 
-    pub fn get_to_sequence(&self) -> u64 {
-        self.to_sequence
-    }
-
-    pub fn get_domain_id(&self) -> DomainHash {
-        self.domain_id.clone()
-    }
-
-    pub fn get_trust_builder(&self) -> Address {
-        self.trust_builder.clone()
-    }
-
     pub fn get_trust_verifier(&self) -> &Vec<Address> {
         &self.trust_verifier
     }
 }
 
+#[derive(Getters)]
 pub struct Commitment {
+    #[get = "pub with_prefix"]
     trust_assignment_tx_hash: TxHash,
+    #[get = "pub with_prefix"]
     root_hash: Hash,
 }
 
@@ -200,18 +197,13 @@ impl Commitment {
     pub fn new(trust_assignment_tx_hash: TxHash, root_hash: Hash) -> Self {
         Self { trust_assignment_tx_hash, root_hash }
     }
-
-    pub fn get_trust_assignment_tx_hash(&self) -> TxHash {
-        self.trust_assignment_tx_hash.clone()
-    }
-
-    pub fn get_root_hash(&self) -> Hash {
-        self.root_hash.clone()
-    }
 }
 
+#[derive(Getters)]
 pub struct Verification {
+    #[get = "pub with_prefix"]
     trust_commitment_tx_hash: TxHash,
+    #[get = "pub with_prefix"]
     verification_result: bool,
 }
 
@@ -219,19 +211,15 @@ impl Verification {
     pub fn new(trust_commitment_tx_hash: TxHash, verification_result: bool) -> Self {
         Self { trust_commitment_tx_hash, verification_result }
     }
-
-    pub fn get_trust_commitment_tx_hash(&self) -> TxHash {
-        self.trust_commitment_tx_hash.clone()
-    }
-
-    pub fn get_verification_result(&self) -> bool {
-        self.verification_result
-    }
 }
 
+#[derive(Getters)]
 pub struct Result {
+    #[get = "pub with_prefix"]
     trust_commitment_tx_hash: TxHash,
+    #[get = "pub with_prefix"]
     trust_verification_tx_hashes: Vec<TxHash>,
+    #[get = "pub with_prefix"]
     timestamp: u64,
 }
 
@@ -240,17 +228,5 @@ impl Result {
         trust_commitment_tx_hash: TxHash, trust_verification_tx_hashes: Vec<TxHash>, timestamp: u64,
     ) -> Self {
         Self { trust_commitment_tx_hash, trust_verification_tx_hashes, timestamp }
-    }
-
-    pub fn get_trust_commitment_tx_hash(&self) -> TxHash {
-        self.trust_commitment_tx_hash.clone()
-    }
-
-    pub fn get_trust_verification_tx_hashes(&self) -> &Vec<TxHash> {
-        &self.trust_verification_tx_hashes
-    }
-
-    pub fn get_timestamp(&self) -> u64 {
-        self.timestamp
     }
 }

@@ -74,7 +74,7 @@ impl Sequencer {
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-        if tx.kind() != Kind::TrustUpdate {
+        if *tx.kind() != Kind::TrustUpdate {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -112,7 +112,7 @@ impl Sequencer {
 
         let tx = Tx::decode(&mut tx_bytes.as_slice())
             .map_err(|_| RPCError::ParseError("Failed to parse TX data".to_string()))?;
-        if tx.kind() != Kind::SeedUpdate {
+        if *tx.kind() != Kind::SeedUpdate {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx
@@ -152,7 +152,7 @@ impl Sequencer {
             error!("{}", e);
             RPCError::ParseError("Failed to parse TX data".to_string())
         })?;
-        if tx.kind() != Kind::ComputeRequest {
+        if *tx.kind() != Kind::ComputeRequest {
             return Err(RPCError::InvalidRequest("Invalid tx kind"));
         }
         let address = tx

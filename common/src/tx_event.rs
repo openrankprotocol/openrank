@@ -1,6 +1,7 @@
 use crate::db::DbItem;
 use alloy_rlp::encode;
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 
@@ -9,12 +10,15 @@ use sha3::{Digest, Keccak256};
 pub struct InclusionProof([u8; 32]);
 
 /// Transaction event which includes proof of inclusion and custom data.
-#[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+#[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize, Getters)]
 pub struct TxEvent {
+    #[getset(skip)]
     /// Block height of the DA layer, where the tx was included.
     block_number: u64,
+    #[getset(skip)]
     /// Proof of inclusion in the DA block.
     proof: InclusionProof,
+    #[getset(get = "pub")]
     /// Data of the transaction.
     data: Vec<u8>,
 }
@@ -27,11 +31,6 @@ impl TxEvent {
     /// Constructs the TxEvent with default data.
     pub fn default_with_data(data: Vec<u8>) -> Self {
         Self { block_number: 0, proof: InclusionProof::default(), data }
-    }
-
-    /// Returns the data of the tx event.
-    pub fn data(&self) -> Vec<u8> {
-        self.data.clone()
     }
 }
 

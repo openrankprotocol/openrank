@@ -105,7 +105,7 @@ impl Node {
                                 .map_err(Error::Decode)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(Error::Decode)?;
-                            if tx.kind() != Kind::TrustUpdate {
+                            if *tx.kind() != Kind::TrustUpdate {
                                 return Err(Error::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
@@ -135,7 +135,7 @@ impl Node {
                                 .map_err(Error::Decode)?;
                             let mut tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(Error::Decode)?;
-                            if tx.kind() != Kind::SeedUpdate {
+                            if *tx.kind() != Kind::SeedUpdate {
                                 return Err(Error::InvalidTxKind);
                             }
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
@@ -165,7 +165,7 @@ impl Node {
                                 .map_err(Error::Decode)?;
                             let tx = Tx::decode(&mut tx_event.data().as_slice())
                                 .map_err(Error::Decode)?;
-                            if tx.kind() != Kind::ComputeAssignment {
+                            if *tx.kind() != Kind::ComputeAssignment {
                                 return Err(Error::InvalidTxKind);
                             }
                             let address = tx.verify().map_err(Error::Signature)?;
