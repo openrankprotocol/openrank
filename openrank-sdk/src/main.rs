@@ -2,8 +2,8 @@ use alloy_rlp::encode;
 use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
+use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
 use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
-use karyon_jsonrpc::Client;
 use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
@@ -19,7 +19,6 @@ use openrank_common::{
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha3::Keccak256;
 use std::{
     collections::HashMap,
@@ -121,7 +120,7 @@ async fn update_trust(
 
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
 
     let mut results = Vec::new();
     for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
@@ -131,10 +130,9 @@ async fn update_trust(
         )));
         tx.sign(&sk)?;
 
-        let result: Value = client.call("Sequencer.trust_update", hex::encode(encode(tx))).await?;
-        let tx_event: TxEvent = serde_json::from_value(result)?;
-
-        results.push(tx_event);
+        let result: TxEvent =
+            client.request("sequencer_trust_update", vec![hex::encode(encode(tx))]).await?;
+        results.push(result);
     }
     Ok(results)
 }
@@ -157,7 +155,7 @@ async fn update_seed(
 
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
 
     let mut results = Vec::new();
     for chunk in entries.chunks(SEED_CHUNK_SIZE) {
@@ -167,9 +165,8 @@ async fn update_seed(
         )));
         tx.sign(&sk)?;
 
-        let result: Value = client.call("Sequencer.seed_update", hex::encode(encode(tx))).await?;
-        let tx_event: TxEvent = serde_json::from_value(result)?;
-
+        let tx_event: TxEvent =
+            client.request("sequencer_seed_update", vec![hex::encode(encode(tx))]).await?;
         results.push(tx_event);
     }
     Ok(results)
@@ -182,7 +179,7 @@ async fn compute_request(
 ) -> Result<ComputeRequestResult, Box<dyn Error>> {
     let config = read_config(path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
 
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
@@ -193,8 +190,8 @@ async fn compute_request(
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
 
-    let result: Value = client.call("Sequencer.compute_request", hex::encode(encode(tx))).await?;
-    let tx_event: TxEvent = serde_json::from_value(result)?;
+    let tx_event: TxEvent =
+        client.request("sequencer_compute_request", vec![hex::encode(encode(tx))]).await?;
 
     let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
     Ok(compute_result)
@@ -207,14 +204,11 @@ async fn get_results(
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
-    let client =
-        Client::builder(config.sequencer.endpoint.as_str())?.set_timeout(900000).build().await?;
-    let tx_hash_bytes = hex::decode(arg)?;
-    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query =
-        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
-    let result: Value = client.call("Sequencer.get_results", results_query).await?;
-    let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let seq_number = u64::from_str_radix(&arg, 10).unwrap();
+    let results_query = GetResultsQuery::new(seq_number, 0, config.sequencer.result_size);
+    let scores: (Vec<bool>, Vec<ScoreEntry>) =
+        client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
 }
 
