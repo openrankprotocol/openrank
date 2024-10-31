@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-openrank-common = { path = "../common", version = "0.1.0" }
+openrank-common = { workspace = true }
 
 tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true }
