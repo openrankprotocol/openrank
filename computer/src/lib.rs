@@ -1,4 +1,4 @@
-use alloy_rlp::{encode, Decodable};
+use alloy_rlp::Decodable;
 use dotenv::dotenv;
 use futures::StreamExt;
 use k256::ecdsa::{self, SigningKey};
@@ -8,12 +8,8 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::{Domain, Topic},
+    tx::{compute, consts, Address, Body, Tx, TxHash},
     tx_event::TxEvent,
-    txs::{
-        compute,
-        trust::{SeedUpdate, TrustUpdate},
-        Address, Kind, Tx, TxHash,
-    },
     MyBehaviour, MyBehaviourEvent,
 };
 use runner::ComputeRunner;
@@ -97,23 +93,21 @@ impl Node {
     ) -> Result<(), Error> {
         if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
             for topic in topics {
+                let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                if message.topic != topic_wrapper.hash() {
+                    continue;
+                }
                 match topic {
                     Topic::NamespaceTrustUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let mut tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::TrustUpdate {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let mut tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let Body::TrustUpdate(trust_update) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
-                                .map_err(Error::Decode)?;
                             assert!(*namespace == trust_update.trust_id);
                             let domain = domains
                                 .iter()
@@ -126,24 +120,20 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let mut tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::SeedUpdate {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let mut tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let Body::SeedUpdate(seed_update) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
-                                .map_err(Error::Decode)?;
                             assert!(*namespace == seed_update.seed_id);
                             let domain = domains
                                 .iter()
@@ -156,26 +146,20 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::DomainAssignent(domain_id) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::ComputeAssignment {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let Body::ComputeAssignment(compute_assignment) = tx.body() {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.block_builder.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            // Not checking if we are assigned for the compute, for now
-                            let compute_assignment =
-                                compute::Assignment::decode(&mut tx.body().as_slice())
-                                    .map_err(Error::Decode)?;
                             let computer_address = address_from_sk(&self.secret_key);
                             assert_eq!(computer_address, compute_assignment.assigned_compute_node);
                             assert!(self
@@ -187,7 +171,7 @@ impl Node {
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
                             self.compute_runner.compute(domain.clone()).map_err(Error::Runner)?;
                             self.compute_runner
                                 .create_compute_tree(domain.clone())
@@ -204,7 +188,7 @@ impl Node {
                             let compute_scores_tx_res: Result<Vec<Tx>, Error> = compute_scores
                                 .iter()
                                 .map(|tx_body| {
-                                    Tx::default_with(Kind::ComputeScores, encode(tx_body))
+                                    Tx::default_with(Body::ComputeScores(tx_body.clone()))
                                 })
                                 .map(|mut tx| {
                                     tx.sign(&self.secret_key).map_err(Error::Signature)?;
@@ -214,18 +198,16 @@ impl Node {
                             let compute_scores_tx = compute_scores_tx_res?;
                             let compute_scores_tx_hashes: Vec<TxHash> =
                                 compute_scores_tx.iter().map(|x| x.hash()).collect();
-                            let compute_scores_topic = Topic::DomainScores(domain_id.clone());
-                            let commitment_topic = Topic::DomainCommitment(domain_id.clone());
+                            let compute_scores_topic = Topic::DomainScores(*domain_id);
+                            let commitment_topic = Topic::DomainCommitment(*domain_id);
                             let compute_commitment = compute::Commitment::new(
                                 tx.hash(),
                                 lt_root,
                                 compute_root,
                                 compute_scores_tx_hashes,
                             );
-                            let mut compute_commitment_tx = Tx::default_with(
-                                Kind::ComputeCommitment,
-                                encode(compute_commitment),
-                            );
+                            let mut compute_commitment_tx =
+                                Tx::default_with(Body::ComputeCommitment(compute_commitment));
                             compute_commitment_tx
                                 .sign(&self.secret_key)
                                 .map_err(Error::Signature)?;
@@ -245,6 +227,8 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     _ => {},
@@ -294,7 +278,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.trust_namespace())
-            .map(|namespace| Topic::NamespaceTrustUpdate(namespace.clone()))
+            .map(Topic::NamespaceTrustUpdate)
             .collect();
         let topics_seed_update: Vec<Topic> = self
             .config
@@ -302,7 +286,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.seed_namespace())
-            .map(|namespace| Topic::NamespaceSeedUpdate(namespace.clone()))
+            .map(Topic::NamespaceSeedUpdate)
             .collect();
         let topics_assignment: Vec<Topic> = self
             .config
@@ -310,7 +294,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+            .map(Topic::DomainAssignent)
             .collect();
 
         let iter_chain = topics_assignment
@@ -369,12 +353,12 @@ impl Node {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
-            self.db.read_from_end(Kind::TrustUpdate.into(), None).map_err(Error::Db)?;
+            self.db.read_from_end(consts::TRUST_UPDATE, None).map_err(Error::Db)?;
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
         let mut seed_update_txs: Vec<Tx> =
-            self.db.read_from_end(Kind::SeedUpdate.into(), None).map_err(Error::Db)?;
+            self.db.read_from_end(consts::SEED_UPDATE, None).map_err(Error::Db)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
 
@@ -383,10 +367,8 @@ impl Node {
 
         // update compute runner
         for tx in txs {
-            match tx.kind() {
-                Kind::TrustUpdate => {
-                    let trust_update =
-                        TrustUpdate::decode(&mut tx.body().as_slice()).map_err(Error::Decode)?;
+            match tx.body() {
+                Body::TrustUpdate(trust_update) => {
                     let namespace = trust_update.trust_id;
                     let domain = self
                         .config
@@ -398,9 +380,7 @@ impl Node {
                         .update_trust(domain.clone(), trust_update.entries.clone())
                         .map_err(Error::Runner)?;
                 },
-                Kind::SeedUpdate => {
-                    let seed_update =
-                        SeedUpdate::decode(&mut tx.body().as_slice()).map_err(Error::Decode)?;
+                Body::SeedUpdate(seed_update) => {
                     let namespace = seed_update.seed_id;
                     let domain = self
                         .config

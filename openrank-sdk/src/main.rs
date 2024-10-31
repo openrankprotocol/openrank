@@ -10,12 +10,12 @@ use openrank_common::{
     merkle::hash_leaf,
     result::GetResultsQuery,
     topics::Domain,
-    tx_event::TxEvent,
-    txs::{
+    tx::{
         compute,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
-        Address, Kind, Tx, TxHash,
+        Address, Body, Tx, TxHash,
     },
+    tx_event::TxEvent,
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
@@ -124,11 +124,10 @@ async fn update_trust(
 
     let mut results = Vec::new();
     for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
-        let data = encode(TrustUpdate::new(
+        let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
             config.domain.trust_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::TrustUpdate, data);
+        )));
         tx.sign(&sk)?;
 
         let result: TxEvent =
@@ -160,11 +159,10 @@ async fn update_seed(
 
     let mut results = Vec::new();
     for chunk in entries.chunks(SEED_CHUNK_SIZE) {
-        let data = encode(SeedUpdate::new(
+        let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
             config.domain.seed_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::SeedUpdate, data);
+        )));
         tx.sign(&sk)?;
 
         let tx_event: TxEvent =
@@ -186,8 +184,9 @@ async fn compute_request(
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(compute::Request::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(Kind::ComputeRequest, data);
+    let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
+        domain_id, 0, hash,
+    )));
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
 
@@ -206,10 +205,8 @@ async fn get_results(
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let tx_hash_bytes = hex::decode(arg)?;
-    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query =
-        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
+    let seq_number = arg.parse::<u64>().unwrap();
+    let results_query = GetResultsQuery::new(seq_number, 0, config.sequencer.result_size);
     let scores: (Vec<bool>, Vec<ScoreEntry>) =
         client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
@@ -320,12 +317,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let (sk, address) = generate_keypair(rng);
             let sk_bytes = sk.to_bytes();
             println!("SECRET_KEY=\"{}\"", hex::encode(sk_bytes));
-            println!("# ADDRESS: {}", address.to_hex());
+            println!("# ADDRESS: {}", address);
         },
         Method::ShowAddress => {
             let secret_key = get_secret_key()?;
             let addr = address_from_sk(&secret_key);
-            println!("ADDRESS: {}", addr.to_hex());
+            println!("ADDRESS: {}", addr);
         },
     }
     Ok(())

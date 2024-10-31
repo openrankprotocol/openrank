@@ -1,6 +1,5 @@
 mod sol;
 
-use alloy_rlp::Decodable;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, str::FromStr};
 use tracing::info;
@@ -19,7 +18,7 @@ use eyre::Result;
 use openrank_common::{
     config,
     db::{self, Db, DbItem},
-    txs::{Kind, Tx},
+    tx::{self, consts, Tx},
 };
 use sol::ComputeManager::{self, Signature};
 
@@ -73,8 +72,8 @@ impl ComputeManagerClient {
         let contract = ComputeManager::new(self.contract_address, provider);
 
         // check if tx already exists
-        let is_tx_exists = match tx.kind() {
-            Kind::ComputeCommitment | Kind::ComputeVerification => {
+        let is_tx_exists = match tx.body() {
+            tx::Body::ComputeCommitment(_) | tx::Body::ComputeVerification(_) => {
                 contract.hasTx(tx.hash().0.into()).call().await?._0
             },
             _ => true,
@@ -84,10 +83,8 @@ impl ComputeManagerClient {
         }
 
         // submit tx
-        let _result_hash = match tx.kind() {
-            Kind::ComputeCommitment => {
-                let compute_commitment =
-                    openrank_common::txs::compute::Commitment::decode(&mut tx.body().as_slice())?;
+        let _result_hash = match tx.body() {
+            tx::Body::ComputeCommitment(compute_commitment) => {
                 let compute_assignment_tx_hash = compute_commitment.assignment_tx_hash.0.into();
                 let compute_commitment_tx_hash = tx.hash().0.into();
                 let compute_root_hash = compute_commitment.compute_root_hash.0.into();
@@ -106,9 +103,7 @@ impl ComputeManagerClient {
                     .watch()
                     .await?
             },
-            Kind::ComputeVerification => {
-                let compute_verification =
-                    openrank_common::txs::compute::Verification::decode(&mut tx.body().as_slice())?;
+            tx::Body::ComputeVerification(compute_verification) => {
                 let compute_verification_tx_hash = tx.hash().0.into();
                 let compute_assignment_tx_hash = compute_verification.assignment_tx_hash.0.into();
                 let sig = Signature {
@@ -135,16 +130,14 @@ impl ComputeManagerClient {
         // collect all txs
         let mut txs = Vec::new();
 
-        let mut compute_commitment_txs: Vec<Tx> = self
-            .db
-            .read_from_end(Kind::ComputeCommitment.into(), None)
-            .map_err(|e| eyre::eyre!(e))?;
+        let mut compute_commitment_txs: Vec<Tx> =
+            self.db.read_from_end(consts::COMPUTE_COMMITMENT, None).map_err(|e| eyre::eyre!(e))?;
         txs.append(&mut compute_commitment_txs);
         drop(compute_commitment_txs);
 
         let mut compute_verification_txs: Vec<Tx> = self
             .db
-            .read_from_end(Kind::ComputeVerification.into(), None)
+            .read_from_end(consts::COMPUTE_VERIFICATION, None)
             .map_err(|e| eyre::eyre!(e))?;
         txs.append(&mut compute_verification_txs);
         drop(compute_verification_txs);
@@ -158,7 +151,7 @@ impl ComputeManagerClient {
         let txs = self.read_txs()?;
         for tx in txs {
             self.submit_openrank_tx(tx.clone()).await?;
-            info!("Posted TX on chain: {:?}", tx.kind());
+            info!("Posted TX on chain: {:?}", tx.body().prefix());
         }
         Ok(())
     }
@@ -166,18 +159,15 @@ impl ComputeManagerClient {
 
 #[cfg(test)]
 mod tests {
+    use crate::*;
     use alloy::{
         network::EthereumWallet, node_bindings::Anvil, primitives::address,
         signers::local::PrivateKeySigner,
     };
-    use alloy_rlp::encode;
-
     use openrank_common::{
         merkle::Hash,
-        txs::{compute, TxHash},
+        tx::{compute, TxHash},
     };
-
-    use super::*;
 
     fn config_for_dir(directory: &str) -> db::Config {
         db::Config { directory: directory.to_string(), secondary: None }
@@ -217,28 +207,24 @@ mod tests {
 
         // Try to submit "ComputeRequest" TX
         client
-            .submit_openrank_tx(Tx::default_with(
-                Kind::ComputeRequest,
-                encode(compute::Request::default()),
-            ))
+            .submit_openrank_tx(Tx::default_with(tx::Body::ComputeRequest(
+                compute::Request::default(),
+            )))
             .await?;
 
         // Try to submit "ComputeCommitment" TX
         let sk_bytes_hex = "c87f65ff3f271bf5dc8643484f66b200109caffe4bf98c4cb393dc35740b28c0";
         let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();
-        let mut tx = Tx::default_with(
-            Kind::ComputeCommitment,
-            encode(compute::Commitment::new(
-                TxHash::from_bytes(
-                    hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
-                        .unwrap(),
-                ),
-                Hash::default(),
-                Hash::default(),
-                vec![],
-            )),
-        );
+        let mut tx = Tx::default_with(tx::Body::ComputeCommitment(compute::Commitment::new(
+            TxHash::from_bytes(
+                hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
+                    .unwrap(),
+            ),
+            Hash::default(),
+            Hash::default(),
+            vec![],
+        )));
         let _ = tx.sign(&sk);
 
         client.submit_openrank_tx(tx).await?;
@@ -248,16 +234,13 @@ mod tests {
         let sk_bytes = hex::decode(sk_bytes_hex).unwrap();
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();
 
-        let mut tx = Tx::default_with(
-            Kind::ComputeVerification,
-            encode(compute::Verification {
-                assignment_tx_hash: TxHash::from_bytes(
-                    hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
-                        .unwrap(),
-                ),
-                verification_result: true,
-            }),
-        );
+        let mut tx = Tx::default_with(tx::Body::ComputeVerification(compute::Verification {
+            assignment_tx_hash: TxHash::from_bytes(
+                hex::decode("43924aa0eb3f5df644b1d3b7d755190840d44d7b89f1df471280d4f1d957c819")
+                    .unwrap(),
+            ),
+            verification_result: true,
+        }));
         let _ = tx.sign(&sk);
 
         client.submit_openrank_tx(tx).await?;

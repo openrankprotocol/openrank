@@ -1,4 +1,4 @@
-use alloy_rlp::{encode, Decodable};
+use alloy_rlp::Decodable;
 use dotenv::dotenv;
 use futures::StreamExt;
 use k256::ecdsa;
@@ -9,12 +9,8 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::{Domain, Topic},
+    tx::{self, compute, consts, Address, Tx},
     tx_event::TxEvent,
-    txs::{
-        compute,
-        trust::{SeedUpdate, TrustUpdate},
-        Address, Kind, Tx,
-    },
     MyBehaviour, MyBehaviourEvent,
 };
 use runner::VerificationRunner;
@@ -131,23 +127,21 @@ impl Node {
     ) -> Result<(), Error> {
         if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
             for topic in topics {
+                let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                if message.topic != topic_wrapper.hash() {
+                    continue;
+                }
                 match topic {
                     Topic::NamespaceTrustUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let mut tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::TrustUpdate {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let mut tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let tx::Body::TrustUpdate(trust_update) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let trust_update = TrustUpdate::decode(&mut tx.body().as_slice())
-                                .map_err(Error::Decode)?;
                             assert!(*namespace == trust_update.trust_id);
                             let domain = domains
                                 .iter()
@@ -160,23 +154,19 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::SeedUpdate {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let tx::Body::SeedUpdate(seed_update) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let seed_update = SeedUpdate::decode(&mut tx.body().as_slice())
-                                .map_err(Error::Decode)?;
                             assert!(*namespace == seed_update.seed_id);
                             let domain = domains
                                 .iter()
@@ -189,26 +179,20 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::DomainAssignent(domain_id) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::ComputeAssignment {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let tx::Body::ComputeAssignment(compute_assignment) = tx.body() {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.block_builder.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            // Not checking if this node is assigned for the compute
-                            let compute_assignment =
-                                compute::Assignment::decode(&mut tx.body().as_slice())
-                                    .map_err(Error::Decode)?;
                             let computer_address = address_from_sk(&self.secret_key);
                             assert_eq!(computer_address, compute_assignment.assigned_verifier_node);
                             assert!(self
@@ -220,7 +204,7 @@ impl Node {
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
                             self.verification_runner
                                 .update_assigment(domain.clone(), tx.hash())
                                 .map_err(Error::Runner)?;
@@ -231,15 +215,14 @@ impl Node {
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
                                     compute::Verification::new(tx_hash, verification_res);
-                                let mut tx = Tx::default_with(
-                                    Kind::ComputeVerification,
-                                    encode(verification_res),
-                                );
+                                let mut tx = Tx::default_with(tx::Body::ComputeVerification(
+                                    verification_res,
+                                ));
                                 tx.sign(&self.secret_key).map_err(Error::Signature)?;
                                 broadcast_event(
                                     &mut self.swarm,
                                     tx,
-                                    Topic::DomainVerification(domain_id.clone()),
+                                    Topic::DomainVerification(*domain_id),
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
@@ -247,29 +230,24 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::DomainScores(domain_id) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::ComputeScores {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let tx::Body::ComputeScores(compute_scores) = tx.body() {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let compute_scores = compute::Scores::decode(&mut tx.body().as_slice())
-                                .map_err(Error::Decode)?;
-
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
                             self.verification_runner
                                 .update_scores(domain.clone(), tx.hash(), compute_scores.clone())
                                 .map_err(Error::Runner)?;
@@ -280,15 +258,14 @@ impl Node {
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
                                     compute::Verification::new(tx_hash, verification_res);
-                                let mut tx = Tx::default_with(
-                                    Kind::ComputeVerification,
-                                    encode(verification_res),
-                                );
+                                let mut tx = Tx::default_with(tx::Body::ComputeVerification(
+                                    verification_res,
+                                ));
                                 tx.sign(&self.secret_key).map_err(Error::Signature)?;
                                 broadcast_event(
                                     &mut self.swarm,
                                     tx,
-                                    Topic::DomainVerification(domain_id.clone()),
+                                    Topic::DomainVerification(*domain_id),
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
@@ -296,30 +273,24 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::DomainCommitment(domain_id) => {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
-                        if message.topic == topic_wrapper.hash() {
-                            let tx_event = TxEvent::decode(&mut message.data.as_slice())
-                                .map_err(Error::Decode)?;
-                            let tx = Tx::decode(&mut tx_event.data().as_slice())
-                                .map_err(Error::Decode)?;
-                            if *tx.kind() != Kind::ComputeCommitment {
-                                return Err(Error::InvalidTxKind);
-                            }
+                        let tx_event =
+                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
+                        let tx =
+                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                        if let tx::Body::ComputeCommitment(compute_commitment) = tx.body() {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let compute_commitment =
-                                compute::Commitment::decode(&mut tx.body().as_slice())
-                                    .map_err(Error::Decode)?;
-
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
-                                .ok_or(Error::DomainNotFound(domain_id.clone().to_hex()))?;
+                                .ok_or(Error::DomainNotFound(domain_id.to_hex()))?;
                             self.verification_runner.update_commitment(compute_commitment.clone());
                             let res = self
                                 .verification_runner
@@ -328,15 +299,14 @@ impl Node {
                             for (tx_hash, verification_res) in res {
                                 let verification_res =
                                     compute::Verification::new(tx_hash, verification_res);
-                                let mut tx = Tx::default_with(
-                                    Kind::ComputeVerification,
-                                    encode(verification_res),
-                                );
+                                let mut tx = Tx::default_with(tx::Body::ComputeVerification(
+                                    verification_res,
+                                ));
                                 tx.sign(&self.secret_key).map_err(Error::Signature)?;
                                 broadcast_event(
                                     &mut self.swarm,
                                     tx,
-                                    Topic::DomainVerification(domain_id.clone()),
+                                    Topic::DomainVerification(*domain_id),
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
@@ -344,6 +314,8 @@ impl Node {
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                                 message.topic.as_str(),
                             );
+                        } else {
+                            return Err(Error::InvalidTxKind);
                         }
                     },
                     _ => {},
@@ -363,12 +335,12 @@ impl Node {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
-            self.db.read_from_end(Kind::TrustUpdate.into(), None).map_err(Error::Db)?;
+            self.db.read_from_end(consts::TRUST_UPDATE, None).map_err(Error::Db)?;
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
         let mut seed_update_txs: Vec<Tx> =
-            self.db.read_from_end(Kind::SeedUpdate.into(), None).map_err(Error::Db)?;
+            self.db.read_from_end(consts::SEED_UPDATE, None).map_err(Error::Db)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
 
@@ -377,10 +349,8 @@ impl Node {
 
         // update verification runner
         for tx in txs {
-            match tx.kind() {
-                Kind::TrustUpdate => {
-                    let trust_update =
-                        TrustUpdate::decode(&mut tx.body().as_slice()).map_err(Error::Decode)?;
+            match tx.body() {
+                tx::Body::TrustUpdate(trust_update) => {
                     let namespace = trust_update.trust_id;
                     let domain = self
                         .config
@@ -392,9 +362,7 @@ impl Node {
                         .update_trust(domain.clone(), trust_update.entries.clone())
                         .map_err(Error::Runner)?;
                 },
-                Kind::SeedUpdate => {
-                    let seed_update =
-                        SeedUpdate::decode(&mut tx.body().as_slice()).map_err(Error::Decode)?;
+                tx::Body::SeedUpdate(seed_update) => {
                     let namespace = seed_update.seed_id;
                     let domain = self
                         .config
@@ -441,7 +409,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainAssignent(domain_hash.clone()))
+            .map(Topic::DomainAssignent)
             .collect();
         let topics_scores: Vec<Topic> = self
             .config
@@ -449,7 +417,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainScores(domain_hash.clone()))
+            .map(Topic::DomainScores)
             .collect();
         let topics_commitment: Vec<Topic> = self
             .config
@@ -457,7 +425,7 @@ impl Node {
             .clone()
             .into_iter()
             .map(|x| x.to_hash())
-            .map(|domain_hash| Topic::DomainCommitment(domain_hash.clone()))
+            .map(Topic::DomainCommitment)
             .collect();
 
         let iter_chain = topics_assignment

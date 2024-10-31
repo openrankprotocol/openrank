@@ -1,4 +1,4 @@
-use crate::txs::{trust::OwnedNamespace, Address};
+use crate::tx::{consts, trust::OwnedNamespace, Address};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,17 @@ use std::{
 };
 
 #[derive(
-    Clone, Debug, Default, Hash, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Hash,
+    PartialEq,
+    Eq,
+    RlpEncodable,
+    RlpDecodable,
+    Serialize,
+    Deserialize,
 )]
 /// Hash of the [Domain].
 pub struct DomainHash(u64);
@@ -59,20 +69,20 @@ impl Domain {
 
     /// Returns the trust namespace of the domain.
     pub fn trust_namespace(&self) -> OwnedNamespace {
-        OwnedNamespace::new(self.trust_owner.clone(), self.trust_id)
+        OwnedNamespace::new(self.trust_owner, self.trust_id)
     }
 
     /// Returns the seed namespace of the domain.
     pub fn seed_namespace(&self) -> OwnedNamespace {
-        OwnedNamespace::new(self.seed_owner.clone(), self.seed_id)
+        OwnedNamespace::new(self.seed_owner, self.seed_id)
     }
 
     /// Returns the domain hash, created from the trust and seed namespace + algo id.
     pub fn to_hash(&self) -> DomainHash {
         let mut s = DefaultHasher::new();
-        s.write(&self.trust_owner.0);
+        s.write(self.trust_owner.as_slice());
         s.write(&self.trust_id.to_be_bytes());
-        s.write(&self.seed_owner.0);
+        s.write(self.seed_owner.as_slice());
         s.write(&self.seed_id.to_be_bytes());
         s.write(&self.algo_id.to_be_bytes());
         let res = s.finish();
@@ -114,44 +124,31 @@ pub enum Topic {
 
 impl From<Topic> for String {
     fn from(value: Topic) -> Self {
-        let mut s = String::new();
         match value {
             Topic::NamespaceTrustUpdate(namespace) => {
-                s.push_str(&namespace.to_hex());
-                s.push_str(":trust_update");
+                format!("{}:{}", namespace.to_hex(), consts::TRUST_UPDATE)
             },
-            Topic::NamespaceSeedUpdate(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":seed_update");
+            Topic::NamespaceSeedUpdate(namespace) => {
+                format!("{}:{}", namespace.to_hex(), consts::SEED_UPDATE)
             },
             Topic::DomainRequest(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":request");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_REQUEST)
             },
             Topic::DomainAssignent(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":assignment");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_ASSIGNMENT)
             },
             Topic::DomainCommitment(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":commitment");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_COMMITMENT)
             },
             Topic::DomainScores(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":scores");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_SCORES)
             },
             Topic::DomainVerification(domain_id) => {
-                s.push_str(&domain_id.to_hex());
-                s.push_str(":verification");
+                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_VERIFICATION)
             },
-            Topic::ProposedBlock => {
-                s.push_str("proposed_block");
-            },
-            Topic::FinalisedBlock => {
-                s.push_str("finalised_block");
-            },
+            Topic::ProposedBlock => consts::PROPOSED_BLOCK.to_string(),
+            Topic::FinalisedBlock => consts::FINALISED_BLOCK.to_string(),
         }
-        s
     }
 }
 
@@ -163,9 +160,8 @@ impl Display for Topic {
 
 #[cfg(test)]
 mod test {
-    use crate::txs::Address;
-
-    use super::{Domain, Topic};
+    use crate::topics::{Domain, Topic};
+    use crate::tx::Address;
 
     #[test]
     fn test_domain_to_hash() {
@@ -186,8 +182,17 @@ mod test {
         let topic2_string = String::from(topic2);
         let topic3_string = String::from(topic3);
 
-        assert_eq!(topic1_string, "00902259a9dc1a51:request".to_string());
-        assert_eq!(topic2_string, "00902259a9dc1a51:assignment".to_string());
-        assert_eq!(topic3_string, "00902259a9dc1a51:verification".to_string());
+        assert_eq!(
+            topic1_string,
+            "00902259a9dc1a51:compute_request".to_string()
+        );
+        assert_eq!(
+            topic2_string,
+            "00902259a9dc1a51:compute_assignment".to_string()
+        );
+        assert_eq!(
+            topic3_string,
+            "00902259a9dc1a51:compute_verification".to_string()
+        );
     }
 }

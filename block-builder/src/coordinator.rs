@@ -1,4 +1,4 @@
-use openrank_common::txs::compute;
+use openrank_common::tx::compute;
 use std::collections::HashMap;
 
 /// Coordinator role for the OpenRank network.

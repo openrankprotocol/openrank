@@ -114,7 +114,7 @@ impl Db {
 
     /// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
     pub fn read_from_end<I: DbItem + DeserializeOwned>(
-        &self, prefix: String, num_elements: Option<usize>,
+        &self, prefix: &str, num_elements: Option<usize>,
     ) -> Result<Vec<I>, Error> {
         let num_elements = num_elements.unwrap_or(usize::MAX);
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
@@ -130,9 +130,8 @@ impl Db {
 
 #[cfg(test)]
 mod test {
-    use super::{Config, Db, DbItem};
-    use crate::txs::{compute, Kind, Tx};
-    use alloy_rlp::encode;
+    use crate::db::{Config, Db, DbItem};
+    use crate::tx::{compute, consts, Body, Tx};
 
     fn config_for_dir(directory: &str) -> Config {
         Config { directory: directory.to_string(), secondary: None }
@@ -141,9 +140,9 @@ mod test {
     #[test]
     fn test_put_get() {
         let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx = Tx::default_with(Kind::ComputeRequest, encode(compute::Request::default()));
+        let tx = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         db.put(tx.clone()).unwrap();
-        let key = Tx::construct_full_key(Kind::ComputeRequest, tx.hash());
+        let key = Tx::construct_full_key(consts::COMPUTE_REQUEST, tx.hash());
         let item = db.get::<Tx>(key).unwrap();
         assert_eq!(tx, item);
     }
@@ -151,23 +150,17 @@ mod test {
     #[test]
     fn test_read_from_end() {
         let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx1 = Tx::default_with(Kind::ComputeRequest, encode(compute::Request::default()));
-        let tx2 = Tx::default_with(
-            Kind::ComputeAssignment,
-            encode(compute::Assignment::default()),
-        );
-        let tx3 = Tx::default_with(
-            Kind::ComputeVerification,
-            encode(compute::Verification::default()),
-        );
+        let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
+        let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
+        let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
         db.put(tx1.clone()).unwrap();
         db.put(tx2.clone()).unwrap();
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>(Kind::ComputeRequest.into(), Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>(Kind::ComputeAssignment.into(), Some(1)).unwrap();
-        let items3 = db.read_from_end::<Tx>(Kind::ComputeVerification.into(), Some(1)).unwrap();
+        let items1 = db.read_from_end::<Tx>(consts::COMPUTE_REQUEST, Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(consts::COMPUTE_ASSIGNMENT, Some(1)).unwrap();
+        let items3 = db.read_from_end::<Tx>(consts::COMPUTE_VERIFICATION, Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);

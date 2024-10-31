@@ -6,7 +6,7 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::Topic,
-    txs::{compute, Address, Tx},
+    tx::{compute, Address, Tx},
     MyBehaviour, MyBehaviourEvent,
 };
 use rpc::{RpcServer, SequencerServer};
