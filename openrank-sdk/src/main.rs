@@ -10,12 +10,12 @@ use openrank_common::{
     merkle::hash_leaf,
     result::GetResultsQuery,
     topics::Domain,
-    tx_event::TxEvent,
-    txs::{
-        compute,
+    tx::{
+        compute, consts,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
-        Address, Kind, Tx, TxHash,
+        Address, Body, Tx, TxHash,
     },
+    tx_event::TxEvent,
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
@@ -40,12 +40,14 @@ enum Method {
     /// The method creates a ComputeRequest TX.
     ComputeRequest { path: String, output_path: Option<String> },
     /// The method takes a ComputeRequest TX hash and returns the computed results.
-    GetResults { request_id: String, config_path: String, output_path: Option<String> },
+    GetResults { seq_number: String, config_path: String, output_path: Option<String> },
     /// The method takes a ComputeRequest TX hash and returns the computed results,
     /// and also checks the integrity/correctness of the results.
-    GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
+    GetResultsAndCheckIntegrity { seq_number: String, config_path: String, test_vector: String },
     /// Get ComputeResult TXs
-    GetComputeResult { tx_hash: String, config_path: String, output_path: Option<String> },
+    GetComputeResult { seq_number: String, config_path: String, output_path: Option<String> },
+    /// Get TXs included in ComputeResult
+    GetComputeResultTxs { seq_number: String, config_path: String, output_path: Option<String> },
     /// Get arbitrary TX
     GetTx { tx_id: String, config_path: String, output_path: Option<String> },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
@@ -128,11 +130,10 @@ async fn update_trust(
 
     let mut results = Vec::new();
     for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
-        let data = encode(TrustUpdate::new(
+        let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
             config.domain.trust_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::TrustUpdate, data);
+        )));
         tx.sign(&sk)?;
 
         let result: TxEvent =
@@ -164,11 +165,10 @@ async fn update_seed(
 
     let mut results = Vec::new();
     for chunk in entries.chunks(SEED_CHUNK_SIZE) {
-        let data = encode(SeedUpdate::new(
+        let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
             config.domain.seed_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::SeedUpdate, data);
+        )));
         tx.sign(&sk)?;
 
         let tx_event: TxEvent =
@@ -190,8 +190,9 @@ async fn compute_request(
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(compute::Request::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(Kind::ComputeRequest, data);
+    let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
+        domain_id, 0, hash,
+    )));
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
 
@@ -210,10 +211,8 @@ async fn get_results(
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let tx_hash_bytes = hex::decode(arg)?;
-    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query =
-        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
+    let seq_number = arg.parse::<u64>().unwrap();
+    let results_query = GetResultsQuery::new(seq_number, 0, config.sequencer.result_size);
     let scores: (Vec<bool>, Vec<ScoreEntry>) =
         client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
@@ -227,15 +226,34 @@ async fn get_compute_result(
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let tx_hash_bytes = hex::decode(arg)?;
-    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let result: compute::Result = client
-        .request(
-            "sequencer_get_compute_result",
-            vec![compute_request_tx_hash],
-        )
-        .await?;
+    let seq_number = arg.parse::<u64>().unwrap();
+    let result: compute::Result =
+        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
     Ok(result)
+}
+
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
+async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx>, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let seq_number = arg.parse::<u64>().unwrap();
+    let result: compute::Result =
+        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
+
+    let mut txs_arg = Vec::new();
+    txs_arg.push((consts::COMPUTE_REQUEST, result.compute_request_tx_hash));
+    txs_arg.push((
+        consts::COMPUTE_COMMITMENT,
+        result.compute_commitment_tx_hash,
+    ));
+    for verification_tx_hash in result.compute_verification_tx_hashes {
+        txs_arg.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
+    }
+
+    let txs_res = client.request("sequencer_get_txs", txs_arg).await?;
+    Ok(txs_res)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
@@ -247,8 +265,7 @@ async fn get_tx(arg: String, config_path: &str) -> Result<Tx, Box<dyn Error>> {
     let (prefix, tx_hash) = arg.split_once(':').ok_or("Failed to parse argument")?;
     let tx_hash_bytes = hex::decode(tx_hash)?;
     let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let kind = Kind::from(prefix);
-    let tx: Tx = client.request("sequencer_get_tx", (kind, tx_hash)).await?;
+    let tx: Tx = client.request("sequencer_get_tx", (prefix.to_string(), tx_hash)).await?;
     Ok(tx)
 }
 
@@ -335,8 +352,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetResults { request_id, config_path, output_path } => {
-            let (votes, scores) = get_results(request_id, config_path.as_str()).await?;
+        Method::GetResults { seq_number, config_path, output_path } => {
+            let (votes, scores) = get_results(seq_number, config_path.as_str()).await?;
 
             println!("votes: {:?}", votes);
             for res in &scores {
@@ -346,14 +363,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, scores)?;
             }
         },
-        Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
-            let (votes, results) = get_results(request_id, config_path.as_str()).await?;
+        Method::GetResultsAndCheckIntegrity { seq_number, config_path, test_vector } => {
+            let (votes, results) = get_results(seq_number, config_path.as_str()).await?;
             let res = check_score_integrity(votes, results, &test_vector)?;
             println!("Integrity check result: {}", res);
             assert!(res);
         },
-        Method::GetComputeResult { tx_hash, config_path, output_path } => {
-            let res = get_compute_result(tx_hash, &config_path).await?;
+        Method::GetComputeResult { seq_number, config_path, output_path } => {
+            let res = get_compute_result(seq_number, &config_path).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::GetComputeResultTxs { seq_number, config_path, output_path } => {
+            let res = get_compute_result_txs(seq_number, &config_path).await?;
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }
@@ -369,12 +392,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let (sk, address) = generate_keypair(rng);
             let sk_bytes = sk.to_bytes();
             println!("SECRET_KEY=\"{}\"", hex::encode(sk_bytes));
-            println!("# ADDRESS: {}", address.to_hex());
+            println!("# ADDRESS: {}", address);
         },
         Method::ShowAddress => {
             let secret_key = get_secret_key()?;
             let addr = address_from_sk(&secret_key);
-            println!("ADDRESS: {}", addr.to_hex());
+            println!("ADDRESS: {}", addr);
         },
     }
     Ok(())
