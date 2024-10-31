@@ -3,7 +3,6 @@ use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use getset::Getters;
-use hex::FromHex;
 use block::{FinalisedBlock, ProposedBlock};
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{
@@ -104,7 +103,7 @@ impl Body {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters,
+    Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters,
 )]
 #[rlp(trailing)]
 pub struct Tx {
@@ -115,7 +114,7 @@ pub struct Tx {
     #[getset(get = "pub")]
     // Use 0x0 for transactions intended to be processed by the network
     to: Address,
-    #[getset(get = "pub")]
+    #[getset(skip)]
     body: Body,
     #[getset(get = "pub")]
     signature: Signature,
@@ -215,6 +214,10 @@ impl Tx {
 
     pub fn sequence_number(&self) -> u64 {
         self.sequence_number.unwrap_or_default()
+    }
+
+    pub fn body(&self) -> Body {
+        self.body.clone()
     }
 }
 
