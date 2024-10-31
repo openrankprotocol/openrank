@@ -40,10 +40,10 @@ enum Method {
     /// The method creates a ComputeRequest TX.
     ComputeRequest { path: String, output_path: Option<String> },
     /// The method takes a ComputeRequest TX hash and returns the computed results.
-    GetResults { seq_number: String, config_path: String, output_path: Option<String> },
+    GetResults { request_id: String, config_path: String, output_path: Option<String> },
     /// The method takes a ComputeRequest TX hash and returns the computed results,
     /// and also checks the integrity/correctness of the results.
-    GetResultsAndCheckIntegrity { seq_number: String, config_path: String, test_vector: String },
+    GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
     /// Get ComputeResult TXs
     GetComputeResult { seq_number: String, config_path: String, output_path: Option<String> },
     /// Get TXs included in ComputeResult
@@ -211,8 +211,10 @@ async fn get_results(
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let seq_number = arg.parse::<u64>().unwrap();
-    let results_query = GetResultsQuery::new(seq_number, 0, config.sequencer.result_size);
+    let tx_hash_bytes = hex::decode(arg)?;
+    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let results_query =
+        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
     let scores: (Vec<bool>, Vec<ScoreEntry>) =
         client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
@@ -352,8 +354,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetResults { seq_number, config_path, output_path } => {
-            let (votes, scores) = get_results(seq_number, config_path.as_str()).await?;
+        Method::GetResults { request_id, config_path, output_path } => {
+            let (votes, scores) = get_results(request_id, config_path.as_str()).await?;
 
             println!("votes: {:?}", votes);
             for res in &scores {
@@ -363,8 +365,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, scores)?;
             }
         },
-        Method::GetResultsAndCheckIntegrity { seq_number, config_path, test_vector } => {
-            let (votes, results) = get_results(seq_number, config_path.as_str()).await?;
+        Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
+            let (votes, results) = get_results(request_id, config_path.as_str()).await?;
             let res = check_score_integrity(votes, results, &test_vector)?;
             println!("Integrity check result: {}", res);
             assert!(res);

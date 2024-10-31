@@ -178,7 +178,15 @@ impl RpcServer for SequencerServer {
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
 
-        let key = compute::Result::construct_full_key(query.seq_number);
+        let result_reference = self
+            .db
+            .get::<compute::ResultReference>(query.request_tx_hash.to_bytes())
+            .map_err(|e| {
+                error!("{}", e);
+                ErrorObjectOwned::from(ErrorCode::InternalError)
+            })?;
+
+        let key = compute::Result::construct_full_key(result_reference.seq_number);
         let result = self.db.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
