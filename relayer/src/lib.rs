@@ -151,10 +151,12 @@ impl SQLRelayer {
             let seed_update_tx_with_hash = TxWithHash { tx: update.clone(), hash: update.hash() };
 
             let seed_update_key_str = String::from_utf8_lossy(&seed_update_key);
-            self.target_db
-                .insert_events(&seed_update_key_str, &seed_update_tx_with_hash)
-                .await
-                .unwrap();
+            if current_count > last_count {
+                self.target_db
+                    .insert_events(&seed_update_key_str, &seed_update_tx_with_hash)
+                    .await
+                    .unwrap();
+            }
         }
 
         if last_count < current_count {
