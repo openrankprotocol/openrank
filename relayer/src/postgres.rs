@@ -1,5 +1,6 @@
 use crate::types::TxWithHash;
-use base64::encode;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use log::info;
 use serde_json::Value;
 use std::env;
@@ -71,20 +72,16 @@ impl SQLDatabase {
         Ok(())
     }
 
-    pub async fn insert_events(
-        &self, event_id: &str, tx: &TxWithHash, decoded_body: &str,
-    ) -> Result<(), Error> {
+    pub async fn insert_events(&self, event_id: &str, tx: &TxWithHash) -> Result<(), Error> {
         let serialized_tx = serde_json::to_string(&tx).expect("Failed to serialize TxWithHash");
         let event_body_json: Value = serde_json::from_str(&serialized_tx).unwrap();
 
-        let event_id_base64 = encode(event_id);
+        let event_id_base64 = BASE64_STANDARD.encode(event_id);
         let hash = serde_json::to_string(&tx.hash).unwrap();
 
-        let decoded_body_json: Value = serde_json::from_str(&decoded_body).unwrap();
-
         let result = self.client.execute(
-            "INSERT INTO events (event_id, event_body, hash, decoded_body) VALUES ($1, $2, $3, $4) ON CONFLICT (event_id) DO NOTHING",
-            &[&event_id_base64, &event_body_json, &hash, &decoded_body_json]
+            "INSERT INTO events (event_id, event_body, hash) VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING",
+            &[&event_id_base64, &event_body_json, &hash]
         ).await;
 
         match result {

@@ -9,7 +9,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openrank-common = { path = "../common", version = "0.1.0" }
+openrank-common = { workspace = true }
 futures = { workspace = true }
 libp2p = { workspace = true, features = [
     "noise",
@@ -30,5 +30,5 @@ rand = { workspace = true }
 alloy-rlp = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-karyon_jsonrpc = { workspace = true }
+jsonrpsee = { workspace = true, features = ["server", "macros"] }
 toml = { workspace = true }

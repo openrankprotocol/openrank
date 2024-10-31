@@ -2,24 +2,23 @@ use alloy_rlp::encode;
 use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
+use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
 use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
-use karyon_jsonrpc::Client;
 use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
     merkle::hash_leaf,
     result::GetResultsQuery,
     topics::Domain,
-    tx_event::TxEvent,
-    txs::{
+    tx::{
         compute,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
-        Address, Kind, Tx, TxHash,
+        Address, Body, Tx, TxHash,
     },
+    tx_event::TxEvent,
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha3::Keccak256;
 use std::{
     collections::HashMap,
@@ -121,21 +120,19 @@ async fn update_trust(
 
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
 
     let mut results = Vec::new();
     for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
-        let data = encode(TrustUpdate::new(
+        let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
             config.domain.trust_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::TrustUpdate, data);
+        )));
         tx.sign(&sk)?;
 
-        let result: Value = client.call("Sequencer.trust_update", hex::encode(encode(tx))).await?;
-        let tx_event: TxEvent = serde_json::from_value(result)?;
-
-        results.push(tx_event);
+        let result: TxEvent =
+            client.request("sequencer_trust_update", vec![hex::encode(encode(tx))]).await?;
+        results.push(result);
     }
     Ok(results)
 }
@@ -158,20 +155,18 @@ async fn update_seed(
 
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
 
     let mut results = Vec::new();
     for chunk in entries.chunks(SEED_CHUNK_SIZE) {
-        let data = encode(SeedUpdate::new(
+        let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
             config.domain.seed_namespace(),
             chunk.to_vec(),
-        ));
-        let mut tx = Tx::default_with(Kind::SeedUpdate, data);
+        )));
         tx.sign(&sk)?;
 
-        let result: Value = client.call("Sequencer.seed_update", hex::encode(encode(tx))).await?;
-        let tx_event: TxEvent = serde_json::from_value(result)?;
-
+        let tx_event: TxEvent =
+            client.request("sequencer_seed_update", vec![hex::encode(encode(tx))]).await?;
         results.push(tx_event);
     }
     Ok(results)
@@ -184,18 +179,19 @@ async fn compute_request(
 ) -> Result<ComputeRequestResult, Box<dyn Error>> {
     let config = read_config(path)?;
     // Creates a new client
-    let client = Client::builder(config.sequencer.endpoint.as_str())?.build().await?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
 
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
     let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let data = encode(compute::Request::new(domain_id, 0, hash));
-    let mut tx = Tx::default_with(Kind::ComputeRequest, data);
+    let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
+        domain_id, 0, hash,
+    )));
     tx.sign(&sk)?;
     let tx_hash = tx.hash();
 
-    let result: Value = client.call("Sequencer.compute_request", hex::encode(encode(tx))).await?;
-    let tx_event: TxEvent = serde_json::from_value(result)?;
+    let tx_event: TxEvent =
+        client.request("sequencer_compute_request", vec![hex::encode(encode(tx))]).await?;
 
     let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
     Ok(compute_result)
@@ -208,14 +204,11 @@ async fn get_results(
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
-    let client =
-        Client::builder(config.sequencer.endpoint.as_str())?.set_timeout(900000).build().await?;
-    let tx_hash_bytes = hex::decode(arg)?;
-    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query =
-        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
-    let result: Value = client.call("Sequencer.get_results", results_query).await?;
-    let scores: (Vec<bool>, Vec<ScoreEntry>) = serde_json::from_value(result)?;
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let seq_number = arg.parse::<u64>().unwrap();
+    let results_query = GetResultsQuery::new(seq_number, 0, config.sequencer.result_size);
+    let scores: (Vec<bool>, Vec<ScoreEntry>) =
+        client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
 }
 
@@ -324,12 +317,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let (sk, address) = generate_keypair(rng);
             let sk_bytes = sk.to_bytes();
             println!("SECRET_KEY=\"{}\"", hex::encode(sk_bytes));
-            println!("# ADDRESS: {}", address.to_hex());
+            println!("# ADDRESS: {}", address);
         },
         Method::ShowAddress => {
             let secret_key = get_secret_key()?;
             let addr = address_from_sk(&secret_key);
-            println!("ADDRESS: {}", addr.to_hex());
+            println!("ADDRESS: {}", addr);
         },
     }
     Ok(())

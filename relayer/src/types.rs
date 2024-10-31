@@ -1,4 +1,4 @@
-use openrank_common::txs::{Tx, TxHash};
+use openrank_common::tx::{Tx, TxHash};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
