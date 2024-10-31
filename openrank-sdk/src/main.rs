@@ -252,7 +252,7 @@ async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx
         txs_arg.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
     }
 
-    let txs_res = client.request("sequencer_get_txs", txs_arg).await?;
+    let txs_res = client.request("sequencer_get_txs", vec![txs_arg]).await?;
     Ok(txs_res)
 }
 
