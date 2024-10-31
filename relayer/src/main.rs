@@ -1,6 +1,5 @@
 use api::server::serve;
 use dotenv::dotenv;
-use env_logger;
 use openrank_common::{config, db};
 use openrank_relayer::{self, SQLRelayer};
 use serde::{Deserialize, Serialize};

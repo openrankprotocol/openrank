@@ -33,9 +33,7 @@ impl QueryRoot {
             .bind(offset)
         };
 
-        let rows = query.fetch_all(pool).await.unwrap();
-
-        rows
+        query.fetch_all(pool).await.unwrap()
     }
 }
 
