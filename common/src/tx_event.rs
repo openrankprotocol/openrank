@@ -55,19 +55,18 @@ impl DbItem for TxEvent {
 
 #[cfg(test)]
 mod test {
-    use super::TxEvent;
+    use crate::tx_event::TxEvent;
     use crate::{
         db::DbItem,
-        txs::{compute, Kind, Tx},
+        tx::{compute, Body, Tx},
     };
     use alloy_rlp::encode;
 
     #[test]
     fn test_tx_event_db_item() {
-        let tx_event = TxEvent::default_with_data(encode(Tx::default_with(
-            Kind::ComputeRequest,
-            encode(compute::Request::default()),
-        )));
+        let tx_event = TxEvent::default_with_data(encode(Tx::default_with(Body::ComputeRequest(
+            compute::Request::default(),
+        ))));
 
         let key = tx_event.get_key();
         assert_eq!(

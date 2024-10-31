@@ -1,9 +1,9 @@
-use super::{trust::ScoreEntry, Address, TxHash};
+use crate::tx::{trust::ScoreEntry, Address, TxHash};
 use crate::{db::DbItem, merkle::Hash, topics::DomainHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
 pub struct Commitment {
     pub assignment_tx_hash: TxHash,
     pub lt_root_hash: Hash,
@@ -20,7 +20,7 @@ impl Commitment {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
 pub struct Scores {
     pub entries: Vec<ScoreEntry>,
 }
@@ -31,7 +31,7 @@ impl Scores {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
 pub struct Request {
     pub domain_id: DomainHash,
     pub block_height: u32,
@@ -44,7 +44,7 @@ impl Request {
     }
 }
 
-#[derive(Debug, Clone, Default, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
 pub struct Assignment {
     pub request_tx_hash: TxHash,
     pub assigned_compute_node: Address,
@@ -59,7 +59,7 @@ impl Assignment {
     }
 }
 
-#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
 pub struct Verification {
     pub assignment_tx_hash: TxHash,
     pub verification_result: bool,
@@ -105,9 +105,9 @@ impl Result {
     }
 
     /// Constructs the full key for the given tx hash.
-    pub fn construct_full_key(tx_hash: TxHash) -> Vec<u8> {
+    pub fn construct_full_key(seq_number: u64) -> Vec<u8> {
         let mut prefix = "result".to_string().as_bytes().to_vec();
-        prefix.extend(tx_hash.0);
+        prefix.extend(seq_number.to_be_bytes());
         prefix
     }
 
@@ -119,7 +119,7 @@ impl Result {
 
 impl DbItem for Result {
     fn get_key(&self) -> Vec<u8> {
-        self.compute_request_tx_hash.0.to_vec()
+        self.seq_number.unwrap().to_be_bytes().to_vec()
     }
 
     fn get_cf() -> String {
