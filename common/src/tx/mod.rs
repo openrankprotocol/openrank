@@ -2,8 +2,8 @@ use crate::db::DbItem;
 use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
-use getset::Getters;
 use block::{FinalisedBlock, ProposedBlock};
+use getset::Getters;
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{
     Error as EcdsaError, RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey,
@@ -102,9 +102,7 @@ impl Body {
     }
 }
 
-#[derive(
-    Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters,
-)]
+#[derive(Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
 #[rlp(trailing)]
 pub struct Tx {
     #[getset(get = "pub")]
