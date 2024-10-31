@@ -105,6 +105,7 @@ impl SQLRelayer {
                     .await
                     .unwrap();
             }
+
             // ComputeVerification
             for verification_tx_hash in res.compute_verification_tx_hashes.clone() {
                 current_count += 1;
@@ -123,14 +124,13 @@ impl SQLRelayer {
             }
         }
 
-        // Example on how to read trust updates
         let trust_updates = self.db.read_from_end::<tx::Tx>(consts::TRUST_UPDATE, None).unwrap();
 
         for update in trust_updates {
             current_count += 1;
 
-            let (trust_update_key, trust_update_tx_with_hash) =
-                self.get_tx_with_hash(consts::TRUST_UPDATE, update.hash());
+            let trust_update_key = tx::Tx::construct_full_key(consts::TRUST_UPDATE, update.hash());
+            let trust_update_tx_with_hash = TxWithHash { tx: update.clone(), hash: update.hash() };
 
             let trust_update_key_str = String::from_utf8_lossy(&trust_update_key);
 
@@ -142,29 +142,20 @@ impl SQLRelayer {
             }
         }
 
-        let _seed_updates = self.db.read_from_end::<tx::Tx>(consts::SEED_UPDATE, None).unwrap();
+        let seed_updates = self.db.read_from_end::<tx::Tx>(consts::SEED_UPDATE, None).unwrap();
 
-        // disabled due
-        // called `Result::unwrap()` on an `Err` value: Custom("invalid string")
-        /*
-                for update in seed_updates {
-                    let seed_update_body = trust::SeedUpdate::decode(&mut update.body().as_slice()).unwrap();
+        for update in seed_updates {
+            current_count += 1;
 
-                    let (seed_update_key, seed_update_tx_with_hash) =
-                        self.get_tx_with_hash(tx::Kind::SeedUpdate, update.hash());
+            let seed_update_key = tx::Tx::construct_full_key(consts::SEED_UPDATE, update.hash());
+            let seed_update_tx_with_hash = TxWithHash { tx: update.clone(), hash: update.hash() };
 
-                    let decoded_data = serde_json::to_string(&seed_update_body)
-                        .expect("Failed to serialize trust_update_body");
-
-                    let seed_update_key_str = String::from_utf8_lossy(&seed_update_key);
-                    self.target_db
-                        .insert_events(
-                            &seed_update_key_str, &seed_update_tx_with_hash, &decoded_data,
-                        )
-                        .await
-                        .unwrap();
-                }
-        */
+            let seed_update_key_str = String::from_utf8_lossy(&seed_update_key);
+            self.target_db
+                .insert_events(&seed_update_key_str, &seed_update_tx_with_hash)
+                .await
+                .unwrap();
+        }
 
         if last_count < current_count {
             self.last_processed_keys.insert(dir.clone(), Some(current_count));

@@ -20,14 +20,14 @@ impl QueryRoot {
 
         let query = if let Some(ref hash) = hash {
             sqlx::query_as::<_, Event>(
-                "SELECT id, event_id, event_body, decoded_body, hash FROM events WHERE hash = $1 LIMIT $2 OFFSET $3"
+                "SELECT id, event_id, event_body, hash FROM events WHERE hash = $1 LIMIT $2 OFFSET $3"
             )
             .bind(hash)
             .bind(limit)
             .bind(offset)
         } else {
             sqlx::query_as::<_, Event>(
-                "SELECT id, event_id, event_body, decoded_body, hash FROM events LIMIT $1 OFFSET $2",
+                "SELECT id, event_id, event_body, hash FROM events LIMIT $1 OFFSET $2",
             )
             .bind(limit)
             .bind(offset)
@@ -44,7 +44,6 @@ pub struct Event {
     pub id: i32,
     pub event_id: String,
     pub event_body: Value,
-    pub decoded_body: Value,
     pub hash: String,
 }
 
