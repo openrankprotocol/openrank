@@ -85,7 +85,9 @@ impl Node {
         tokio::spawn(handle.stopped());
 
         // spawn a task to refresh the DB every 60 seconds
-        // NOTE: "60" seconds is just quick hack. I don't know how long it should be. Adjust it if you want.
+        //
+        // NOTE: "60" seconds is just quick hack.
+        //       Not sure how long it should be. Needs adjustment.
         let db_handler = self.db.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
@@ -94,6 +96,7 @@ impl Node {
                 if let Err(e) = db_handler.lock().await.refresh() {
                     error!("DB refresh error: {e:?}");
                 }
+                info!("DB refreshed");
             }
         });
 
