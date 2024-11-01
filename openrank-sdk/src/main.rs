@@ -11,7 +11,7 @@ use openrank_common::{
     result::GetResultsQuery,
     topics::Domain,
     tx::{
-        compute,
+        compute, consts,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
         Address, Body, Tx, TxHash,
     },
@@ -44,6 +44,12 @@ enum Method {
     /// The method takes a ComputeRequest TX hash and returns the computed results,
     /// and also checks the integrity/correctness of the results.
     GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
+    /// Get ComputeResult TXs
+    GetComputeResult { seq_number: String, config_path: String, output_path: Option<String> },
+    /// Get TXs included in ComputeResult
+    GetComputeResultTxs { seq_number: String, config_path: String, output_path: Option<String> },
+    /// Get arbitrary TX
+    GetTx { tx_id: String, config_path: String, output_path: Option<String> },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -205,11 +211,64 @@ async fn get_results(
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let seq_number = arg.parse::<u64>().unwrap();
-    let results_query = GetResultsQuery::new(seq_number, 0, config.sequencer.result_size);
+    let tx_hash_bytes = hex::decode(arg)?;
+    let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let results_query =
+        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
     let scores: (Vec<bool>, Vec<ScoreEntry>) =
         client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
+}
+
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
+async fn get_compute_result(
+    arg: String, config_path: &str,
+) -> Result<compute::Result, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let seq_number = arg.parse::<u64>().unwrap();
+    let result: compute::Result =
+        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
+    Ok(result)
+}
+
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
+async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx>, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let seq_number = arg.parse::<u64>().unwrap();
+    let result: compute::Result =
+        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
+
+    let mut txs_arg = Vec::new();
+    txs_arg.push((consts::COMPUTE_REQUEST, result.compute_request_tx_hash));
+    txs_arg.push((
+        consts::COMPUTE_COMMITMENT,
+        result.compute_commitment_tx_hash,
+    ));
+    for verification_tx_hash in result.compute_verification_tx_hashes {
+        txs_arg.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
+    }
+
+    let txs_res = client.request("sequencer_get_txs", vec![txs_arg]).await?;
+    Ok(txs_res)
+}
+
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the TX given a TX hash.
+async fn get_tx(arg: String, config_path: &str) -> Result<Tx, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let (prefix, tx_hash) = arg.split_once(':').ok_or("Failed to parse argument")?;
+    let tx_hash_bytes = hex::decode(tx_hash)?;
+    let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let tx: Tx = client.request("sequencer_get_tx", (prefix.to_string(), tx_hash)).await?;
+    Ok(tx)
 }
 
 /// Generates a new ECDSA keypair and returns the address and the private key.
@@ -311,6 +370,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let res = check_score_integrity(votes, results, &test_vector)?;
             println!("Integrity check result: {}", res);
             assert!(res);
+        },
+        Method::GetComputeResult { seq_number, config_path, output_path } => {
+            let res = get_compute_result(seq_number, &config_path).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::GetComputeResultTxs { seq_number, config_path, output_path } => {
+            let res = get_compute_result_txs(seq_number, &config_path).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::GetTx { tx_id, config_path, output_path } => {
+            let res = get_tx(tx_id, &config_path).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
         },
         Method::GenerateKeypair => {
             let rng = &mut thread_rng();

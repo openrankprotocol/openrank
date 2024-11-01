@@ -68,6 +68,17 @@ The scores will be compared against a predefined test vector with `TEST_VECTOR_P
 openrank-sdk get-results-and-check-integrity [ComputeRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
 ```
 
+Get Compute Results - Get ComputeResult object given its identifier:
+```
+openrank-sdk get_compute_result [ComputeRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
+```
+
+Get TX - Get arbitrary TX object given its kind and hash:
+```
+openrank-sdk get_tx [!kind]:[TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [TEST_VECTOR_PATH]
+```
+! - kind should be in format: "compute_request", "compute_commitment", etc.
+
 Where:
 
 `TRUST_DB_FILE_PATH` = Path to Trust DB file, a csv file with i,j,v header
