@@ -3,6 +3,7 @@ use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use block::{FinalisedBlock, ProposedBlock};
+use getset::Getters;
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{
     Error as EcdsaError, RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey,
@@ -101,15 +102,21 @@ impl Body {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
 #[rlp(trailing)]
 pub struct Tx {
+    #[getset(get = "pub")]
     nonce: u64,
+    #[getset(get = "pub")]
     from: Address,
+    #[getset(get = "pub")]
     // Use 0x0 for transactions intended to be processed by the network
     to: Address,
+    #[getset(skip)]
     body: Body,
+    #[getset(get = "pub")]
     signature: Signature,
+    #[getset(skip)]
     sequence_number: Option<u64>,
 }
 
@@ -123,26 +130,6 @@ impl Tx {
             signature: Signature::default(),
             sequence_number: None,
         }
-    }
-
-    pub fn body(&self) -> Body {
-        self.body.clone()
-    }
-
-    pub fn signature(&self) -> Signature {
-        self.signature.clone()
-    }
-
-    pub fn nonce(&self) -> u64 {
-        self.nonce
-    }
-
-    pub fn from(&self) -> Address {
-        self.from
-    }
-
-    pub fn to(&self) -> Address {
-        self.to
     }
 
     pub fn hash(&self) -> TxHash {
@@ -226,6 +213,10 @@ impl Tx {
     pub fn sequence_number(&self) -> u64 {
         self.sequence_number.unwrap_or_default()
     }
+
+    pub fn body(&self) -> Body {
+        self.body.clone()
+    }
 }
 
 impl DbItem for Tx {
@@ -270,21 +261,29 @@ impl TxHash {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Default,
+    RlpDecodable,
+    RlpEncodable,
+    Serialize,
+    Deserialize,
+    Getters,
 )]
 pub struct Signature {
+    #[getset(skip)]
     pub s: [u8; 32],
+    #[getset(skip)]
     pub r: [u8; 32],
+    #[getset(get = "pub")]
     r_id: u8,
 }
 
 impl Signature {
     pub fn new(s: [u8; 32], r: [u8; 32], r_id: u8) -> Self {
         Self { s, r, r_id }
-    }
-
-    pub fn r_id(&self) -> u8 {
-        self.r_id
     }
 }
 

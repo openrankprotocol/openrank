@@ -369,7 +369,7 @@ impl Node {
         for tx in txs {
             match tx.body() {
                 Body::TrustUpdate(trust_update) => {
-                    let namespace = trust_update.trust_id;
+                    let namespace = trust_update.trust_id.clone();
                     let domain = self
                         .config
                         .domains
@@ -381,7 +381,7 @@ impl Node {
                         .map_err(Error::Runner)?;
                 },
                 Body::SeedUpdate(seed_update) => {
-                    let namespace = seed_update.seed_id;
+                    let namespace = seed_update.seed_id.clone();
                     let domain = self
                         .config
                         .domains

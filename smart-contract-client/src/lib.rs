@@ -91,7 +91,7 @@ impl ComputeManagerClient {
                 let sig = Signature {
                     s: tx.signature().s.into(),
                     r: tx.signature().r.into(),
-                    r_id: tx.signature().r_id(),
+                    r_id: *tx.signature().r_id(),
                 };
                 contract
                     .submitComputeCommitment(
@@ -109,7 +109,7 @@ impl ComputeManagerClient {
                 let sig = Signature {
                     s: tx.signature().s.into(),
                     r: tx.signature().r.into(),
-                    r_id: tx.signature().r_id(),
+                    r_id: *tx.signature().r_id(),
                 };
                 contract
                     .submitComputeVerification(
