@@ -93,10 +93,14 @@ impl Node {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             loop {
                 interval.tick().await;
-                if let Err(e) = db_handler.lock().await.refresh() {
-                    error!("DB refresh error: {e:?}");
+                match db_handler.lock().await.refresh() {
+                    Ok(_) => {
+                        info!("DB refreshed");
+                    },
+                    Err(e) => {
+                        error!("DB refresh error: {e:?}");
+                    },
                 }
-                info!("DB refreshed");
             }
         });
 
