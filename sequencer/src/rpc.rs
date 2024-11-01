@@ -9,7 +9,9 @@ use openrank_common::tx::consts;
 use openrank_common::tx::{self, compute, trust::ScoreEntry, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::cmp::Ordering;
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 use tracing::error;
 
 #[rpc(server, namespace = "sequencer")]
@@ -44,11 +46,13 @@ pub trait Rpc {
 pub struct SequencerServer {
     sender: Sender<(Vec<u8>, Topic)>,
     whitelisted_users: Vec<Address>,
-    db: Db,
+    db: Arc<Mutex<Db>>,
 }
 
 impl SequencerServer {
-    pub fn new(sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>, db: Db) -> Self {
+    pub fn new(
+        sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>, db: Arc<Mutex<Db>>,
+    ) -> Self {
         Self { sender, whitelisted_users, db }
     }
 
@@ -173,13 +177,15 @@ impl RpcServer for SequencerServer {
     async fn get_results(
         &self, query: GetResultsQuery,
     ) -> Result<(Vec<bool>, Vec<ScoreEntry>), ErrorObjectOwned> {
-        self.db.refresh().map_err(|e| {
+        let db_handler = self.db.clone();
+        db_handler.lock().await.refresh().map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
 
-        let result_reference = self
-            .db
+        let result_reference = db_handler
+            .lock()
+            .await
             .get::<compute::ResultReference>(query.request_tx_hash.to_bytes())
             .map_err(|e| {
                 error!("{}", e);
@@ -187,7 +193,7 @@ impl RpcServer for SequencerServer {
             })?;
 
         let key = compute::Result::construct_full_key(result_reference.seq_number);
-        let result = self.db.get::<compute::Result>(key).map_err(|e| {
+        let result = db_handler.lock().await.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -195,7 +201,7 @@ impl RpcServer for SequencerServer {
             consts::COMPUTE_COMMITMENT,
             result.compute_commitment_tx_hash,
         );
-        let tx = self.db.get::<Tx>(key).map_err(|e| {
+        let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -207,7 +213,7 @@ impl RpcServer for SequencerServer {
             let mut create_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes.into_iter() {
                 let key = Tx::construct_full_key(consts::COMPUTE_SCORES, tx_hash);
-                let tx = self.db.get::<Tx>(key).map_err(|e| {
+                let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     ErrorObjectOwned::from(ErrorCode::InternalError)
                 })?;
@@ -253,7 +259,7 @@ impl RpcServer for SequencerServer {
             let mut verification_resutls_tx = Vec::new();
             for tx_hash in result.compute_verification_tx_hashes.iter() {
                 let key = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx_hash.clone());
-                let tx = self.db.get::<Tx>(key).map_err(|e| {
+                let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     ErrorObjectOwned::from(ErrorCode::InternalError)
                 })?;
@@ -282,13 +288,14 @@ impl RpcServer for SequencerServer {
     async fn get_compute_result(
         &self, seq_number: u64,
     ) -> Result<compute::Result, ErrorObjectOwned> {
-        self.db.refresh().map_err(|e| {
+        let db_handler = self.db.clone();
+        db_handler.lock().await.refresh().map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
 
         let key = compute::Result::construct_full_key(seq_number);
-        let result = self.db.get::<compute::Result>(key).map_err(|e| {
+        let result = db_handler.lock().await.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -298,13 +305,14 @@ impl RpcServer for SequencerServer {
 
     /// Fetch the TX given its `kind` and `tx_hash`
     async fn get_tx(&self, kind: String, tx_hash: tx::TxHash) -> Result<Tx, ErrorObjectOwned> {
-        self.db.refresh().map_err(|e| {
+        let db_handler = self.db.clone();
+        db_handler.lock().await.refresh().map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
 
         let key = Tx::construct_full_key(&kind, tx_hash);
-        let tx = self.db.get::<Tx>(key).map_err(|e| {
+        let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -314,7 +322,8 @@ impl RpcServer for SequencerServer {
 
     /// Fetch multiple TXs given an array of `keys`.
     async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned> {
-        self.db.refresh().map_err(|e| {
+        let db_handler = self.db.clone();
+        db_handler.lock().await.refresh().map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -324,7 +333,7 @@ impl RpcServer for SequencerServer {
             let full_key = Tx::construct_full_key(&kind, tx_hash);
             key_bytes.push(full_key);
         }
-        let txs = self.db.get_multi::<Tx>(key_bytes).map_err(|e| {
+        let txs = db_handler.lock().await.get_multi::<Tx>(key_bytes).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
