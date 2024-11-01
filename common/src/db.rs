@@ -112,6 +112,21 @@ impl Db {
         Ok(value)
     }
 
+    /// Gets multiple values from database.
+    pub fn get_multi<I: DbItem + DeserializeOwned>(
+        &self, keys: Vec<Vec<u8>>,
+    ) -> Result<Vec<I>, Error> {
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
+        let items = self.connection.batched_multi_get_cf(&cf, &keys, true);
+        let mut values = Vec::new();
+        for item_res in items {
+            let item = item_res.map_err(Error::RocksDB)?.ok_or(Error::NotFound)?;
+            let value = serde_json::from_slice(&item).map_err(Error::Serde)?;
+            values.push(value);
+        }
+        Ok(values)
+    }
+
     /// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
     pub fn read_from_end<I: DbItem + DeserializeOwned>(
         &self, prefix: &str, num_elements: Option<usize>,
@@ -164,5 +179,22 @@ mod test {
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);
+    }
+
+    #[test]
+    fn test_put_get_multi() {
+        let db = Db::new(&config_for_dir("test-pgm-storage"), &[&Tx::get_cf()]).unwrap();
+        let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
+        let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
+        let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
+        db.put(tx1.clone()).unwrap();
+        db.put(tx2.clone()).unwrap();
+        db.put(tx3.clone()).unwrap();
+
+        let key1 = Tx::construct_full_key(consts::COMPUTE_REQUEST, tx1.hash());
+        let key2 = Tx::construct_full_key(consts::COMPUTE_ASSIGNMENT, tx2.hash());
+        let key3 = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx3.hash());
+        let items = db.get_multi::<Tx>(vec![key1, key2, key3]).unwrap();
+        assert_eq!(vec![tx1, tx2, tx3], items);
     }
 }

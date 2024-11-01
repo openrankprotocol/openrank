@@ -27,6 +27,17 @@ pub trait Rpc {
     async fn get_results(
         &self, query: GetResultsQuery,
     ) -> Result<(Vec<bool>, Vec<ScoreEntry>), ErrorObjectOwned>;
+
+    #[method(name = "get_compute_result")]
+    async fn get_compute_result(
+        &self, seq_number: u64,
+    ) -> Result<compute::Result, ErrorObjectOwned>;
+
+    #[method(name = "get_tx")]
+    async fn get_tx(&self, kind: String, tx_hash: tx::TxHash) -> Result<Tx, ErrorObjectOwned>;
+
+    #[method(name = "get_txs")]
+    async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned>;
 }
 
 /// The Sequencer JsonRPC server. It contains the sender, the whitelisted users, and the database connection.
@@ -167,7 +178,15 @@ impl RpcServer for SequencerServer {
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
 
-        let key = compute::Result::construct_full_key(query.seq_number);
+        let result_reference = self
+            .db
+            .get::<compute::ResultReference>(query.request_tx_hash.to_bytes())
+            .map_err(|e| {
+                error!("{}", e);
+                ErrorObjectOwned::from(ErrorCode::InternalError)
+            })?;
+
+        let key = compute::Result::construct_full_key(result_reference.seq_number);
         let result = self.db.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
@@ -257,5 +276,59 @@ impl RpcServer for SequencerServer {
             verification_results.into_iter().map(|x| x.verification_result).collect();
 
         Ok((verification_results_bools, score_entries))
+    }
+
+    /// Fetch the ComputeResult TX by its sequence number
+    async fn get_compute_result(
+        &self, seq_number: u64,
+    ) -> Result<compute::Result, ErrorObjectOwned> {
+        self.db.refresh().map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        let key = compute::Result::construct_full_key(seq_number);
+        let result = self.db.get::<compute::Result>(key).map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        Ok(result)
+    }
+
+    /// Fetch the TX given its `kind` and `tx_hash`
+    async fn get_tx(&self, kind: String, tx_hash: tx::TxHash) -> Result<Tx, ErrorObjectOwned> {
+        self.db.refresh().map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        let key = Tx::construct_full_key(&kind, tx_hash);
+        let tx = self.db.get::<Tx>(key).map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        Ok(tx)
+    }
+
+    /// Fetch multiple TXs given an array of `keys`.
+    async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned> {
+        self.db.refresh().map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        let mut key_bytes = Vec::new();
+        for (kind, tx_hash) in keys {
+            let full_key = Tx::construct_full_key(&kind, tx_hash);
+            key_bytes.push(full_key);
+        }
+        let txs = self.db.get_multi::<Tx>(key_bytes).map_err(|e| {
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
+
+        Ok(txs)
     }
 }
