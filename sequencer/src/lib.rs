@@ -11,10 +11,13 @@ use openrank_common::{
 };
 use rpc::{RpcServer, SequencerServer};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 use tokio::{
     select,
-    sync::mpsc::{self, Receiver},
+    sync::{
+        mpsc::{self, Receiver},
+        Mutex,
+    },
 };
 use tracing::{error, info};
 
@@ -42,6 +45,7 @@ pub struct Node {
     config: Config,
     swarm: Swarm<MyBehaviour>,
     rpc: RpcModule<SequencerServer>,
+    db: Arc<Mutex<Db>>,
     receiver: Receiver<(Vec<u8>, Topic)>,
 }
 
@@ -59,13 +63,14 @@ impl Node {
             &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
         )?;
         let (sender, receiver) = mpsc::channel(100);
-        let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db);
+        let db = Arc::new(Mutex::new(db));
+        let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db.clone());
         let rpc = seq_server.into_rpc();
 
         let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, rpc, receiver })
+        Ok(Self { swarm, config, rpc, db, receiver })
     }
 
     /// Run the node:
@@ -78,6 +83,19 @@ impl Node {
         let server = Server::builder().build(self.config.rpc.address).await?;
         let handle = server.start(self.rpc.clone());
         tokio::spawn(handle.stopped());
+
+        // spawn a task to refresh the DB every 60 seconds
+        // NOTE: "60" seconds is just quick hack. I don't know how long it should be. Adjust it if you want.
+        let db_handler = self.db.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                if let Err(e) = db_handler.lock().await.refresh() {
+                    error!("DB refresh error: {e:?}");
+                }
+            }
+        });
 
         // Kick it off
         loop {
