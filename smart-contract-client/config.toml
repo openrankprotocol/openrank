@@ -1,7 +1,0 @@
-contract_address = "0x5d010a095c3d442490100d57f01ad203ece65a61"
-rpc_url = "https://rpc-amoy.polygon.technology/" # polygon amoy testnet
-chain_id = 80002
-
-[database]
-directory = "./local-storage"
-secondary = "./local-secondary-storage"
