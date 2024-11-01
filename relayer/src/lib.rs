@@ -64,6 +64,9 @@ impl SQLRelayer {
     }
 
     async fn index(&mut self) {
+        // Refresh secondary instance before starting
+        self.db.refresh().unwrap();
+
         let results = self.db.read_from_end::<compute::Result>("result", None).unwrap();
         let dir = self.db.get_config().secondary.expect("Secondary path missing");
         let last_count = self.last_processed_keys[dir.as_str()].unwrap_or(0);
