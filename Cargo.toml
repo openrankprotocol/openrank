@@ -8,6 +8,7 @@ members = [
     "da",
     "openrank-sdk",
     "verifier",
+    "relayer"
 ]
 
 [workspace.package]

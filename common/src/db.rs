@@ -59,6 +59,7 @@ impl Config {
 /// Wrapper for database connection.
 pub struct Db {
     connection: DB,
+    config: Config,
 }
 
 impl Db {
@@ -69,7 +70,11 @@ impl Db {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         let db = DB::open_cf(&opts, path, cfs).map_err(Error::RocksDB)?;
-        Ok(Self { connection: db })
+        Ok(Self { connection: db, config: config.clone() })
+    }
+
+    pub fn get_config(&self) -> Config {
+        self.config.clone()
     }
 
     /// Creates new read-only database connection, given info of local file path and column families.
@@ -77,7 +82,7 @@ impl Db {
         let path = &config.directory;
         let db = DB::open_cf_for_read_only(&Options::default(), path, cfs, false)
             .map_err(Error::RocksDB)?;
-        Ok(Self { connection: db })
+        Ok(Self { connection: db, config: config.clone() })
     }
 
     /// Creates new secondary database connection, given info of primary and secondary file paths and column families.
@@ -87,7 +92,7 @@ impl Db {
         let secondary_path = config.get_secondary()?;
         let db = DB::open_cf_as_secondary(&Options::default(), primary_path, secondary_path, cfs)
             .map_err(Error::RocksDB)?;
-        Ok(Self { connection: db })
+        Ok(Self { connection: db, config: config.clone() })
     }
 
     /// Refreshes secondary database connection, by catching up with primary database.
