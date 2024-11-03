@@ -1,0 +1,45 @@
+[package]
+name = "openrank-relayer"
+description = "OpenRank - Relayer"
+license.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+openrank-common = { path = "../common", version = "0.1.1" }
+futures = { workspace = true }
+libp2p = { workspace = true, features = [
+    "noise",
+    "ping",
+    "tcp",
+    "tokio",
+    "yamux",
+    "quic",
+    "gossipsub",
+    "macros",
+    "identify",
+] }
+tokio = { workspace = true, features = ["full", "macros"] }
+tokio-postgres = "0.7"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+rand = { workspace = true }
+alloy-rlp = { workspace = true }
+dotenv = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha3 = { workspace = true }
+k256 = { workspace = true }
+rocksdb = { workspace = true, features = ["multi-threaded-cf"] }
+postgres = { version = "0.19", features = ["with-serde_json-1"] }
+log = "0.4"
+env_logger = "0.10"
+warp = "0.3" # or actix-web?
+async-graphql = "5.0" # or juniper for GraphQL?
+sqlx = { version = "0.6", features = ["postgres", "runtime-tokio-native-tls"] }
+async-graphql-warp = "5.0"
+base64 = "0.22.1"
