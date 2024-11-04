@@ -9,7 +9,6 @@
       <sourceFolder url="file://$MODULE_DIR$/openrank-sdk/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sequencer/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/verifier/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/smart-contract-client/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />
