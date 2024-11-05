@@ -207,7 +207,7 @@ impl Node {
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 consts::COMPUTE_ASSIGNMENT,
-                                commitment.assignment_tx_hash,
+                                commitment.assignment_tx_hash.clone(),
                             );
                             let assignment_tx: Tx =
                                 self.db.get(assignment_tx_key).map_err(Error::Db)?;
@@ -230,7 +230,7 @@ impl Node {
                                 self.coordinator.add_job_result(&mut result);
                                 self.db.put(result.clone()).map_err(Error::Db)?;
                                 let reference = compute::ResultReference::new(
-                                    assignment_body.request_tx_hash,
+                                    assignment_body.request_tx_hash.clone(),
                                     result.seq_number.unwrap(),
                                 );
                                 self.db.put(reference).map_err(Error::Db)?;
@@ -274,7 +274,7 @@ impl Node {
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 consts::COMPUTE_ASSIGNMENT,
-                                compute_verification.assignment_tx_hash,
+                                compute_verification.assignment_tx_hash.clone(),
                             );
                             let assignment_tx: Tx =
                                 self.db.get(assignment_tx_key).map_err(Error::Db)?;

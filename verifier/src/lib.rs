@@ -137,7 +137,7 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::TrustUpdate(trust_update) = tx.body() {
+                        if let tx::Body::TrustUpdate(trust_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
@@ -345,13 +345,13 @@ impl Node {
         drop(seed_update_txs);
 
         // sort txs by sequence_number
-        txs.sort_unstable_by_key(|tx| tx.sequence_number());
+        txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
 
         // update verification runner
         for tx in txs {
             match tx.body() {
                 tx::Body::TrustUpdate(trust_update) => {
-                    let namespace = trust_update.trust_id;
+                    let namespace = trust_update.trust_id.clone();
                     let domain = self
                         .config
                         .domains
@@ -363,7 +363,7 @@ impl Node {
                         .map_err(Error::Runner)?;
                 },
                 tx::Body::SeedUpdate(seed_update) => {
-                    let namespace = seed_update.seed_id;
+                    let namespace = seed_update.seed_id.clone();
                     let domain = self
                         .config
                         .domains

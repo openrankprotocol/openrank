@@ -134,12 +134,10 @@ impl Decodable for TrustEntry {
 }
 
 #[derive(Getters)]
+#[getset(get = "pub")]
 pub struct AcceptedTrustUpdates {
-    #[get = "pub with_prefix"]
     sequence_number: u64,
-    #[getset(skip)]
     trust_update_tx_hashes: Vec<TxHash>,
-    #[getset(skip)]
     seed_update_tx_hashes: Vec<TxHash>,
 }
 
@@ -150,25 +148,14 @@ impl AcceptedTrustUpdates {
     ) -> Self {
         Self { sequence_number, trust_update_tx_hashes, seed_update_tx_hashes }
     }
-
-    pub fn get_trust_update_tx_hashes(&self) -> &Vec<TxHash> {
-        &self.trust_update_tx_hashes
-    }
-
-    pub fn get_seed_update_tx_hashes(&self) -> &Vec<TxHash> {
-        &self.seed_update_tx_hashes
-    }
 }
 
 #[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Assignment {
-    #[get = "pub with_prefix"]
     to_sequence: u64,
-    #[get = "pub with_prefix"]
     domain_id: DomainHash,
-    #[get = "pub with_prefix"]
     trust_builder: Address,
-    #[getset(skip)]
     trust_verifier: Vec<Address>,
 }
 
@@ -179,17 +166,12 @@ impl Assignment {
     ) -> Self {
         Self { to_sequence, domain_id, trust_builder, trust_verifier }
     }
-
-    pub fn get_trust_verifier(&self) -> &Vec<Address> {
-        &self.trust_verifier
-    }
 }
 
 #[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Commitment {
-    #[get = "pub with_prefix"]
     trust_assignment_tx_hash: TxHash,
-    #[get = "pub with_prefix"]
     root_hash: Hash,
 }
 
@@ -200,10 +182,9 @@ impl Commitment {
 }
 
 #[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Verification {
-    #[get = "pub with_prefix"]
     trust_commitment_tx_hash: TxHash,
-    #[get = "pub with_prefix"]
     verification_result: bool,
 }
 
@@ -214,12 +195,10 @@ impl Verification {
 }
 
 #[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Result {
-    #[get = "pub with_prefix"]
     trust_commitment_tx_hash: TxHash,
-    #[get = "pub with_prefix"]
     trust_verification_tx_hashes: Vec<TxHash>,
-    #[get = "pub with_prefix"]
     timestamp: u64,
 }
 

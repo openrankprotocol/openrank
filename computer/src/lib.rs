@@ -103,7 +103,7 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let Body::TrustUpdate(trust_update) = tx.body() {
+                        if let Body::TrustUpdate(trust_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
@@ -129,7 +129,7 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let Body::SeedUpdate(seed_update) = tx.body() {
+                        if let Body::SeedUpdate(seed_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
@@ -363,7 +363,7 @@ impl Node {
         drop(seed_update_txs);
 
         // sort txs by sequence_number
-        txs.sort_unstable_by_key(|tx| tx.sequence_number());
+        txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
 
         // update compute runner
         for tx in txs {

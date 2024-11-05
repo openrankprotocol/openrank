@@ -11,14 +11,12 @@ pub struct InclusionProof([u8; 32]);
 
 /// Transaction event which includes proof of inclusion and custom data.
 #[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct TxEvent {
-    #[getset(skip)]
     /// Block height of the DA layer, where the tx was included.
     block_number: u64,
-    #[getset(skip)]
     /// Proof of inclusion in the DA block.
     proof: InclusionProof,
-    #[getset(get = "pub")]
     /// Data of the transaction.
     data: Vec<u8>,
 }

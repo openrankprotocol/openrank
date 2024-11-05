@@ -93,7 +93,7 @@ impl SequencerServer {
             ));
         }
 
-        Ok((tx_bytes, tx.body()))
+        Ok((tx_bytes, tx.body().clone()))
     }
 }
 
@@ -199,7 +199,7 @@ impl RpcServer for SequencerServer {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
-        let commitment = match tx.body() {
+        let commitment = match tx.body().clone() {
             tx::Body::ComputeCommitment(commitment) => Ok(commitment),
             _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
         }?;
@@ -218,7 +218,7 @@ impl RpcServer for SequencerServer {
         let create_scores: Vec<compute::Scores> = {
             let mut create_scores = Vec::new();
             for tx in create_scores_tx.into_iter() {
-                let scores = match tx.body() {
+                let scores = match tx.body().clone() {
                     tx::Body::ComputeScores(scores) => Ok(scores),
                     _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
                 }?;
@@ -264,7 +264,7 @@ impl RpcServer for SequencerServer {
         let verification_results: Vec<compute::Verification> = {
             let mut verification_results = Vec::new();
             for tx in verificarion_results_tx.into_iter() {
-                let result = match tx.body() {
+                let result = match tx.body().clone() {
                     tx::Body::ComputeVerification(result) => Ok(result),
                     _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
                 }?;

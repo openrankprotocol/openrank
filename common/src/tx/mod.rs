@@ -104,19 +104,14 @@ impl Body {
 
 #[derive(Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
 #[rlp(trailing)]
+#[getset(get = "pub")]
 pub struct Tx {
-    #[getset(get = "pub")]
     nonce: u64,
-    #[getset(get = "pub")]
     from: Address,
-    #[getset(get = "pub")]
     // Use 0x0 for transactions intended to be processed by the network
     to: Address,
-    #[getset(skip)]
     body: Body,
-    #[getset(get = "pub")]
     signature: Signature,
-    #[getset(skip)]
     sequence_number: Option<u64>,
 }
 
@@ -210,12 +205,8 @@ impl Tx {
         self.sequence_number = Some(sequence_number);
     }
 
-    pub fn sequence_number(&self) -> u64 {
+    pub fn get_sequence_number(&self) -> u64 {
         self.sequence_number.unwrap_or_default()
-    }
-
-    pub fn body(&self) -> Body {
-        self.body.clone()
     }
 }
 
@@ -272,12 +263,10 @@ impl TxHash {
     Deserialize,
     Getters,
 )]
+#[getset(get = "pub")]
 pub struct Signature {
-    #[getset(skip)]
-    pub s: [u8; 32],
-    #[getset(skip)]
-    pub r: [u8; 32],
-    #[getset(get = "pub")]
+    s: [u8; 32],
+    r: [u8; 32],
     r_id: u8,
 }
 
