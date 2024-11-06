@@ -3,11 +3,11 @@ use sha3::{Digest, Keccak256};
 
 use super::DbItem;
 use crate::{
-    tx_event::TxEvent,
-    txs::{
+    tx::{
         compute::{Result, ResultReference},
         Tx,
     },
+    tx_event::TxEvent,
 };
 
 impl DbItem for TxEvent {
@@ -66,7 +66,7 @@ impl DbItem for Tx {
     }
 
     fn get_prefix(&self) -> String {
-        self.kind().into()
+        self.body().prefix().to_string()
     }
 }
 
@@ -75,15 +75,14 @@ mod test {
     use super::TxEvent;
     use crate::{
         db::DbItem,
-        txs::{compute, Kind, Tx},
+        tx::{self, compute, Tx},
     };
     use alloy_rlp::encode;
 
     #[test]
     fn test_tx_event_db_item() {
         let tx_event = TxEvent::default_with_data(encode(Tx::default_with(
-            Kind::ComputeRequest,
-            encode(compute::Request::default()),
+            tx::Body::ComputeRequest(compute::Request::default()),
         )));
 
         let key = tx_event.get_key();

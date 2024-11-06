@@ -7,3 +7,6 @@ secondary = "./local-secondary-storage"
 
 [p2p]
 listen_on = ["/ip4/0.0.0.0/udp/8000/quic-v1", "/ip4/0.0.0.0/tcp/8000"]
+
+[rpc]
+address = "127.0.0.1:60000"

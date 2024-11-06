@@ -5,7 +5,7 @@ use openrank_common::{
         Hash,
     },
     topics::{Domain, DomainHash},
-    txs::{
+    tx::{
         compute,
         trust::{ScoreEntry, TrustEntry},
         TxHash,
@@ -44,19 +44,16 @@ impl VerificationRunner {
         let mut compute_tree = HashMap::new();
         let mut active_assignments = HashMap::new();
         for domain in domains {
-            count.insert(domain.clone(), 0);
-            indices.insert(domain.clone(), HashMap::new());
-            local_trust.insert(domain.clone(), HashMap::new());
-            seed_trust.insert(domain.clone(), HashMap::new());
-            lt_sub_trees.insert(domain.clone(), HashMap::new());
-            lt_master_tree.insert(
-                domain.clone(),
-                DenseIncrementalMerkleTree::<Keccak256>::new(32),
-            );
-            compute_results.insert(domain.clone(), Vec::<f32>::new());
-            compute_scores.insert(domain.clone(), HashMap::new());
-            compute_tree.insert(domain.clone(), HashMap::new());
-            active_assignments.insert(domain.clone(), Vec::new());
+            count.insert(domain, 0);
+            indices.insert(domain, HashMap::new());
+            local_trust.insert(domain, HashMap::new());
+            seed_trust.insert(domain, HashMap::new());
+            lt_sub_trees.insert(domain, HashMap::new());
+            lt_master_tree.insert(domain, DenseIncrementalMerkleTree::<Keccak256>::new(32));
+            compute_results.insert(domain, Vec::<f32>::new());
+            compute_scores.insert(domain, HashMap::new());
+            compute_tree.insert(domain, HashMap::new());
+            active_assignments.insert(domain, Vec::new());
         }
         Self {
             count,

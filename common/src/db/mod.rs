@@ -61,6 +61,7 @@ impl Config {
 /// Wrapper for database connection.
 pub struct Db {
     connection: DB,
+    config: Config,
 }
 
 impl Db {
@@ -71,7 +72,11 @@ impl Db {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         let db = DB::open_cf(&opts, path, cfs).map_err(Error::RocksDB)?;
-        Ok(Self { connection: db })
+        Ok(Self { connection: db, config: config.clone() })
+    }
+
+    pub fn get_config(&self) -> Config {
+        self.config.clone()
     }
 
     /// Creates new read-only database connection, given info of local file path and column families.
@@ -79,7 +84,7 @@ impl Db {
         let path = &config.directory;
         let db = DB::open_cf_for_read_only(&Options::default(), path, cfs, false)
             .map_err(Error::RocksDB)?;
-        Ok(Self { connection: db })
+        Ok(Self { connection: db, config: config.clone() })
     }
 
     /// Creates new secondary database connection, given info of primary and secondary file paths and column families.
@@ -89,7 +94,7 @@ impl Db {
         let secondary_path = config.get_secondary()?;
         let db = DB::open_cf_as_secondary(&Options::default(), primary_path, secondary_path, cfs)
             .map_err(Error::RocksDB)?;
-        Ok(Self { connection: db })
+        Ok(Self { connection: db, config: config.clone() })
     }
 
     /// Refreshes secondary database connection, by catching up with primary database.
@@ -114,9 +119,24 @@ impl Db {
         Ok(value)
     }
 
+    /// Gets multiple values from database.
+    pub fn get_multi<I: DbItem + DeserializeOwned>(
+        &self, keys: Vec<Vec<u8>>,
+    ) -> Result<Vec<I>, Error> {
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
+        let items = self.connection.batched_multi_get_cf(&cf, &keys, true);
+        let mut values = Vec::new();
+        for item_res in items {
+            let item = item_res.map_err(Error::RocksDB)?.ok_or(Error::NotFound)?;
+            let value = serde_json::from_slice(&item).map_err(Error::Serde)?;
+            values.push(value);
+        }
+        Ok(values)
+    }
+
     /// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
     pub fn read_from_end<I: DbItem + DeserializeOwned>(
-        &self, prefix: String, num_elements: Option<usize>,
+        &self, prefix: &str, num_elements: Option<usize>,
     ) -> Result<Vec<I>, Error> {
         let num_elements = num_elements.unwrap_or(usize::MAX);
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
@@ -132,9 +152,8 @@ impl Db {
 
 #[cfg(test)]
 mod test {
-    use super::{Config, Db, DbItem};
-    use crate::txs::{compute, Kind, Tx};
-    use alloy_rlp::encode;
+    use crate::db::{Config, Db, DbItem};
+    use crate::tx::{compute, consts, Body, Tx};
 
     fn config_for_dir(directory: &str) -> Config {
         Config { directory: directory.to_string(), secondary: None }
@@ -143,9 +162,9 @@ mod test {
     #[test]
     fn test_put_get() {
         let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx = Tx::default_with(Kind::ComputeRequest, encode(compute::Request::default()));
+        let tx = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         db.put(tx.clone()).unwrap();
-        let key = Tx::construct_full_key(Kind::ComputeRequest, tx.hash());
+        let key = Tx::construct_full_key(consts::COMPUTE_REQUEST, tx.hash());
         let item = db.get::<Tx>(key).unwrap();
         assert_eq!(tx, item);
     }
@@ -153,25 +172,36 @@ mod test {
     #[test]
     fn test_read_from_end() {
         let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
-        let tx1 = Tx::default_with(Kind::ComputeRequest, encode(compute::Request::default()));
-        let tx2 = Tx::default_with(
-            Kind::ComputeAssignment,
-            encode(compute::Assignment::default()),
-        );
-        let tx3 = Tx::default_with(
-            Kind::ComputeVerification,
-            encode(compute::Verification::default()),
-        );
+        let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
+        let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
+        let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
         db.put(tx1.clone()).unwrap();
         db.put(tx2.clone()).unwrap();
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>(Kind::ComputeRequest.into(), Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>(Kind::ComputeAssignment.into(), Some(1)).unwrap();
-        let items3 = db.read_from_end::<Tx>(Kind::ComputeVerification.into(), Some(1)).unwrap();
+        let items1 = db.read_from_end::<Tx>(consts::COMPUTE_REQUEST, Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(consts::COMPUTE_ASSIGNMENT, Some(1)).unwrap();
+        let items3 = db.read_from_end::<Tx>(consts::COMPUTE_VERIFICATION, Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);
+    }
+
+    #[test]
+    fn test_put_get_multi() {
+        let db = Db::new(&config_for_dir("test-pgm-storage"), &[&Tx::get_cf()]).unwrap();
+        let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
+        let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
+        let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
+        db.put(tx1.clone()).unwrap();
+        db.put(tx2.clone()).unwrap();
+        db.put(tx3.clone()).unwrap();
+
+        let key1 = Tx::construct_full_key(consts::COMPUTE_REQUEST, tx1.hash());
+        let key2 = Tx::construct_full_key(consts::COMPUTE_ASSIGNMENT, tx2.hash());
+        let key3 = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx3.hash());
+        let items = db.get_multi::<Tx>(vec![key1, key2, key3]).unwrap();
+        assert_eq!(vec![tx1, tx2, tx3], items);
     }
 }
