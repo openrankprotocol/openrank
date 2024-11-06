@@ -20,11 +20,11 @@ impl JobCoordinator {
     /// Add a JobResult to memory and increase the counter in case
     /// it has not been seen before.
     pub fn add_job_result(&mut self, compute_result: &mut compute::Result) {
-        if compute_result.seq_number.is_none() {
+        if compute_result.seq_number().is_none() {
             compute_result.set_seq_number(self.count);
             self.count += 1;
         }
-        let seq_number = compute_result.seq_number.unwrap();
+        let seq_number = compute_result.seq_number().unwrap();
         self.job_results.insert(seq_number, compute_result.clone());
         if seq_number > self.count {
             self.count = seq_number;

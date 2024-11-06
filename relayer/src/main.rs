@@ -1,5 +1,6 @@
 use api::server::serve;
 use dotenv::dotenv;
+use getset::Getters;
 use openrank_common::{config, db};
 use openrank_relayer::{self, SQLRelayer};
 use serde::{Deserialize, Serialize};
@@ -8,10 +9,11 @@ use std::error::Error;
 
 pub mod api;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The configuration for the Relayer.
 pub struct Config {
-    pub database: db::Config,
+    database: db::Config,
 }
 
 #[tokio::main]

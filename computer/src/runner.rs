@@ -85,29 +85,29 @@ impl ComputeRunner {
             .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
-            let from_index = if let Some(i) = domain_indices.get(&entry.from) {
+            let from_index = if let Some(i) = domain_indices.get(entry.from()) {
                 *i
             } else {
                 let curr_count = *count;
-                domain_indices.insert(entry.from.clone(), curr_count);
+                domain_indices.insert(entry.from().clone(), curr_count);
                 *count += 1;
                 curr_count
             };
-            let to_index = if let Some(i) = domain_indices.get(&entry.to) {
+            let to_index = if let Some(i) = domain_indices.get(entry.to()) {
                 *i
             } else {
                 let curr_count = *count;
-                domain_indices.insert(entry.to.clone(), *count);
+                domain_indices.insert(entry.to().clone(), *count);
                 *count += 1;
                 curr_count
             };
-            lt.insert((from_index, to_index), entry.value);
+            lt.insert((from_index, to_index), *entry.value());
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
                 .get_mut(&from_index)
                 .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
-            let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
+            let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
             let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
@@ -143,11 +143,11 @@ impl ComputeRunner {
             .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
-            let index = if let Some(i) = domain_indices.get(&entry.id) {
+            let index = if let Some(i) = domain_indices.get(entry.id()) {
                 *i
             } else {
                 let curr_count = *count;
-                domain_indices.insert(entry.id.clone(), curr_count);
+                domain_indices.insert(entry.id().clone(), curr_count);
                 *count += 1;
                 curr_count
             };
@@ -157,11 +157,11 @@ impl ComputeRunner {
                 .get_mut(&index)
                 .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(index))?;
             let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
-            let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
+            let seed_hash = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
 
-            seed.insert(index, entry.value);
+            seed.insert(index, *entry.value());
         }
 
         Ok(())

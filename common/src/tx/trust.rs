@@ -40,10 +40,13 @@ impl FromHex for OwnedNamespace {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
+)]
+#[getset(get = "pub")]
 pub struct TrustUpdate {
-    pub trust_id: OwnedNamespace,
-    pub entries: Vec<TrustEntry>,
+    trust_id: OwnedNamespace,
+    entries: Vec<TrustEntry>,
 }
 
 impl TrustUpdate {
@@ -52,10 +55,13 @@ impl TrustUpdate {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
+)]
+#[getset(get = "pub")]
 pub struct SeedUpdate {
-    pub seed_id: OwnedNamespace,
-    pub entries: Vec<ScoreEntry>,
+    seed_id: OwnedNamespace,
+    entries: Vec<ScoreEntry>,
 }
 
 impl SeedUpdate {
@@ -64,10 +70,11 @@ impl SeedUpdate {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct ScoreEntry {
-    pub id: String,
-    pub value: f32,
+    id: String,
+    value: f32,
 }
 
 impl ScoreEntry {
@@ -97,11 +104,12 @@ impl Decodable for ScoreEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct TrustEntry {
-    pub from: String,
-    pub to: String,
-    pub value: f32,
+    from: String,
+    to: String,
+    value: f32,
 }
 
 impl TrustEntry {

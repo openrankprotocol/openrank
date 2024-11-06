@@ -29,7 +29,6 @@ use tx_event::TxEvent;
 pub struct MyBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
-    // pub identify: identify::Behaviour,
 }
 
 /// Builds a libp2p swarm with the custom behaviour.

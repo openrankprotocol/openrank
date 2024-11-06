@@ -113,7 +113,7 @@ impl RpcServer for SequencerServer {
         let tx_event = TxEvent::default_with_data(tx_bytes);
         let channel_message = (
             encode(tx_event.clone()),
-            Topic::NamespaceTrustUpdate(trust_update.trust_id),
+            Topic::NamespaceTrustUpdate(trust_update.trust_id().clone()),
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
@@ -136,7 +136,7 @@ impl RpcServer for SequencerServer {
         let tx_event = TxEvent::default_with_data(tx_bytes);
         let channel_message = (
             encode(tx_event.clone()),
-            Topic::NamespaceSeedUpdate(seed_update.seed_id),
+            Topic::NamespaceSeedUpdate(seed_update.seed_id().clone()),
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
@@ -159,7 +159,7 @@ impl RpcServer for SequencerServer {
         let tx_event = TxEvent::default_with_data(tx_bytes);
         let channel_message = (
             encode(tx_event.clone()),
-            Topic::DomainRequest(compute_request.domain_id),
+            Topic::DomainRequest(*compute_request.domain_id()),
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
@@ -180,20 +180,20 @@ impl RpcServer for SequencerServer {
 
         let result_reference = self
             .db
-            .get::<compute::ResultReference>(query.request_tx_hash.to_bytes())
+            .get::<compute::ResultReference>(query.request_tx_hash().to_bytes())
             .map_err(|e| {
                 error!("{}", e);
                 ErrorObjectOwned::from(ErrorCode::InternalError)
             })?;
 
-        let key = compute::Result::construct_full_key(result_reference.seq_number);
+        let key = compute::Result::construct_full_key(*result_reference.seq_number());
         let result = self.db.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
         let key = Tx::construct_full_key(
             consts::COMPUTE_COMMITMENT,
-            result.compute_commitment_tx_hash,
+            result.compute_commitment_tx_hash().clone(),
         );
         let tx = self.db.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
@@ -205,8 +205,8 @@ impl RpcServer for SequencerServer {
         }?;
         let create_scores_tx: Vec<Tx> = {
             let mut create_scores_tx = Vec::new();
-            for tx_hash in commitment.scores_tx_hashes.into_iter() {
-                let key = Tx::construct_full_key(consts::COMPUTE_SCORES, tx_hash);
+            for tx_hash in commitment.scores_tx_hashes().iter() {
+                let key = Tx::construct_full_key(consts::COMPUTE_SCORES, tx_hash.clone());
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     ErrorObjectOwned::from(ErrorCode::InternalError)
@@ -227,13 +227,13 @@ impl RpcServer for SequencerServer {
             create_scores
         };
         let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().flat_map(|x| x.entries).collect();
-        score_entries.sort_by(|a, b| match a.value.partial_cmp(&b.value) {
+            create_scores.into_iter().flat_map(|x| x.entries().clone()).collect();
+        score_entries.sort_by(|a, b| match a.value().partial_cmp(b.value()) {
             Some(ordering) => ordering,
             None => {
-                if a.value.is_nan() && b.value.is_nan() {
+                if a.value().is_nan() && b.value().is_nan() {
                     Ordering::Equal
-                } else if a.value.is_nan() {
+                } else if a.value().is_nan() {
                     Ordering::Greater
                 } else {
                     Ordering::Less
@@ -242,16 +242,16 @@ impl RpcServer for SequencerServer {
         });
         score_entries.reverse();
         let score_entries: Vec<ScoreEntry> = score_entries
-            .split_at(query.start as usize)
+            .split_at(*query.start() as usize)
             .1
             .iter()
-            .take(query.size as usize)
+            .take(*query.size() as usize)
             .cloned()
             .collect();
 
         let verificarion_results_tx: Vec<Tx> = {
             let mut verification_resutls_tx = Vec::new();
-            for tx_hash in result.compute_verification_tx_hashes.iter() {
+            for tx_hash in result.compute_verification_tx_hashes().iter() {
                 let key = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx_hash.clone());
                 let tx = self.db.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
@@ -273,7 +273,7 @@ impl RpcServer for SequencerServer {
             verification_results
         };
         let verification_results_bools: Vec<bool> =
-            verification_results.into_iter().map(|x| x.verification_result).collect();
+            verification_results.into_iter().map(|x| *x.verification_result()).collect();
 
         Ok((verification_results_bools, score_entries))
     }

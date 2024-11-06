@@ -2,6 +2,7 @@ use alloy_rlp::Decodable;
 use coordinator::JobCoordinator;
 use dotenv::dotenv;
 use futures::StreamExt;
+use getset::Getters;
 use k256::ecdsa;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
@@ -52,26 +53,28 @@ impl Display for Error {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The whitelist for the Block Builder.
-pub struct Whitelist {
+struct Whitelist {
     /// The list of addresses that are allowed to be computers.
-    pub computer: Vec<Address>,
+    computer: Vec<Address>,
     /// The list of addresses that are allowed to be verifiers.
-    pub verifier: Vec<Address>,
+    verifier: Vec<Address>,
     /// The list of addresses that are allowed to broadcast transactions.
-    pub users: Vec<Address>,
+    users: Vec<Address>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The configuration for the Block Builder.
-pub struct Config {
+struct Config {
     /// The list of domains to process ComputeRequest TXs for.
-    pub domains: Vec<Domain>,
+    domains: Vec<Domain>,
     /// The whitelist for the Block Builder.
-    pub whitelist: Whitelist,
-    pub database: db::Config,
-    pub p2p: net::Config,
+    whitelist: Whitelist,
+    database: db::Config,
+    p2p: net::Config,
 }
 
 /// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the ComputeRunner.
@@ -105,7 +108,7 @@ impl Node {
             &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
         )?;
 
-        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         let coordinator = JobCoordinator::new();
@@ -172,7 +175,7 @@ impl Node {
                             assert!(self.config.whitelist.users.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            assert_eq!(&compute_request.domain_id, domain_id);
+                            assert_eq!(compute_request.domain_id(), domain_id);
 
                             let assignment_topic = Topic::DomainAssignent(*domain_id);
                             let computer = self.config.whitelist.computer[0];
@@ -207,7 +210,7 @@ impl Node {
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 consts::COMPUTE_ASSIGNMENT,
-                                commitment.assignment_tx_hash.clone(),
+                                commitment.assignment_tx_hash().clone(),
                             );
                             let assignment_tx: Tx =
                                 self.db.get(assignment_tx_key).map_err(Error::Db)?;
@@ -217,12 +220,12 @@ impl Node {
                             };
                             let request_tx_key = Tx::construct_full_key(
                                 consts::COMPUTE_REQUEST,
-                                assignment_body.request_tx_hash.clone(),
+                                assignment_body.request_tx_hash().clone(),
                             );
                             let request: Tx = self.db.get(request_tx_key).map_err(Error::Db)?;
                             if let Err(db::Error::NotFound) =
                                 self.db.get::<compute::ResultReference>(
-                                    assignment_body.request_tx_hash.0.to_vec(),
+                                    assignment_body.request_tx_hash().0.to_vec(),
                                 )
                             {
                                 let mut result =
@@ -230,8 +233,8 @@ impl Node {
                                 self.coordinator.add_job_result(&mut result);
                                 self.db.put(result.clone()).map_err(Error::Db)?;
                                 let reference = compute::ResultReference::new(
-                                    assignment_body.request_tx_hash.clone(),
-                                    result.seq_number.unwrap(),
+                                    assignment_body.request_tx_hash().clone(),
+                                    result.seq_number().unwrap(),
                                 );
                                 self.db.put(reference).map_err(Error::Db)?;
                             }
@@ -274,7 +277,7 @@ impl Node {
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 consts::COMPUTE_ASSIGNMENT,
-                                compute_verification.assignment_tx_hash.clone(),
+                                compute_verification.assignment_tx_hash().clone(),
                             );
                             let assignment_tx: Tx =
                                 self.db.get(assignment_tx_key).map_err(Error::Db)?;
@@ -284,13 +287,13 @@ impl Node {
                             };
                             let result_reference: compute::ResultReference = self
                                 .db
-                                .get(assignment_body.request_tx_hash.0.to_vec())
+                                .get(assignment_body.request_tx_hash().0.to_vec())
                                 .map_err(Error::Db)?;
                             let compute_result_key =
-                                compute::Result::construct_full_key(result_reference.seq_number);
+                                compute::Result::construct_full_key(*result_reference.seq_number());
                             let mut result: compute::Result =
                                 self.db.get(compute_result_key).map_err(Error::Db)?;
-                            result.compute_verification_tx_hashes.push(tx.hash());
+                            result.append_verification_tx_hash(tx.hash());
                             self.coordinator.add_job_result(&mut result);
                             self.db.put(result).map_err(Error::Db)?;
                             info!(
@@ -325,7 +328,7 @@ impl Node {
     /// - Handles gossipsub events.
     /// - Handles mDNS events.
     pub async fn run(&mut self) -> Result<(), Box<dyn StdError>> {
-        net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
+        net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
 
         let topics_trust_updates: Vec<Topic> = self
             .config

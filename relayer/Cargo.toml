@@ -43,3 +43,4 @@ async-graphql = "5.0" # or juniper for GraphQL?
 sqlx = { version = "0.6", features = ["postgres", "runtime-tokio-native-tls"] }
 async-graphql-warp = "5.0"
 base64 = "0.22.1"
+getset = { workspace = true }

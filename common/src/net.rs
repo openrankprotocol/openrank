@@ -1,3 +1,4 @@
+use getset::Getters;
 use libp2p::core::transport::ListenerId;
 use libp2p::identity::{DecodingError, Keypair};
 use libp2p::{swarm, Swarm, TransportError};
@@ -23,24 +24,27 @@ pub enum Error {
 }
 
 /// Rpc configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct RpcConfig {
-    pub address: SocketAddr,
+    address: SocketAddr,
 }
 
 /// Network configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct Config {
-    pub listen_on: Vec<String>,
-    pub keypair: Option<KeypairConfig>,
+    listen_on: Vec<String>,
+    keypair: Option<KeypairConfig>,
 }
 
 /// P2P keypair configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct KeypairConfig {
     /// Filename of the keypair.  Either absolute or relative to the config directory.
     /// The file contains binary protobuf representation of the keypair.
-    pub file: Option<String>,
+    file: Option<String>,
 }
 
 /// Default P2P keypair filename.

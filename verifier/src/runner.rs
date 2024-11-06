@@ -96,29 +96,29 @@ impl VerificationRunner {
             .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
-            let from_index = if let Some(i) = domain_indices.get(&entry.from) {
+            let from_index = if let Some(i) = domain_indices.get(entry.from()) {
                 *i
             } else {
                 let curr_count = *count;
-                domain_indices.insert(entry.from.clone(), curr_count);
+                domain_indices.insert(entry.from().clone(), curr_count);
                 *count += 1;
                 curr_count
             };
-            let to_index = if let Some(i) = domain_indices.get(&entry.to) {
+            let to_index = if let Some(i) = domain_indices.get(entry.to()) {
                 *i
             } else {
                 let curr_count = *count;
-                domain_indices.insert(entry.to.clone(), curr_count);
+                domain_indices.insert(entry.to().clone(), curr_count);
                 *count += 1;
                 curr_count
             };
-            lt.insert((from_index, to_index), entry.value);
+            lt.insert((from_index, to_index), *entry.value());
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
                 .get_mut(&from_index)
                 .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
-            let leaf = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
+            let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
             let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
@@ -154,11 +154,11 @@ impl VerificationRunner {
             .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
-            let index = if let Some(i) = domain_indices.get(&entry.id) {
+            let index = if let Some(i) = domain_indices.get(entry.id()) {
                 *i
             } else {
                 let curr_count = *count;
-                domain_indices.insert(entry.id.clone(), curr_count);
+                domain_indices.insert(entry.id().clone(), curr_count);
                 *count += 1;
                 curr_count
             };
@@ -168,11 +168,11 @@ impl VerificationRunner {
                 .get_mut(&index)
                 .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(index))?;
             let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
-            let seed_hash = hash_leaf::<Keccak256>(entry.value.to_be_bytes().to_vec());
+            let seed_hash = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
 
-            seed.insert(index, entry.value);
+            seed.insert(index, *entry.value());
         }
 
         Ok(())
@@ -186,8 +186,8 @@ impl VerificationRunner {
             .compute_scores
             .get(&domain.clone().to_hash())
             .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
-        for score_tx in commitment.scores_tx_hashes {
-            let res = compute_scores_txs.contains_key(&score_tx);
+        for score_tx in commitment.scores_tx_hashes() {
+            let res = compute_scores_txs.contains_key(score_tx);
             if !res {
                 return Ok(false);
             }
@@ -211,8 +211,8 @@ impl VerificationRunner {
                     self.check_scores_tx_hashes(domain.clone(), commitment.clone())?;
                 if is_check_score_tx_hashes {
                     let assgn_tx = assignment_id.clone();
-                    let lt_root = commitment.lt_root_hash.clone();
-                    let cp_root = commitment.compute_root_hash.clone();
+                    let lt_root = commitment.lt_root_hash().clone();
+                    let cp_root = commitment.compute_root_hash().clone();
 
                     self.create_compute_tree(domain.clone(), assignment_id.clone())?;
                     let (res_lt_root, res_compute_root) =
@@ -261,7 +261,7 @@ impl VerificationRunner {
 
     /// Add a new commitment of certain assignment
     pub fn update_commitment(&mut self, commitment: compute::Commitment) {
-        self.commitments.insert(commitment.assignment_tx_hash.clone(), commitment.clone());
+        self.commitments.insert(commitment.assignment_tx_hash().clone(), commitment.clone());
     }
 
     /// Build the compute tree of certain assignment, for certain domain.
@@ -282,7 +282,7 @@ impl VerificationRunner {
             .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
         let scores: Vec<&compute::Scores> = {
             let mut scores = Vec::new();
-            for tx_hash in commitment.scores_tx_hashes.iter() {
+            for tx_hash in commitment.scores_tx_hashes().iter() {
                 scores.push(
                     compute_scores
                         .get(tx_hash)
@@ -292,7 +292,7 @@ impl VerificationRunner {
             scores
         };
         let score_entries: Vec<f32> =
-            scores.iter().flat_map(|cs| cs.entries.clone()).map(|x| x.value).collect();
+            scores.iter().flat_map(|cs| cs.entries().clone()).map(|x| *x.value()).collect();
         let score_hashes: Vec<Hash> = score_entries
             .iter()
             .map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
@@ -328,7 +328,7 @@ impl VerificationRunner {
             .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
         let scores: Vec<&compute::Scores> = {
             let mut scores = Vec::new();
-            for tx_hash in commitment.scores_tx_hashes.iter() {
+            for tx_hash in commitment.scores_tx_hashes().iter() {
                 scores.push(
                     compute_scores
                         .get(tx_hash)
@@ -339,14 +339,14 @@ impl VerificationRunner {
         };
         let score_entries: HashMap<u64, f32> = {
             let score_entries_vec: Vec<ScoreEntry> =
-                scores.iter().flat_map(|cs| cs.entries.clone()).collect();
+                scores.iter().flat_map(|cs| cs.entries().clone()).collect();
 
             let mut score_entries_map: HashMap<u64, f32> = HashMap::new();
             for entry in score_entries_vec {
                 let i = domain_indices
-                    .get(&entry.id)
-                    .ok_or(Error::DomainIndexNotFound(entry.id.clone()))?;
-                score_entries_map.insert(*i, entry.value);
+                    .get(entry.id())
+                    .ok_or(Error::DomainIndexNotFound(entry.id().clone()))?;
+                score_entries_map.insert(*i, *entry.value());
             }
             score_entries_map
         };
