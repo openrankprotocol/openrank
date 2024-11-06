@@ -1,5 +1,5 @@
 use crate::tx::{trust::ScoreEntry, Address, TxHash};
-use crate::{db::DbItem, merkle::Hash, topics::DomainHash};
+use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 
@@ -117,20 +117,6 @@ impl Result {
     }
 }
 
-impl DbItem for Result {
-    fn get_key(&self) -> Vec<u8> {
-        self.seq_number.unwrap().to_be_bytes().to_vec()
-    }
-
-    fn get_cf() -> String {
-        "metadata".to_string()
-    }
-
-    fn get_prefix(&self) -> String {
-        "result".to_string()
-    }
-}
-
 /// Object connecting the sequence number with the original compute request
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
 pub struct ResultReference {
@@ -143,19 +129,5 @@ pub struct ResultReference {
 impl ResultReference {
     pub fn new(compute_request_tx_hash: TxHash, seq_number: u64) -> Self {
         Self { compute_request_tx_hash, seq_number }
-    }
-}
-
-impl DbItem for ResultReference {
-    fn get_key(&self) -> Vec<u8> {
-        self.compute_request_tx_hash.0.to_vec()
-    }
-
-    fn get_prefix(&self) -> String {
-        String::new()
-    }
-
-    fn get_cf() -> String {
-        "result_reference".to_string()
     }
 }

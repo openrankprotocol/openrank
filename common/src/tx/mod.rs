@@ -1,4 +1,3 @@
-use crate::db::DbItem;
 use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
@@ -225,20 +224,6 @@ impl Tx {
 
     pub fn sequence_number(&self) -> u64 {
         self.sequence_number.unwrap_or_default()
-    }
-}
-
-impl DbItem for Tx {
-    fn get_key(&self) -> Vec<u8> {
-        self.hash().0.to_vec()
-    }
-
-    fn get_cf() -> String {
-        "tx".to_string()
-    }
-
-    fn get_prefix(&self) -> String {
-        self.body.prefix().to_string()
     }
 }
 
