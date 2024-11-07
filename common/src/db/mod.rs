@@ -5,6 +5,8 @@ use serde_json::{self, to_vec};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+mod items;
+
 #[derive(Debug)]
 /// Errors that can arise while using database.
 pub enum Error {
