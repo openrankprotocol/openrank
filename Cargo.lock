@@ -4300,7 +4300,6 @@ dependencies = [
  "dotenv",
  "env_logger",
  "futures",
- "getset",
  "k256",
  "libp2p",
  "log",
