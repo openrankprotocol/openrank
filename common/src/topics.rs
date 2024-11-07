@@ -1,5 +1,6 @@
 use crate::tx::{consts, trust::OwnedNamespace, Address};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use getset::Getters;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -28,6 +29,11 @@ impl DomainHash {
     pub fn to_hex(self) -> String {
         hex::encode(self.0.to_be_bytes())
     }
+
+    /// Get the inner value of the hash.
+    pub fn inner(self) -> u64 {
+        self.0
+    }
 }
 
 impl FromHex for DomainHash {
@@ -45,7 +51,8 @@ impl From<u64> for DomainHash {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// Domain of the openrank network. Consists of a trust namespace and a seed namespace + algorithm id.
 pub struct Domain {
     /// Address of the trust namespace owner.

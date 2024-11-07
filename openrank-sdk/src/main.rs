@@ -2,6 +2,7 @@ use alloy_rlp::encode;
 use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
+use getset::Getters;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
 use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
 use openrank_common::{
@@ -65,29 +66,33 @@ struct Args {
     method: Method,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The configuration for the Sequencer.
 pub struct Sequencer {
     endpoint: String,
     result_size: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The configuration for the SDK.
 pub struct Config {
     /// The domain to be updated.
-    pub domain: Domain,
+    domain: Domain,
     /// The Sequencer configuration. It contains the endpoint of the Sequencer.
-    pub sequencer: Sequencer,
+    sequencer: Sequencer,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 struct ComputeRequestResult {
     compute_tx_hash: TxHash,
     tx_event: TxEvent,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 struct ComputeResults {
     votes: Vec<bool>,
     scores: Vec<ScoreEntry>,
@@ -245,13 +250,16 @@ async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx
         client.request("sequencer_get_compute_result", vec![seq_number]).await?;
 
     let mut txs_arg = Vec::new();
-    txs_arg.push((consts::COMPUTE_REQUEST, result.compute_request_tx_hash));
+    txs_arg.push((
+        consts::COMPUTE_REQUEST,
+        result.compute_request_tx_hash().clone(),
+    ));
     txs_arg.push((
         consts::COMPUTE_COMMITMENT,
-        result.compute_commitment_tx_hash,
+        result.compute_commitment_tx_hash().clone(),
     ));
-    for verification_tx_hash in result.compute_verification_tx_hashes {
-        txs_arg.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
+    for verification_tx_hash in result.compute_verification_tx_hashes() {
+        txs_arg.push((consts::COMPUTE_VERIFICATION, verification_tx_hash.clone()));
     }
 
     let txs_res = client.request("sequencer_get_txs", vec![txs_arg]).await?;
@@ -294,12 +302,12 @@ fn check_score_integrity(
 
     let mut test_map = HashMap::new();
     for score in test_vector {
-        test_map.insert(score.id, score.value);
+        test_map.insert(score.id().clone(), *score.value());
     }
 
     let mut score_map = HashMap::new();
     for score in scores {
-        score_map.insert(score.id, score.value);
+        score_map.insert(score.id().clone(), *score.value());
     }
 
     let is_converged = is_converged_org(&test_map, &score_map);
@@ -348,7 +356,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Method::ComputeRequest { path, output_path } => {
             let secret_key = get_secret_key()?;
             let res = compute_request(secret_key, path.as_str()).await?;
-            let hex_encoded_tx_hash = hex::encode(res.compute_tx_hash.0);
+            let hex_encoded_tx_hash = hex::encode(res.compute_tx_hash.inner());
             println!("{}", hex_encoded_tx_hash);
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
@@ -359,7 +367,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             println!("votes: {:?}", votes);
             for res in &scores {
-                println!("{}: {}", res.id, res.value);
+                println!("{}: {}", res.id().clone(), *res.value());
             }
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, scores)?;

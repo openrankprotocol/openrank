@@ -1,4 +1,5 @@
 use futures::StreamExt;
+use getset::Getters;
 use jsonrpsee::{server::Server, RpcModule};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
@@ -23,23 +24,27 @@ use tracing::{error, info};
 
 mod rpc;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The whitelist for the Sequencer.
-pub struct Whitelist {
+struct Whitelist {
     /// The list of addresses that are allowed to call the Sequencer.
-    pub users: Vec<Address>,
+    users: Vec<Address>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The configuration for the Sequencer.
-pub struct Config {
+struct Config {
     /// The whitelist for the Sequencer.
-    pub whitelist: Whitelist,
-    pub database: db::Config,
-    pub p2p: net::Config,
-    pub rpc: net::RpcConfig,
+    whitelist: Whitelist,
+    database: db::Config,
+    p2p: net::Config,
+    rpc: net::RpcConfig,
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 /// The Sequencer node. It contains the Swarm, the Server, and the Receiver.
 pub struct Node {
     config: Config,
@@ -67,7 +72,7 @@ impl Node {
         let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db.clone());
         let rpc = seq_server.into_rpc();
 
-        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         Ok(Self { swarm, config, rpc, db, receiver })
@@ -79,8 +84,8 @@ impl Node {
     /// - Handle gossipsub events
     /// - Handle mDNS events
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
-        let server = Server::builder().build(self.config.rpc.address).await?;
+        net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
+        let server = Server::builder().build(self.config.rpc().address()).await?;
         let handle = server.start(self.rpc.clone());
         tokio::spawn(handle.stopped());
 
@@ -112,7 +117,7 @@ impl Node {
                         let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
                         info!("PUBLISH: {:?}", topic.clone());
                         if let Err(e) =
-                           self.swarm.behaviour_mut().gossipsub.publish(topic_wrapper, data)
+                           self.swarm.behaviour_mut().gossipsub_publish(topic_wrapper, data)
                         {
                            error!("Publish error: {e:?}");
                         }
@@ -122,13 +127,13 @@ impl Node {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discovered a new peer: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_add_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discover peer has expired: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_remove_peer(&peer_id);
                         }
                     },
                     SwarmEvent::NewListenAddr { address, .. } => {

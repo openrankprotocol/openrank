@@ -3,6 +3,7 @@ use crate::{merkle::Hash, topics::DomainHash};
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use core::result::Result as CoreResult;
+use getset::Getters;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -10,7 +11,7 @@ use std::io::Read;
 #[derive(
     Debug, Clone, Hash, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
-pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 24]);
+pub struct OwnedNamespace(#[serde(with = "hex")] [u8; 24]);
 
 impl OwnedNamespace {
     pub fn new(owner: Address, id: u32) -> Self {
@@ -29,6 +30,10 @@ impl OwnedNamespace {
         bytes.copy_from_slice(&self.0[..20]);
         Address::from_slice(&bytes)
     }
+
+    pub fn inner(&self) -> &[u8; 24] {
+        &self.0
+    }
 }
 
 impl FromHex for OwnedNamespace {
@@ -39,10 +44,13 @@ impl FromHex for OwnedNamespace {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
+)]
+#[getset(get = "pub")]
 pub struct TrustUpdate {
-    pub trust_id: OwnedNamespace,
-    pub entries: Vec<TrustEntry>,
+    trust_id: OwnedNamespace,
+    entries: Vec<TrustEntry>,
 }
 
 impl TrustUpdate {
@@ -51,10 +59,13 @@ impl TrustUpdate {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
+)]
+#[getset(get = "pub")]
 pub struct SeedUpdate {
-    pub seed_id: OwnedNamespace,
-    pub entries: Vec<ScoreEntry>,
+    seed_id: OwnedNamespace,
+    entries: Vec<ScoreEntry>,
 }
 
 impl SeedUpdate {
@@ -63,10 +74,11 @@ impl SeedUpdate {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct ScoreEntry {
-    pub id: String,
-    pub value: f32,
+    id: String,
+    value: f32,
 }
 
 impl ScoreEntry {
@@ -96,11 +108,12 @@ impl Decodable for ScoreEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct TrustEntry {
-    pub from: String,
-    pub to: String,
-    pub value: f32,
+    from: String,
+    to: String,
+    value: f32,
 }
 
 impl TrustEntry {
@@ -132,6 +145,8 @@ impl Decodable for TrustEntry {
     }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct AcceptedTrustUpdates {
     sequence_number: u64,
     trust_update_tx_hashes: Vec<TxHash>,
@@ -145,20 +160,10 @@ impl AcceptedTrustUpdates {
     ) -> Self {
         Self { sequence_number, trust_update_tx_hashes, seed_update_tx_hashes }
     }
-
-    pub fn get_sequence_number(&self) -> u64 {
-        self.sequence_number
-    }
-
-    pub fn get_trust_update_tx_hashes(&self) -> &Vec<TxHash> {
-        &self.trust_update_tx_hashes
-    }
-
-    pub fn get_seed_update_tx_hashes(&self) -> &Vec<TxHash> {
-        &self.seed_update_tx_hashes
-    }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Assignment {
     to_sequence: u64,
     domain_id: DomainHash,
@@ -173,24 +178,10 @@ impl Assignment {
     ) -> Self {
         Self { to_sequence, domain_id, trust_builder, trust_verifier }
     }
-
-    pub fn get_to_sequence(&self) -> u64 {
-        self.to_sequence
-    }
-
-    pub fn get_domain_id(&self) -> DomainHash {
-        self.domain_id
-    }
-
-    pub fn get_trust_builder(&self) -> Address {
-        self.trust_builder
-    }
-
-    pub fn get_trust_verifier(&self) -> &Vec<Address> {
-        &self.trust_verifier
-    }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Commitment {
     trust_assignment_tx_hash: TxHash,
     root_hash: Hash,
@@ -200,16 +191,10 @@ impl Commitment {
     pub fn new(trust_assignment_tx_hash: TxHash, root_hash: Hash) -> Self {
         Self { trust_assignment_tx_hash, root_hash }
     }
-
-    pub fn get_trust_assignment_tx_hash(&self) -> TxHash {
-        self.trust_assignment_tx_hash.clone()
-    }
-
-    pub fn get_root_hash(&self) -> Hash {
-        self.root_hash.clone()
-    }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Verification {
     trust_commitment_tx_hash: TxHash,
     verification_result: bool,
@@ -219,16 +204,10 @@ impl Verification {
     pub fn new(trust_commitment_tx_hash: TxHash, verification_result: bool) -> Self {
         Self { trust_commitment_tx_hash, verification_result }
     }
-
-    pub fn get_trust_commitment_tx_hash(&self) -> TxHash {
-        self.trust_commitment_tx_hash.clone()
-    }
-
-    pub fn get_verification_result(&self) -> bool {
-        self.verification_result
-    }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Result {
     trust_commitment_tx_hash: TxHash,
     trust_verification_tx_hashes: Vec<TxHash>,
@@ -240,17 +219,5 @@ impl Result {
         trust_commitment_tx_hash: TxHash, trust_verification_tx_hashes: Vec<TxHash>, timestamp: u64,
     ) -> Self {
         Self { trust_commitment_tx_hash, trust_verification_tx_hashes, timestamp }
-    }
-
-    pub fn get_trust_commitment_tx_hash(&self) -> TxHash {
-        self.trust_commitment_tx_hash.clone()
-    }
-
-    pub fn get_trust_verification_tx_hashes(&self) -> &Vec<TxHash> {
-        &self.trust_verification_tx_hashes
-    }
-
-    pub fn get_timestamp(&self) -> u64 {
-        self.timestamp
     }
 }

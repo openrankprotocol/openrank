@@ -7,7 +7,8 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-openrank-common = { workspace = true }
+openrank-common = { workspace = true, default-features = false }
+
 serde_json = { workspace = true }
 serde = { workspace = true }
 hex = { workspace = true }
@@ -21,3 +22,4 @@ dotenv = { workspace = true }
 rand = { workspace = true }
 csv = "1.3.0"
 clap = { version = "4.5.9", features = ["derive"] }
+getset = { workspace = true }

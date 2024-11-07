@@ -30,7 +30,7 @@ impl SQLRelayer {
 
         let mut last_processed_keys = HashMap::new();
 
-        let path = db_config.clone().secondary.expect("No secondary path found");
+        let path = db_config.clone().secondary().clone().expect("No secondary path found");
         let last_processed_key = target_db
             .load_last_processed_key(&format!("relayer_last_key_{}_{}", path, "tx"))
             .await
@@ -68,7 +68,7 @@ impl SQLRelayer {
         self.db.refresh().unwrap();
 
         let results = self.db.read_from_end::<compute::Result>("result", None).unwrap();
-        let dir = self.db.get_config().secondary.expect("Secondary path missing");
+        let dir = self.db.get_config().secondary().clone().expect("Secondary path missing");
         let last_count = self.last_processed_keys[dir.as_str()].unwrap_or(0);
         let mut current_count = 0;
 
@@ -78,8 +78,10 @@ impl SQLRelayer {
             // assert_eq!(last_count as u64, res.seq_number.unwrap());
 
             // ComputeRequest
-            let (request_key, request_tx_with_hash) =
-                self.get_tx_with_hash(consts::COMPUTE_REQUEST, res.compute_request_tx_hash.clone());
+            let (request_key, request_tx_with_hash) = self.get_tx_with_hash(
+                consts::COMPUTE_REQUEST,
+                res.compute_request_tx_hash().clone(),
+            );
 
             current_count += 1;
 
@@ -95,7 +97,7 @@ impl SQLRelayer {
             // ComputeCommitment
             let (commitment_key, commitment_tx_with_hash) = self.get_tx_with_hash(
                 consts::COMPUTE_COMMITMENT,
-                res.compute_commitment_tx_hash.clone(),
+                res.compute_commitment_tx_hash().clone(),
             );
 
             current_count += 1;
@@ -110,7 +112,7 @@ impl SQLRelayer {
             }
 
             // ComputeVerification
-            for verification_tx_hash in res.compute_verification_tx_hashes.clone() {
+            for verification_tx_hash in res.compute_verification_tx_hashes().clone() {
                 current_count += 1;
 
                 let (verification_key, verification_tx_with_hash) =

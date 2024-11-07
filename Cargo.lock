@@ -2361,6 +2361,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "getset"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f636605b743120a8d32ed92fc27b6cde1a769f8f936c065151eb66f88ded513c"
+dependencies = [
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
 name = "ghash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4193,6 +4205,7 @@ dependencies = [
  "clap",
  "dotenv",
  "futures",
+ "getset",
  "hex",
  "k256",
  "libp2p",
@@ -4216,6 +4229,7 @@ dependencies = [
  "alloy-rlp",
  "alloy-rlp-derive",
  "directories",
+ "getset",
  "hex",
  "k256",
  "libp2p",
@@ -4257,6 +4271,7 @@ dependencies = [
  "alloy-rlp",
  "dotenv",
  "futures",
+ "getset",
  "hex",
  "k256",
  "libp2p",
@@ -4312,6 +4327,7 @@ dependencies = [
  "clap",
  "csv",
  "dotenv",
+ "getset",
  "hex",
  "jsonrpsee",
  "k256",
@@ -4330,6 +4346,7 @@ version = "0.1.1"
 dependencies = [
  "alloy-rlp",
  "futures",
+ "getset",
  "hex",
  "jsonrpsee",
  "libp2p",
@@ -4367,6 +4384,7 @@ dependencies = [
  "alloy-rlp",
  "dotenv",
  "futures",
+ "getset",
  "hex",
  "k256",
  "libp2p",

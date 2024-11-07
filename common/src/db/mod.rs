@@ -1,8 +1,11 @@
+use getset::Getters;
 use rocksdb::{self, Options, DB};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{self, to_vec};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+
+mod items;
 
 #[derive(Debug)]
 /// Errors that can arise while using database.
@@ -44,10 +47,11 @@ pub trait DbItem {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct Config {
-    pub directory: String,
-    pub secondary: Option<String>,
+    directory: String,
+    secondary: Option<String>,
 }
 
 impl Config {
@@ -56,6 +60,8 @@ impl Config {
     }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 /// Wrapper for database connection.
 pub struct Db {
     connection: DB,

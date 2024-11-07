@@ -1,11 +1,13 @@
 use crate::tx;
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct GetResultsQuery {
-    pub request_tx_hash: tx::TxHash,
-    pub start: u32,
-    pub size: u32,
+    request_tx_hash: tx::TxHash,
+    start: u32,
+    size: u32,
 }
 
 impl GetResultsQuery {
