@@ -1,4 +1,5 @@
 use alloy_rlp::{encode, Decodable};
+use getset::Getters;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::{INVALID_REQUEST_CODE, PARSE_ERROR_CODE};
@@ -40,6 +41,8 @@ pub trait Rpc {
     async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned>;
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 /// The Sequencer JsonRPC server. It contains the sender, the whitelisted users, and the database connection.
 pub struct SequencerServer {
     sender: Sender<(Vec<u8>, Topic)>,

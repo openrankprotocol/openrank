@@ -11,7 +11,7 @@ use std::io::Read;
 #[derive(
     Debug, Clone, Hash, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
-pub struct OwnedNamespace(#[serde(with = "hex")] pub [u8; 24]);
+pub struct OwnedNamespace(#[serde(with = "hex")] [u8; 24]);
 
 impl OwnedNamespace {
     pub fn new(owner: Address, id: u32) -> Self {
@@ -29,6 +29,10 @@ impl OwnedNamespace {
         let mut bytes = [0; 20];
         bytes.copy_from_slice(&self.0[..20]);
         Address::from_slice(&bytes)
+    }
+
+    pub fn inner(&self) -> &[u8; 24] {
+        &self.0
     }
 }
 

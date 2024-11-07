@@ -66,7 +66,8 @@ struct Args {
     method: Method,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 /// The configuration for the Sequencer.
 pub struct Sequencer {
     endpoint: String,
@@ -83,13 +84,15 @@ pub struct Config {
     sequencer: Sequencer,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 struct ComputeRequestResult {
     compute_tx_hash: TxHash,
     tx_event: TxEvent,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 struct ComputeResults {
     votes: Vec<bool>,
     scores: Vec<ScoreEntry>,
@@ -353,7 +356,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Method::ComputeRequest { path, output_path } => {
             let secret_key = get_secret_key()?;
             let res = compute_request(secret_key, path.as_str()).await?;
-            let hex_encoded_tx_hash = hex::encode(res.compute_tx_hash.0);
+            let hex_encoded_tx_hash = hex::encode(res.compute_tx_hash.inner());
             println!("{}", hex_encoded_tx_hash);
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;

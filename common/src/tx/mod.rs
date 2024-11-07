@@ -169,7 +169,7 @@ impl Tx {
 
         let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[12..]);
+        address_bytes.copy_from_slice(&hash.inner()[12..]);
 
         if Address::from_slice(&address_bytes) != address {
             return Err(EcdsaError::new());
@@ -194,7 +194,7 @@ impl Tx {
 
         let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[12..]);
+        address_bytes.copy_from_slice(&hash.inner()[12..]);
         let address = Address::from_slice(&address_bytes);
 
         Ok(address)
@@ -214,7 +214,7 @@ pub type Address = alloy_primitives::Address;
 #[derive(
     Debug, Clone, Hash, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
-pub struct TxHash(#[serde(with = "hex")] pub [u8; 32]);
+pub struct TxHash(#[serde(with = "hex")] [u8; 32]);
 
 impl TxHash {
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
@@ -233,6 +233,10 @@ impl TxHash {
 
     pub fn to_hex(self) -> String {
         hex::encode(self.0)
+    }
+
+    pub fn inner(&self) -> &[u8; 32] {
+        &self.0
     }
 }
 

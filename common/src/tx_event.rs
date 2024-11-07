@@ -6,6 +6,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct InclusionProof([u8; 32]);
 
+impl InclusionProof {
+    pub fn new(proof: [u8; 32]) -> Self {
+        Self(proof)
+    }
+
+    pub fn inner(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
 /// Transaction event which includes proof of inclusion and custom data.
 #[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]

@@ -1,3 +1,4 @@
+use getset::Getters;
 use openrank_common::{
     algos::{self, et::positive_run},
     merkle::{
@@ -16,6 +17,8 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 /// Struct containing the state of the computer compute runner.
 pub struct ComputeRunner {
     count: HashMap<DomainHash, u64>,

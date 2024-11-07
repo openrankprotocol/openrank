@@ -1,3 +1,4 @@
+use getset::Getters;
 use openrank_common::{
     algos::{self, et::convergence_check},
     merkle::{
@@ -17,6 +18,8 @@ use std::{
     fmt::{Display, Formatter, Result as FmtResult},
 };
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 /// Struct containing the state of the verification runner
 pub struct VerificationRunner {
     count: HashMap<DomainHash, u64>,

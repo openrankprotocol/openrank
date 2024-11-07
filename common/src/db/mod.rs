@@ -60,6 +60,8 @@ impl Config {
     }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 /// Wrapper for database connection.
 pub struct Db {
     connection: DB,

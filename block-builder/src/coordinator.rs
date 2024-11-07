@@ -1,8 +1,11 @@
+use getset::Getters;
 use openrank_common::tx::compute;
 use std::collections::HashMap;
 
 /// Coordinator role for the OpenRank network.
 /// Responsible for sequencing job results.
+#[derive(Default, Getters)]
+#[getset(get = "pub")]
 pub struct JobCoordinator {
     /// A map of all job results.
     job_results: HashMap<u64, compute::Result>,

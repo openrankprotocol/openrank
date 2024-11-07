@@ -87,6 +87,8 @@ struct Config {
     p2p: net::Config,
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 /// The Verifier node. It contains the Swarm, the Config, the DB, the VerificationRunner, and the SecretKey.
 pub struct Node {
     swarm: Swarm<MyBehaviour>,
@@ -445,7 +447,7 @@ impl Node {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());
             // subscribes to our topic
-            self.swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+            self.swarm.behaviour_mut().gossipsub_subscribe(&topic)?;
         }
 
         net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
@@ -457,13 +459,13 @@ impl Node {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discovered a new peer: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_add_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discover peer has expired: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_remove_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {

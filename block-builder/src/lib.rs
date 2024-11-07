@@ -78,6 +78,8 @@ struct Config {
 }
 
 /// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the ComputeRunner.
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
@@ -225,7 +227,7 @@ impl Node {
                             let request: Tx = self.db.get(request_tx_key).map_err(Error::Db)?;
                             if let Err(db::Error::NotFound) =
                                 self.db.get::<compute::ResultReference>(
-                                    assignment_body.request_tx_hash().0.to_vec(),
+                                    assignment_body.request_tx_hash().to_bytes(),
                                 )
                             {
                                 let mut result =
@@ -287,7 +289,7 @@ impl Node {
                             };
                             let result_reference: compute::ResultReference = self
                                 .db
-                                .get(assignment_body.request_tx_hash().0.to_vec())
+                                .get(assignment_body.request_tx_hash().to_bytes())
                                 .map_err(Error::Db)?;
                             let compute_result_key =
                                 compute::Result::construct_full_key(*result_reference.seq_number());
@@ -388,7 +390,7 @@ impl Node {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());
             // subscribes to our topic
-            self.swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+            self.swarm.behaviour_mut().gossipsub_subscribe(&topic)?;
         }
 
         // Kick it off
@@ -398,13 +400,13 @@ impl Node {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discovered a new peer: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_add_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discover peer has expired: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_remove_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {

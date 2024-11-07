@@ -11,9 +11,10 @@ pub mod tx_event;
 pub mod db;
 
 use alloy_rlp::encode;
+use getset::Getters;
 use k256::ecdsa::SigningKey;
 use libp2p::{
-    gossipsub::{self, MessageId, PublishError},
+    gossipsub::{self, MessageId, PublishError, SubscriptionError},
     identity, mdns, noise,
     swarm::NetworkBehaviour,
     tcp, yamux, Swarm,
@@ -26,11 +27,34 @@ use tracing::info;
 use tx::{Address, Tx};
 use tx_event::TxEvent;
 
-#[derive(NetworkBehaviour)]
+#[derive(NetworkBehaviour, Getters)]
+#[getset(get = "pub")]
 /// A custom libp2p [network behavior](libp2p::swarm::NetworkBehaviour) used by OpenRank nodes.
 pub struct MyBehaviour {
-    pub gossipsub: gossipsub::Behaviour,
-    pub mdns: mdns::tokio::Behaviour,
+    gossipsub: gossipsub::Behaviour,
+    mdns: mdns::tokio::Behaviour,
+}
+
+impl MyBehaviour {
+    pub fn gossipsub_subscribe(
+        &mut self, topic: &gossipsub::IdentTopic,
+    ) -> Result<bool, SubscriptionError> {
+        self.gossipsub.subscribe(topic)
+    }
+
+    pub fn gossipsub_publish(
+        &mut self, topic: gossipsub::IdentTopic, data: Vec<u8>,
+    ) -> Result<MessageId, PublishError> {
+        self.gossipsub.publish(topic, data)
+    }
+
+    pub fn gossipsub_add_peer(&mut self, peer_id: &libp2p::PeerId) {
+        self.gossipsub.add_explicit_peer(peer_id);
+    }
+
+    pub fn gossipsub_remove_peer(&mut self, peer_id: &libp2p::PeerId) {
+        self.gossipsub.remove_explicit_peer(peer_id);
+    }
 }
 
 /// Builds a libp2p swarm with the custom behaviour.
@@ -108,7 +132,7 @@ pub fn address_from_sk(sk: &SigningKey) -> Address {
 
     let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
     let mut address_bytes = [0u8; 20];
-    address_bytes.copy_from_slice(&hash.0[12..]);
+    address_bytes.copy_from_slice(&hash.inner()[12..]);
 
     Address::from_slice(&address_bytes)
 }
