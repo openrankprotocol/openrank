@@ -30,7 +30,7 @@ impl DbItem for TxEvent {
 
 impl DbItem for Result {
     fn get_key(&self) -> Vec<u8> {
-        self.compute_request_tx_hash.0.to_vec()
+        self.get_seq_number().to_be_bytes().to_vec()
     }
 
     fn get_cf() -> String {
@@ -44,7 +44,7 @@ impl DbItem for Result {
 
 impl DbItem for ResultReference {
     fn get_key(&self) -> Vec<u8> {
-        self.compute_request_tx_hash.0.to_vec()
+        self.compute_request_tx_hash().to_bytes()
     }
 
     fn get_prefix(&self) -> String {
@@ -58,7 +58,7 @@ impl DbItem for ResultReference {
 
 impl DbItem for Tx {
     fn get_key(&self) -> Vec<u8> {
-        self.hash().0.to_vec()
+        self.hash().to_bytes()
     }
 
     fn get_cf() -> String {

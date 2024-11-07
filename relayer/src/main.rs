@@ -11,7 +11,7 @@ pub mod api;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// The configuration for the Relayer.
 pub struct Config {
-    pub database: db::Config,
+    database: db::Config,
 }
 
 #[tokio::main]

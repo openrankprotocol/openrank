@@ -1,6 +1,7 @@
 use alloy_rlp::Decodable;
 use dotenv::dotenv;
 use futures::StreamExt;
+use getset::Getters;
 use k256::ecdsa::{self, SigningKey};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
@@ -62,20 +63,24 @@ impl From<runner::Error> for Error {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Whitelist {
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+struct Whitelist {
     block_builder: Vec<Address>,
     verifier: Vec<Address>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-    pub domains: Vec<Domain>,
-    pub whitelist: Whitelist,
-    pub database: db::Config,
-    pub p2p: net::Config,
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+struct Config {
+    domains: Vec<Domain>,
+    whitelist: Whitelist,
+    database: db::Config,
+    p2p: net::Config,
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
@@ -103,18 +108,18 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let Body::TrustUpdate(trust_update) = tx.body() {
+                        if let Body::TrustUpdate(trust_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            assert!(*namespace == trust_update.trust_id);
+                            assert!(namespace == trust_update.trust_id());
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
                             self.compute_runner
-                                .update_trust(domain.clone(), trust_update.entries.clone())
+                                .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -129,18 +134,18 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let Body::SeedUpdate(seed_update) = tx.body() {
+                        if let Body::SeedUpdate(seed_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            assert!(*namespace == seed_update.seed_id);
+                            assert!(namespace == seed_update.seed_id());
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
                             self.compute_runner
-                                .update_seed(domain.clone(), seed_update.entries.clone())
+                                .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
                             info!(
                                 "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
@@ -161,12 +166,15 @@ impl Node {
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             let computer_address = address_from_sk(&self.secret_key);
-                            assert_eq!(computer_address, compute_assignment.assigned_compute_node);
+                            assert_eq!(
+                                &computer_address,
+                                compute_assignment.assigned_compute_node()
+                            );
                             assert!(self
                                 .config
                                 .whitelist
                                 .verifier
-                                .contains(&compute_assignment.assigned_verifier_node));
+                                .contains(compute_assignment.assigned_verifier_node()));
 
                             let domain = domains
                                 .iter()
@@ -260,7 +268,7 @@ impl Node {
         let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
         let compute_runner = ComputeRunner::new(domain_hashes);
 
-        let swarm = build_node(net::load_keypair(&config.p2p.keypair, &config_loader)?).await?;
+        let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
         Ok(Self { swarm, config, db, compute_runner, secret_key })
@@ -306,10 +314,10 @@ impl Node {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());
             // subscribes to our topic
-            self.swarm.behaviour_mut().gossipsub.subscribe(&topic)?;
+            self.swarm.behaviour_mut().gossipsub_subscribe(&topic)?;
         }
 
-        net::listen_on(&mut self.swarm, &self.config.p2p.listen_on)?;
+        net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
 
         // Kick it off
         loop {
@@ -318,13 +326,13 @@ impl Node {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discovered a new peer: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_add_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, _multiaddr) in list {
                             info!("mDNS discover peer has expired: {peer_id}");
-                            self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                            self.swarm.behaviour_mut().gossipsub_remove_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
@@ -363,13 +371,13 @@ impl Node {
         drop(seed_update_txs);
 
         // sort txs by sequence_number
-        txs.sort_unstable_by_key(|tx| tx.sequence_number());
+        txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
 
         // update compute runner
         for tx in txs {
             match tx.body() {
                 Body::TrustUpdate(trust_update) => {
-                    let namespace = trust_update.trust_id;
+                    let namespace = trust_update.trust_id().clone();
                     let domain = self
                         .config
                         .domains
@@ -377,11 +385,11 @@ impl Node {
                         .find(|x| x.trust_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
                     self.compute_runner
-                        .update_trust(domain.clone(), trust_update.entries.clone())
+                        .update_trust(domain.clone(), trust_update.entries().clone())
                         .map_err(Error::Runner)?;
                 },
                 Body::SeedUpdate(seed_update) => {
-                    let namespace = seed_update.seed_id;
+                    let namespace = seed_update.seed_id().clone();
                     let domain = self
                         .config
                         .domains
@@ -389,7 +397,7 @@ impl Node {
                         .find(|x| x.seed_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
                     self.compute_runner
-                        .update_seed(domain.clone(), seed_update.entries.clone())
+                        .update_seed(domain.clone(), seed_update.entries().clone())
                         .map_err(Error::Runner)?;
                 },
                 _ => (),

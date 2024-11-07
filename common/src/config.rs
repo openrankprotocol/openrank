@@ -1,5 +1,6 @@
 //! The config module provides configuration-loading mechanism for OpenRank programs.
 
+use getset::Getters;
 use serde::de::DeserializeOwned;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -36,6 +37,8 @@ pub enum Error {
 /// // loads ~/.config/openrank-computer/x.toml
 /// let config: MyConfig = loader.load_named("x").unwrap();
 /// ```
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Loader {
     program_name: String,
     config_dir: PathBuf,

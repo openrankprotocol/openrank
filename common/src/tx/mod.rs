@@ -2,6 +2,7 @@ use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use block::{FinalisedBlock, ProposedBlock};
+use getset::Getters;
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{
     Error as EcdsaError, RecoveryId, Signature as EcdsaSignature, SigningKey, VerifyingKey,
@@ -100,8 +101,9 @@ impl Body {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
 #[rlp(trailing)]
+#[getset(get = "pub")]
 pub struct Tx {
     nonce: u64,
     from: Address,
@@ -122,26 +124,6 @@ impl Tx {
             signature: Signature::default(),
             sequence_number: None,
         }
-    }
-
-    pub fn body(&self) -> Body {
-        self.body.clone()
-    }
-
-    pub fn signature(&self) -> Signature {
-        self.signature.clone()
-    }
-
-    pub fn nonce(&self) -> u64 {
-        self.nonce
-    }
-
-    pub fn from(&self) -> Address {
-        self.from
-    }
-
-    pub fn to(&self) -> Address {
-        self.to
     }
 
     pub fn hash(&self) -> TxHash {
@@ -187,7 +169,7 @@ impl Tx {
 
         let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[12..]);
+        address_bytes.copy_from_slice(&hash.inner()[12..]);
 
         if Address::from_slice(&address_bytes) != address {
             return Err(EcdsaError::new());
@@ -212,7 +194,7 @@ impl Tx {
 
         let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&hash.0[12..]);
+        address_bytes.copy_from_slice(&hash.inner()[12..]);
         let address = Address::from_slice(&address_bytes);
 
         Ok(address)
@@ -222,7 +204,7 @@ impl Tx {
         self.sequence_number = Some(sequence_number);
     }
 
-    pub fn sequence_number(&self) -> u64 {
+    pub fn get_sequence_number(&self) -> u64 {
         self.sequence_number.unwrap_or_default()
     }
 }
@@ -232,7 +214,7 @@ pub type Address = alloy_primitives::Address;
 #[derive(
     Debug, Clone, Hash, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
-pub struct TxHash(#[serde(with = "hex")] pub [u8; 32]);
+pub struct TxHash(#[serde(with = "hex")] [u8; 32]);
 
 impl TxHash {
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
@@ -252,24 +234,34 @@ impl TxHash {
     pub fn to_hex(self) -> String {
         hex::encode(self.0)
     }
+
+    pub fn inner(&self) -> &[u8; 32] {
+        &self.0
+    }
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Default,
+    RlpDecodable,
+    RlpEncodable,
+    Serialize,
+    Deserialize,
+    Getters,
 )]
+#[getset(get = "pub")]
 pub struct Signature {
-    pub s: [u8; 32],
-    pub r: [u8; 32],
+    s: [u8; 32],
+    r: [u8; 32],
     r_id: u8,
 }
 
 impl Signature {
     pub fn new(s: [u8; 32], r: [u8; 32], r_id: u8) -> Self {
         Self { s, r, r_id }
-    }
-
-    pub fn r_id(&self) -> u8 {
-        self.r_id
     }
 }
 

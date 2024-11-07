@@ -36,3 +36,4 @@ toml = { workspace = true }
 dotenv = { workspace = true }
 k256 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+getset = { workspace = true }

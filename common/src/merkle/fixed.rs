@@ -1,8 +1,10 @@
 use crate::merkle::{self, hash_two, Hash};
+use getset::Getters;
 use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Getters)]
+#[getset(get = "pub")]
 /// Dense Merkle tree.
 /// The dense tree is a tree where leaf nodes are compressed to be next to each other
 /// which makes it more efficient to store and traverse.
@@ -13,7 +15,7 @@ where
     H: Digest,
 {
     /// HashMap to keep the level and index of the nodes.
-    pub(crate) nodes: HashMap<u8, Vec<Hash>>,
+    nodes: HashMap<u8, Vec<Hash>>,
     // Number of levels
     num_levels: u8,
     /// PhantomData for the hasher

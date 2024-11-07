@@ -14,12 +14,16 @@ pub mod incremental;
     Debug, Clone, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
 /// Used to represent a hash of a node in the merkle tree.
-pub struct Hash(#[serde(with = "hex")] pub [u8; 32]);
+pub struct Hash(#[serde(with = "hex")] [u8; 32]);
 
 impl Hash {
     /// Converts the hash to a hex string.
     pub fn to_hex(self) -> String {
         hex::encode(self.0)
+    }
+
+    pub fn inner(&self) -> &[u8; 32] {
+        &self.0
     }
 }
 

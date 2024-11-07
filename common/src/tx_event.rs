@@ -1,12 +1,24 @@
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 /// Proof of tx inclusion in block.
 #[derive(Debug, Clone, Default, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
 pub struct InclusionProof([u8; 32]);
 
+impl InclusionProof {
+    pub fn new(proof: [u8; 32]) -> Self {
+        Self(proof)
+    }
+
+    pub fn inner(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
 /// Transaction event which includes proof of inclusion and custom data.
-#[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize)]
+#[derive(Debug, Clone, RlpDecodable, RlpEncodable, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
 pub struct TxEvent {
     /// Block height of the DA layer, where the tx was included.
     pub block_number: u64,
@@ -24,10 +36,5 @@ impl TxEvent {
     /// Constructs the TxEvent with default data.
     pub fn default_with_data(data: Vec<u8>) -> Self {
         Self { block_number: 0, proof: InclusionProof::default(), data }
-    }
-
-    /// Returns the data of the tx event.
-    pub fn data(&self) -> Vec<u8> {
-        self.data.clone()
     }
 }
