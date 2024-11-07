@@ -1,6 +1,7 @@
 [package]
 name = "openrank-da"
 description = "DA wrapper for OpenRank codebase"
+rust-version.workspace = true
 license = "MIT"
 version.workspace = true
 authors.workspace = true

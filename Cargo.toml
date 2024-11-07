@@ -8,7 +8,7 @@ members = [
     "da",
     "openrank-sdk",
     "verifier",
-    "relayer"
+    "relayer",
 ]
 
 [workspace.package]
@@ -19,6 +19,7 @@ authors = [
 ]
 edition = "2021"
 license = "MIT"
+rust-version = "1.82"
 
 [workspace.dependencies]
 openrank-sequencer = { path = "sequencer", version = "0.1.0" }
