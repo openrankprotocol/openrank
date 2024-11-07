@@ -4199,7 +4199,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openrank-block-builder"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "alloy-rlp",
  "clap",
@@ -4209,7 +4209,7 @@ dependencies = [
  "hex",
  "k256",
  "libp2p",
- "openrank-common 0.1.1",
+ "openrank-common 0.1.2",
  "openrank-sequencer",
  "openrank-smart-contract-client",
  "rand",
@@ -4219,28 +4219,6 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "openrank-common"
-version = "0.1.1"
-dependencies = [
- "alloy-primitives",
- "alloy-rlp",
- "alloy-rlp-derive",
- "directories",
- "getset",
- "hex",
- "k256",
- "libp2p",
- "rand",
- "rocksdb",
- "serde",
- "serde_json",
- "sha3",
- "thiserror",
- "toml",
- "tracing",
 ]
 
 [[package]]
@@ -4265,8 +4243,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "openrank-common"
+version = "0.1.2"
+dependencies = [
+ "alloy-primitives",
+ "alloy-rlp",
+ "alloy-rlp-derive",
+ "directories",
+ "getset",
+ "hex",
+ "k256",
+ "libp2p",
+ "rand",
+ "rocksdb",
+ "serde",
+ "serde_json",
+ "sha3",
+ "thiserror",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "openrank-computer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "alloy-rlp",
  "dotenv",
@@ -4275,7 +4275,7 @@ dependencies = [
  "hex",
  "k256",
  "libp2p",
- "openrank-common 0.1.1",
+ "openrank-common 0.1.2",
  "serde",
  "serde_json",
  "sha3",
@@ -4287,11 +4287,11 @@ dependencies = [
 
 [[package]]
 name = "openrank-da"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "openrank-relayer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "alloy-rlp",
  "async-graphql",
@@ -4303,7 +4303,7 @@ dependencies = [
  "k256",
  "libp2p",
  "log",
- "openrank-common 0.1.1",
+ "openrank-common 0.1.2",
  "postgres",
  "rand",
  "rocksdb",
@@ -4321,7 +4321,7 @@ dependencies = [
 
 [[package]]
 name = "openrank-sdk"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "alloy-rlp",
  "clap",
@@ -4331,7 +4331,7 @@ dependencies = [
  "hex",
  "jsonrpsee",
  "k256",
- "openrank-common 0.1.1",
+ "openrank-common 0.1.2",
  "rand",
  "serde",
  "serde_json",
@@ -4342,7 +4342,7 @@ dependencies = [
 
 [[package]]
 name = "openrank-sequencer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "alloy-rlp",
  "futures",
@@ -4350,7 +4350,7 @@ dependencies = [
  "hex",
  "jsonrpsee",
  "libp2p",
- "openrank-common 0.1.1",
+ "openrank-common 0.1.2",
  "rand",
  "serde",
  "serde_json",
@@ -4369,7 +4369,7 @@ dependencies = [
  "alloy-rlp",
  "dotenv",
  "eyre",
- "openrank-common 0.1.1 (git+https://github.com/openrankprotocol/openrank.git)",
+ "openrank-common 0.1.1",
  "serde",
  "serde_json",
  "tokio",
@@ -4379,7 +4379,7 @@ dependencies = [
 
 [[package]]
 name = "openrank-verifier"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "alloy-rlp",
  "dotenv",
@@ -4388,7 +4388,7 @@ dependencies = [
  "hex",
  "k256",
  "libp2p",
- "openrank-common 0.1.1",
+ "openrank-common 0.1.2",
  "rand",
  "serde",
  "serde_json",
