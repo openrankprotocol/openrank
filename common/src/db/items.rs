@@ -30,7 +30,7 @@ impl DbItem for TxEvent {
 
 impl DbItem for Result {
     fn get_key(&self) -> Vec<u8> {
-        self.compute_request_tx_hash().to_bytes()
+        self.get_seq_number().to_be_bytes().to_vec()
     }
 
     fn get_cf() -> String {

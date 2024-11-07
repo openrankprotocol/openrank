@@ -131,6 +131,11 @@ impl Result {
         self.seq_number = Some(seq_number);
     }
 
+    /// Get sequence number
+    pub fn get_seq_number(&self) -> u64 {
+        self.seq_number.unwrap()
+    }
+
     /// Append verification tx hash
     pub fn append_verification_tx_hash(&mut self, tx_hash: TxHash) {
         self.compute_verification_tx_hashes.push(tx_hash);
