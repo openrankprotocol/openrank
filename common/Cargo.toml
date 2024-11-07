@@ -1,6 +1,7 @@
 [package]
 name = "openrank-common"
 description = "Common library for OpenRank codebase"
+rust-version = "1.82"
 license.workspace = true
 version.workspace = true
 authors.workspace = true
