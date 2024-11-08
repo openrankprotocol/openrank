@@ -23,7 +23,7 @@ rust-version = "1.82"
 
 [workspace.dependencies]
 openrank-sequencer = { path = "sequencer", version = "0.1.2" }
-openrank-common = { path = "common", version = "0.1.2", default-features = false }
+openrank-common = { path = "common", version = "0.1.2" }
 
 alloy-primitives = "0.8.8"
 libp2p = "0.53.2"

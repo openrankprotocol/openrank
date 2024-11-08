@@ -8,7 +8,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-openrank-common = { workspace = true, default-features = false }
+openrank-common = { workspace = true }
 
 serde_json = { workspace = true }
 serde = { workspace = true }
