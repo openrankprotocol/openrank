@@ -15,10 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, sync::Arc, time::Duration};
 use tokio::{
     select,
-    sync::{
-        mpsc::{self, Receiver},
-        Mutex,
-    },
+    sync::mpsc::{self, Receiver},
 };
 use tracing::{error, info};
 
@@ -52,7 +49,7 @@ pub struct Node {
     config: Config,
     swarm: Swarm<MyBehaviour>,
     rpc: RpcModule<SequencerServer>,
-    db: Arc<Mutex<Db>>,
+    db: Arc<Db>,
     receiver: Receiver<(Vec<u8>, Topic)>,
 }
 
@@ -70,7 +67,7 @@ impl Node {
             &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
         )?;
         let (sender, receiver) = mpsc::channel(100);
-        let db = Arc::new(Mutex::new(db));
+        let db = Arc::new(db);
         let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db.clone());
         let rpc = seq_server.into_rpc();
 
@@ -97,7 +94,7 @@ impl Node {
             let mut interval = tokio::time::interval(Duration::from_secs(DB_REFRESH_INTERVAL));
             loop {
                 interval.tick().await;
-                match db_handler.lock().await.refresh() {
+                match db_handler.refresh() {
                     Ok(_) => {
                         info!("DB refreshed");
                     },

@@ -12,7 +12,6 @@ use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::cmp::Ordering;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::Mutex;
 use tracing::error;
 
 #[rpc(server, namespace = "sequencer")]
@@ -49,12 +48,12 @@ pub trait Rpc {
 pub struct SequencerServer {
     sender: Sender<(Vec<u8>, Topic)>,
     whitelisted_users: Vec<Address>,
-    db: Arc<Mutex<Db>>,
+    db: Arc<Db>,
 }
 
 impl SequencerServer {
     pub fn new(
-        sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>, db: Arc<Mutex<Db>>,
+        sender: Sender<(Vec<u8>, Topic)>, whitelisted_users: Vec<Address>, db: Arc<Db>,
     ) -> Self {
         Self { sender, whitelisted_users, db }
     }
@@ -183,8 +182,6 @@ impl RpcServer for SequencerServer {
         let db_handler = self.db.clone();
 
         let result_reference = db_handler
-            .lock()
-            .await
             .get::<compute::ResultReference>(query.request_tx_hash().to_bytes())
             .map_err(|e| {
                 error!("{}", e);
@@ -192,7 +189,7 @@ impl RpcServer for SequencerServer {
             })?;
 
         let key = compute::Result::construct_full_key(*result_reference.seq_number());
-        let result = db_handler.lock().await.get::<compute::Result>(key).map_err(|e| {
+        let result = db_handler.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -200,7 +197,7 @@ impl RpcServer for SequencerServer {
             consts::COMPUTE_COMMITMENT,
             result.compute_commitment_tx_hash().clone(),
         );
-        let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
+        let tx = db_handler.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -212,7 +209,7 @@ impl RpcServer for SequencerServer {
             let mut create_scores_tx = Vec::new();
             for tx_hash in commitment.scores_tx_hashes().iter() {
                 let key = Tx::construct_full_key(consts::COMPUTE_SCORES, tx_hash.clone());
-                let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
+                let tx = db_handler.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     ErrorObjectOwned::from(ErrorCode::InternalError)
                 })?;
@@ -258,7 +255,7 @@ impl RpcServer for SequencerServer {
             let mut verification_resutls_tx = Vec::new();
             for tx_hash in result.compute_verification_tx_hashes().iter() {
                 let key = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx_hash.clone());
-                let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
+                let tx = db_handler.get::<Tx>(key).map_err(|e| {
                     error!("{}", e);
                     ErrorObjectOwned::from(ErrorCode::InternalError)
                 })?;
@@ -290,7 +287,7 @@ impl RpcServer for SequencerServer {
         let db_handler = self.db.clone();
 
         let key = compute::Result::construct_full_key(seq_number);
-        let result = db_handler.lock().await.get::<compute::Result>(key).map_err(|e| {
+        let result = db_handler.get::<compute::Result>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -303,7 +300,7 @@ impl RpcServer for SequencerServer {
         let db_handler = self.db.clone();
 
         let key = Tx::construct_full_key(&kind, tx_hash);
-        let tx = db_handler.lock().await.get::<Tx>(key).map_err(|e| {
+        let tx = db_handler.get::<Tx>(key).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
@@ -320,7 +317,7 @@ impl RpcServer for SequencerServer {
             let full_key = Tx::construct_full_key(&kind, tx_hash);
             key_bytes.push(full_key);
         }
-        let txs = db_handler.lock().await.get_multi::<Tx>(key_bytes).map_err(|e| {
+        let txs = db_handler.get_multi::<Tx>(key_bytes).map_err(|e| {
             error!("{}", e);
             ErrorObjectOwned::from(ErrorCode::InternalError)
         })?;
