@@ -11,7 +11,7 @@ edition.workspace = true
 
 [dependencies]
 openrank-sequencer = { workspace = true }
-openrank-common = { workspace = true }
+openrank-common = { workspace = true, default-features = true }
 openrank-smart-contract-client = { git = "https://github.com/openrankprotocol/score-manager.git", version = "0.1.0" }
 futures = { workspace = true }
 libp2p = { workspace = true, features = [
