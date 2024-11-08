@@ -12,7 +12,7 @@ use openrank_common::{
 };
 use rpc::{RpcServer, SequencerServer};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::{error::Error, sync::Arc, time::Duration};
 use tokio::{
     select,
     sync::mpsc::{self, Receiver},
@@ -20,6 +20,8 @@ use tokio::{
 use tracing::{error, info};
 
 mod rpc;
+
+const DB_REFRESH_INTERVAL: u64 = 10; // seconds
 
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
@@ -47,6 +49,7 @@ pub struct Node {
     config: Config,
     swarm: Swarm<MyBehaviour>,
     rpc: RpcModule<SequencerServer>,
+    db: Arc<Db>,
     receiver: Receiver<(Vec<u8>, Topic)>,
 }
 
@@ -64,13 +67,14 @@ impl Node {
             &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
         )?;
         let (sender, receiver) = mpsc::channel(100);
-        let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db);
+        let db = Arc::new(db);
+        let seq_server = SequencerServer::new(sender, config.whitelist.users.clone(), db.clone());
         let rpc = seq_server.into_rpc();
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, rpc, receiver })
+        Ok(Self { swarm, config, rpc, db, receiver })
     }
 
     /// Run the node:
@@ -83,6 +87,23 @@ impl Node {
         let server = Server::builder().build(self.config.rpc().address()).await?;
         let handle = server.start(self.rpc.clone());
         tokio::spawn(handle.stopped());
+
+        // spawn a task to refresh the DB every 10 seconds
+        let db_handler = self.db.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(DB_REFRESH_INTERVAL));
+            loop {
+                interval.tick().await;
+                match db_handler.refresh() {
+                    Ok(_) => {
+                        info!("DB refreshed");
+                    },
+                    Err(e) => {
+                        error!("DB refresh error: {e:?}");
+                    },
+                }
+            }
+        });
 
         // Kick it off
         loop {
