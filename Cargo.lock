@@ -3492,7 +3492,6 @@ name = "openrank-block-builder"
 version = "0.1.2"
 dependencies = [
  "alloy-rlp",
- "clap",
  "dotenv",
  "futures",
  "getset",
