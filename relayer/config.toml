@@ -1,3 +1,0 @@
-[database]
-directory = "../block-builder/local-storage"
-secondary = "../block-builder/local-secondary-storage"
