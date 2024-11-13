@@ -58,8 +58,8 @@ fn normalise_lt(
             for (to, value) in seed {
                 lt.insert((*from, *to), *value);
             }
+            sum_map.insert(*from, seed_sum);
         }
-        sum_map.insert(*from, seed_sum);
     }
 
     // Divide each element in the local trust matrix by the sum of its row.
@@ -96,10 +96,21 @@ fn normalise_seed(
     Ok(())
 }
 
+/// Normalizes the scores, to eliminate the rounding error
+fn normalise_scores(scores: &mut HashMap<u64, f32>) -> Result<(), algos::Error> {
+    // Calculate the sum of all seed trust values.
+    let sum: f32 = scores.iter().map(|(_, v)| v).sum();
+
+    for value in scores.values_mut() {
+        *value /= sum;
+    }
+    Ok(())
+}
+
 /// Performs the positive EigenTrust algorithm on the given local trust matrix (`lt`) and seed trust values (`seed`).
 /// The algorithm iteratively updates the scores of each node until convergence.
 /// It returns a vector of tuples containing the node ID and the final score.
-pub fn positive_run<const NUM_ITER: usize>(
+pub fn positive_run(
     mut lt: HashMap<(u64, u64), f32>, mut seed: HashMap<u64, f32>,
 ) -> Result<Vec<(u64, f32)>, algos::Error> {
     let all_peers = get_all_peers(&lt, &seed);
@@ -127,7 +138,7 @@ pub fn positive_run<const NUM_ITER: usize>(
             *v = weighted_to_score;
         }
         // Normalise the next scores.
-        normalise_seed(&all_peers, &mut next_scores)?;
+        normalise_scores(&mut next_scores)?;
         // Check for convergence.
         if is_converged(&scores, &next_scores) {
             break;
@@ -195,7 +206,7 @@ pub fn convergence_check(
         *v = weighted_to_score;
     }
     // Normalize the weighted next scores
-    normalise_seed(&all_peers, &mut next_scores)?;
+    normalise_scores(&mut next_scores)?;
 
     // Check if the scores have converged
     Ok(is_converged(scores, &next_scores))
