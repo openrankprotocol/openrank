@@ -353,7 +353,7 @@ impl VerificationRunner {
             }
             score_entries_map
         };
-        convergence_check(lt.clone(), seed, &score_entries).map_err(Error::Algo)
+        convergence_check(lt.clone(), seed.clone(), &score_entries).map_err(Error::Algo)
     }
 
     /// Get the local trust tree root and compute tree root of certain assignment, for certain domain

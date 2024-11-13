@@ -88,6 +88,8 @@ fn normalise_seed(
         }
     }
 
+    let sum: f32 = seed.iter().map(|(_, v)| v).sum();
+
     for value in seed.values_mut() {
         *value /= sum;
     }
@@ -170,11 +172,12 @@ pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<Str
 /// seed trust values (`seed`), and previous scores (`scores`).
 /// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
-    mut lt: HashMap<(u64, u64), f32>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
+    mut lt: HashMap<(u64, u64), f32>, mut seed: HashMap<u64, f32>, scores: &HashMap<u64, f32>,
 ) -> Result<bool, algos::Error> {
     let all_peers = get_all_peers(&lt, &seed);
-    // Normalize the local trust matrix
-    normalise_lt(&all_peers, &mut lt, seed)?;
+    pre_process(&mut lt);
+    normalise_seed(&all_peers, &mut seed)?;
+    normalise_lt(&all_peers, &mut lt, &seed)?;
     // Calculate the next scores of each node
     let mut next_scores = HashMap::new();
     for ((from, to), value) in &lt {
