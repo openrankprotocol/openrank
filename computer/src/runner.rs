@@ -180,7 +180,7 @@ impl ComputeRunner {
             .seed_trust
             .get(&domain.to_hash())
             .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
-        let res = positive_run::<20>(lt.clone(), seed.clone()).map_err(Error::Algo)?;
+        let res = positive_run(lt.clone(), seed.clone()).map_err(Error::Algo)?;
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
     }
