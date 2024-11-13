@@ -39,14 +39,14 @@ fn pre_process(lt: &mut HashMap<(u64, u64), f32>, seed: &mut HashMap<u64, f32>) 
     }
 
     // Calculate the sum of each row in the local trust matrix.
-    let mut sum_map: HashMap<u64, f32> = HashMap::new();
+    let mut outbound_sum_map: HashMap<u64, f32> = HashMap::new();
     for ((from, _), value) in lt.iter() {
-        let val = sum_map.get(from).unwrap_or(&0.0);
-        sum_map.insert(*from, val + value);
+        let out_val = outbound_sum_map.get(from).unwrap_or(&0.0);
+        outbound_sum_map.insert(*from, out_val + value);
     }
 
     for from in all_peers.iter() {
-        let sum = sum_map.get(from).unwrap_or(&0.0);
+        let sum = outbound_sum_map.get(from).unwrap_or(&0.0);
         // If peer does not have outbound trust,
         // his trust will be distributed to seed peers based on their seed/pre-trust
         if *sum == 0.0 {
@@ -56,11 +56,26 @@ fn pre_process(lt: &mut HashMap<(u64, u64), f32>, seed: &mut HashMap<u64, f32>) 
         }
     }
 
+    let mut inbound_sum_map: HashMap<u64, f32> = HashMap::new();
+    for ((_, to), value) in lt.iter() {
+        let in_val = inbound_sum_map.get(to).unwrap_or(&0.0);
+        inbound_sum_map.insert(*to, in_val + value);
+    }
+
     // Set the trust value to 0 for all self-trust entries in the local trust matrix.
-    for ((from, to), value) in lt {
+    let mut to_remove = Vec::new();
+    for ((from, to), _) in lt.iter() {
         if from == to {
-            *value = 0.;
+            to_remove.push((*from, *to));
         }
+        let sum = inbound_sum_map.get(from).unwrap_or(&0.0);
+        if *sum == 0.0 {
+            to_remove.push((*from, *to));
+        }
+    }
+
+    for key in to_remove {
+        lt.remove(&key);
     }
 }
 
