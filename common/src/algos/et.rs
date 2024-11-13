@@ -99,16 +99,6 @@ fn normalise_lt(lt: &mut HashMap<(u64, u64), f32>) -> Result<(), algos::Error> {
     Ok(())
 }
 
-/// Normalizes the seed trust (`seed`) values by dividing each value by the sum of all seed trust values.
-fn normalise_seed(seed: &mut HashMap<u64, f32>) -> Result<(), algos::Error> {
-    let sum: f32 = seed.iter().map(|(_, v)| v).sum();
-
-    for value in seed.values_mut() {
-        *value /= sum;
-    }
-    Ok(())
-}
-
 /// Normalizes the scores, to eliminate the rounding error
 fn normalise_scores(scores: &mut HashMap<u64, f32>) -> Result<(), algos::Error> {
     // Calculate the sum of all seed trust values.
@@ -127,7 +117,7 @@ pub fn positive_run(
     mut lt: HashMap<(u64, u64), f32>, mut seed: HashMap<u64, f32>,
 ) -> Result<Vec<(u64, f32)>, algos::Error> {
     pre_process(&mut lt, &mut seed);
-    normalise_seed(&mut seed)?;
+    normalise_scores(&mut seed)?;
     normalise_lt(&mut lt)?;
 
     // Initialize the scores of each node to the seed trust values.
@@ -198,7 +188,7 @@ pub fn convergence_check(
     mut lt: HashMap<(u64, u64), f32>, mut seed: HashMap<u64, f32>, scores: &HashMap<u64, f32>,
 ) -> Result<bool, algos::Error> {
     pre_process(&mut lt, &mut seed);
-    normalise_seed(&mut seed)?;
+    normalise_scores(&mut seed)?;
     normalise_lt(&mut lt)?;
     // Calculate the next scores of each node
     let mut next_scores = HashMap::new();
