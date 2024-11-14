@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 authors = [
     "Eugene Kim <ek@karma3labs.com>",
     "Filip Lazović <filip@karma3labs.com>",
@@ -21,8 +21,8 @@ license = "MIT"
 rust-version = "1.82"
 
 [workspace.dependencies]
-openrank-sequencer = { path = "sequencer", version = "0.1.2" }
-openrank-common = { path = "common", version = "0.1.2" }
+openrank-sequencer = { path = "sequencer", version = "0.1.3" }
+openrank-common = { path = "common", version = "0.1.3" }
 
 alloy-primitives = "0.8.8"
 libp2p = "0.53.2"
