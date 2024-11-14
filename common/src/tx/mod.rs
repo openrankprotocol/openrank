@@ -281,11 +281,18 @@ impl Signature {
 
 #[cfg(test)]
 mod test {
-    use crate::tx::{
-        trust::{ScoreEntry, TrustEntry, TrustUpdate},
-        Body, Tx,
+    use crate::{
+        address_from_sk,
+        tx::{
+            trust::{ScoreEntry, TrustEntry, TrustUpdate},
+            Body, Tx,
+        },
     };
     use alloy_rlp::{encode, Decodable};
+    use k256::ecdsa::SigningKey;
+    use rand::thread_rng;
+
+    use super::compute;
 
     #[test]
     fn test_tx_to_hash() {
@@ -311,5 +318,19 @@ mod test {
         let encoded_te = encode(te.clone());
         let decoded_te = TrustEntry::decode(&mut encoded_te.as_slice()).unwrap();
         assert_eq!(te, decoded_te);
+    }
+
+    #[test]
+    fn test_sign_and_verify() {
+        let rng = &mut thread_rng();
+        let sk = SigningKey::random(rng);
+        let address = address_from_sk(&sk);
+
+        let mut tx = Tx::default_with(Body::ComputeCommitment(compute::Commitment::default()));
+
+        tx.sign(&sk).unwrap();
+
+        tx.verify().unwrap();
+        tx.verify_against(address).unwrap();
     }
 }
