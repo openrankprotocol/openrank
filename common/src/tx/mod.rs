@@ -1,3 +1,4 @@
+use crate::address_from_sk;
 use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
@@ -151,6 +152,10 @@ impl Tx {
         let s: [u8; 32] = sig.s().to_bytes().into();
         let r: [u8; 32] = sig.r().to_bytes().into();
         self.signature = Signature::new(s, r, rec.to_byte());
+
+        let from = address_from_sk(sk);
+        self.from = from;
+
         Ok(())
     }
 
@@ -170,8 +175,13 @@ impl Tx {
         let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
         address_bytes.copy_from_slice(&hash.inner()[12..]);
+        let rec_address = Address::from_slice(&address_bytes);
 
-        if Address::from_slice(&address_bytes) != address {
+        if rec_address != address {
+            return Err(EcdsaError::new());
+        }
+
+        if self.from != rec_address {
             return Err(EcdsaError::new());
         }
 
@@ -196,6 +206,10 @@ impl Tx {
         let mut address_bytes = [0u8; 20];
         address_bytes.copy_from_slice(&hash.inner()[12..]);
         let address = Address::from_slice(&address_bytes);
+
+        if self.from != address {
+            return Err(EcdsaError::new());
+        }
 
         Ok(address)
     }
