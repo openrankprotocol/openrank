@@ -1,3 +1,4 @@
+use crate::address_from_sk;
 use crate::merkle::hash_leaf;
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
@@ -147,10 +148,15 @@ impl Tx {
     }
 
     pub fn sign(&mut self, sk: &SigningKey) -> Result<(), EcdsaError> {
+        // Set the signer address
+        let from = address_from_sk(sk);
+        self.from = from;
+
         let (sig, rec) = sk.sign_prehash_recoverable(self.hash().as_bytes())?;
         let s: [u8; 32] = sig.s().to_bytes().into();
         let r: [u8; 32] = sig.r().to_bytes().into();
         self.signature = Signature::new(s, r, rec.to_byte());
+
         Ok(())
     }
 
@@ -170,8 +176,13 @@ impl Tx {
         let hash = hash_leaf::<Keccak256>(vk_bytes[1..].to_vec());
         let mut address_bytes = [0u8; 20];
         address_bytes.copy_from_slice(&hash.inner()[12..]);
+        let rec_address = Address::from_slice(&address_bytes);
 
-        if Address::from_slice(&address_bytes) != address {
+        if rec_address != address {
+            return Err(EcdsaError::new());
+        }
+
+        if self.from != rec_address {
             return Err(EcdsaError::new());
         }
 
@@ -196,6 +207,10 @@ impl Tx {
         let mut address_bytes = [0u8; 20];
         address_bytes.copy_from_slice(&hash.inner()[12..]);
         let address = Address::from_slice(&address_bytes);
+
+        if self.from != address {
+            return Err(EcdsaError::new());
+        }
 
         Ok(address)
     }
@@ -267,11 +282,18 @@ impl Signature {
 
 #[cfg(test)]
 mod test {
-    use crate::tx::{
-        trust::{ScoreEntry, TrustEntry, TrustUpdate},
-        Body, Tx,
+    use crate::{
+        address_from_sk,
+        tx::{
+            trust::{ScoreEntry, TrustEntry, TrustUpdate},
+            Body, Tx,
+        },
     };
     use alloy_rlp::{encode, Decodable};
+    use k256::ecdsa::SigningKey;
+    use rand::thread_rng;
+
+    use super::compute;
 
     #[test]
     fn test_tx_to_hash() {
@@ -297,5 +319,19 @@ mod test {
         let encoded_te = encode(te.clone());
         let decoded_te = TrustEntry::decode(&mut encoded_te.as_slice()).unwrap();
         assert_eq!(te, decoded_te);
+    }
+
+    #[test]
+    fn test_sign_and_verify() {
+        let rng = &mut thread_rng();
+        let sk = SigningKey::random(rng);
+        let address = address_from_sk(&sk);
+
+        let mut tx = Tx::default_with(Body::ComputeCommitment(compute::Commitment::default()));
+
+        tx.sign(&sk).unwrap();
+
+        tx.verify().unwrap();
+        tx.verify_against(address).unwrap();
     }
 }

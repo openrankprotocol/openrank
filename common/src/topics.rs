@@ -22,16 +22,16 @@ use std::{
     Deserialize,
 )]
 /// Hash of the [Domain].
-pub struct DomainHash(u64);
+pub struct DomainHash(#[serde(with = "hex")] [u8; 8]);
 
 impl DomainHash {
     /// Convert the hash value to a hex string.
     pub fn to_hex(self) -> String {
-        hex::encode(self.0.to_be_bytes())
+        hex::encode(self.0)
     }
 
     /// Get the inner value of the hash.
-    pub fn inner(self) -> u64 {
+    pub fn inner(self) -> [u8; 8] {
         self.0
     }
 }
@@ -41,12 +41,12 @@ impl FromHex for DomainHash {
 
     /// Convert a hex string to a [DomainHash].
     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        Ok(DomainHash(u64::from_be_bytes(<[u8; 8]>::from_hex(hex)?)))
+        Ok(DomainHash(<[u8; 8]>::from_hex(hex)?))
     }
 }
 
-impl From<u64> for DomainHash {
-    fn from(value: u64) -> Self {
+impl From<[u8; 8]> for DomainHash {
+    fn from(value: [u8; 8]) -> Self {
         Self(value)
     }
 }
@@ -93,7 +93,7 @@ impl Domain {
         s.write(&self.seed_id.to_be_bytes());
         s.write(&self.algo_id.to_be_bytes());
         let res = s.finish();
-        DomainHash(res)
+        DomainHash(res.to_be_bytes())
     }
 
     /// Returns the topics for the domain.
