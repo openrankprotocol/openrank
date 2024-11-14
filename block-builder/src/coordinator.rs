@@ -1,6 +1,9 @@
 use getset::Getters;
 use openrank_common::tx::compute;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 /// Coordinator role for the OpenRank network.
 /// Responsible for sequencing job results.
@@ -23,6 +26,10 @@ impl JobCoordinator {
     /// Add a JobResult to memory and increase the counter in case
     /// it has not been seen before.
     pub fn add_job_result(&mut self, compute_result: &mut compute::Result) {
+        let start = SystemTime::now();
+        let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+        compute_result.set_timestamp(since_the_epoch.as_secs());
+
         if compute_result.seq_number().is_none() {
             compute_result.set_seq_number(self.count);
             self.count += 1;

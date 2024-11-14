@@ -104,6 +104,8 @@ pub struct Result {
     compute_request_tx_hash: TxHash,
     /// Sequence number assigned by the block builder.
     seq_number: Option<u64>,
+    /// Timestamp assigned by the block builder.
+    timestamp: Option<u64>,
 }
 
 impl Result {
@@ -116,6 +118,7 @@ impl Result {
             compute_verification_tx_hashes,
             compute_request_tx_hash,
             seq_number: None,
+            timestamp: None,
         }
     }
 
@@ -128,12 +131,19 @@ impl Result {
 
     /// Set sequence number
     pub fn set_seq_number(&mut self, seq_number: u64) {
+        assert!(self.seq_number().is_none());
         self.seq_number = Some(seq_number);
     }
 
     /// Get sequence number
     pub fn get_seq_number(&self) -> u64 {
         self.seq_number.unwrap()
+    }
+
+    /// Set timestamp
+    pub fn set_timestamp(&mut self, timestamp: u64) {
+        assert!(self.timestamp().is_none());
+        self.timestamp = Some(timestamp);
     }
 
     /// Append verification tx hash
