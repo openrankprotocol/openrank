@@ -148,13 +148,14 @@ impl Tx {
     }
 
     pub fn sign(&mut self, sk: &SigningKey) -> Result<(), EcdsaError> {
+        // Set the signer address
+        let from = address_from_sk(sk);
+        self.from = from;
+
         let (sig, rec) = sk.sign_prehash_recoverable(self.hash().as_bytes())?;
         let s: [u8; 32] = sig.s().to_bytes().into();
         let r: [u8; 32] = sig.r().to_bytes().into();
         self.signature = Signature::new(s, r, rec.to_byte());
-
-        let from = address_from_sk(sk);
-        self.from = from;
 
         Ok(())
     }

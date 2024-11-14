@@ -26,9 +26,11 @@ impl JobCoordinator {
     /// Add a JobResult to memory and increase the counter in case
     /// it has not been seen before.
     pub fn add_job_result(&mut self, compute_result: &mut compute::Result) {
-        let start = SystemTime::now();
-        let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
-        compute_result.set_timestamp(since_the_epoch.as_secs());
+        if compute_result.timestamp().is_none() {
+            let start = SystemTime::now();
+            let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+            compute_result.set_timestamp(since_the_epoch.as_secs());
+        }
 
         if compute_result.seq_number().is_none() {
             compute_result.set_seq_number(self.count);
