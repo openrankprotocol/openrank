@@ -71,6 +71,7 @@ struct Args {
 /// The configuration for the Sequencer.
 pub struct Sequencer {
     endpoint: String,
+    result_start: Option<u32>,
     result_size: u32,
 }
 
@@ -218,8 +219,11 @@ async fn get_results(
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
     let tx_hash_bytes = hex::decode(arg)?;
     let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query =
-        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
+    let results_query = GetResultsQuery::new(
+        compute_request_tx_hash,
+        config.sequencer.result_start.unwrap_or(0),
+        config.sequencer.result_size,
+    );
     let scores: (Vec<bool>, Vec<ScoreEntry>) =
         client.request("sequencer_get_results", vec![results_query]).await?;
     Ok(scores)
