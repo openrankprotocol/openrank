@@ -9,10 +9,9 @@ use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
     merkle::hash_leaf,
-    result::GetResultsQuery,
     topics::Domain,
     tx::{
-        compute, consts,
+        self, compute, consts,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
         Address, Body, Tx, TxHash,
     },
@@ -22,6 +21,7 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     fs::File,
     io::{Read, Write},
@@ -41,7 +41,13 @@ enum Method {
     /// The method creates a ComputeRequest TX.
     ComputeRequest { path: String, output_path: Option<String> },
     /// The method takes a ComputeRequest TX hash and returns the computed results.
-    GetResults { request_id: String, config_path: String, output_path: Option<String> },
+    GetResults {
+        request_id: String,
+        config_path: String,
+        output_path: Option<String>,
+        allow_in_progress: bool,
+        allow_failed: bool,
+    },
     /// The method takes a ComputeRequest TX hash and returns the computed results,
     /// and also checks the integrity/correctness of the results.
     GetResultsAndCheckIntegrity { request_id: String, config_path: String, test_vector: String },
@@ -218,11 +224,69 @@ async fn get_results(
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
     let tx_hash_bytes = hex::decode(arg)?;
     let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query =
-        GetResultsQuery::new(compute_request_tx_hash, 0, config.sequencer.result_size);
-    let scores: (Vec<bool>, Vec<ScoreEntry>) =
-        client.request("sequencer_get_results", vec![results_query]).await?;
-    Ok(scores)
+    let seq_number: u64 = client
+        .request(
+            "sequencer_get_compute_result_seq_number",
+            vec![compute_request_tx_hash.clone()],
+        )
+        .await?;
+    let result: compute::Result =
+        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
+
+    let commitment_tx_key = (
+        consts::COMPUTE_COMMITMENT,
+        result.compute_commitment_tx_hash().clone(),
+    );
+    let commitment_tx: Tx = client.request("sequencer_get_tx", vec![commitment_tx_key]).await?;
+    let commitment = match commitment_tx.body() {
+        tx::Body::ComputeCommitment(commitment) => commitment,
+        _ => panic!("unexpected TX"),
+    };
+    let mut scores_tx_keys = Vec::new();
+    for scores_tx_hash in commitment.scores_tx_hashes() {
+        scores_tx_keys.push((consts::COMPUTE_SCORES, scores_tx_hash));
+    }
+    let scores_txs: Vec<Tx> = client.request("sequencer_get_txs", vec![scores_tx_keys]).await?;
+    let mut score_entries = Vec::new();
+    for scores_tx in &scores_txs {
+        let scores = match scores_tx.body() {
+            tx::Body::ComputeScores(scores) => scores,
+            _ => panic!("unexpected TX"),
+        };
+        score_entries.extend(scores.entries().clone());
+    }
+
+    score_entries.sort_by(|a, b| match a.value().partial_cmp(b.value()) {
+        Some(ordering) => ordering,
+        None => {
+            if a.value().is_nan() && b.value().is_nan() {
+                Ordering::Equal
+            } else if a.value().is_nan() {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        },
+    });
+
+    let mut verification_tx_keys = Vec::new();
+    for verification_tx_hash in result.compute_verification_tx_hashes() {
+        verification_tx_keys.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
+    }
+    let verification_txs: Vec<Tx> =
+        client.request("sequencer_get_txs", vec![verification_tx_keys]).await?;
+
+    let mut verification_results = Vec::new();
+    for verification_tx in &verification_txs {
+        let res = match verification_tx.body() {
+            tx::Body::ComputeVerification(res) => res,
+            _ => panic!("unexpected TX"),
+        };
+        verification_results.push(res);
+    }
+
+    let votes = verification_results.iter().map(|x| x.verification_result().clone()).collect();
+    Ok((votes, score_entries))
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
@@ -362,15 +426,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetResults { request_id, config_path, output_path } => {
+        Method::GetResults {
+            request_id,
+            config_path,
+            output_path,
+            allow_in_progress,
+            allow_failed,
+        } => {
             let (votes, scores) = get_results(request_id, config_path.as_str()).await?;
-
-            println!("votes: {:?}", votes);
-            for res in &scores {
-                println!("{}: {}", res.id().clone(), *res.value());
-            }
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, scores)?;
+            } else {
+                println!("votes: {:?}", votes);
+                for res in &scores {
+                    println!("{}: {}", res.id().clone(), *res.value());
+                }
             }
         },
         Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {

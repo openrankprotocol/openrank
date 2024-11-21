@@ -4,7 +4,7 @@ use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::{INVALID_REQUEST_CODE, PARSE_ERROR_CODE};
 use jsonrpsee::types::{ErrorCode, ErrorObjectOwned};
-use openrank_common::db::Db;
+use openrank_common::db::{self, Db, RocksDBErrorKind};
 use openrank_common::result::GetResultsQuery;
 use openrank_common::tx::consts;
 use openrank_common::tx::{self, compute, trust::ScoreEntry, Address, Tx};
@@ -12,7 +12,7 @@ use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::cmp::Ordering;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tracing::error;
+use tracing::{debug, error};
 
 #[rpc(server, namespace = "sequencer")]
 pub trait Rpc {
@@ -25,10 +25,10 @@ pub trait Rpc {
     #[method(name = "compute_request")]
     async fn compute_request(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned>;
 
-    #[method(name = "get_results")]
-    async fn get_results(
-        &self, query: GetResultsQuery,
-    ) -> Result<(Vec<bool>, Vec<ScoreEntry>), ErrorObjectOwned>;
+    #[method(name = "get_compute_result_seq_number")]
+    async fn get_compute_result_seq_number(
+        &self, request_tx_hash: tx::TxHash,
+    ) -> Result<u64, ErrorObjectOwned>;
 
     #[method(name = "get_compute_result")]
     async fn get_compute_result(
@@ -100,6 +100,15 @@ impl SequencerServer {
         }
 
         Ok((tx_bytes, tx.body().clone()))
+    }
+
+    pub fn map_db_error(e: db::Error) -> ErrorObjectOwned {
+        if let db::Error::RocksDB(err) = e {
+            if err.kind() == RocksDBErrorKind::NotFound {
+                debug!("{}", err);
+            }
+        }
+        ErrorObjectOwned::from(ErrorCode::InternalError)
     }
 }
 
@@ -174,110 +183,23 @@ impl RpcServer for SequencerServer {
         Ok(tx_event)
     }
 
-    /// Gets the results(EigenTrust scores) of the `ComputeRequest` with the ComputeRequest TX hash,
-    /// along with start and size parameters.
-    async fn get_results(
-        &self, query: GetResultsQuery,
-    ) -> Result<(Vec<bool>, Vec<ScoreEntry>), ErrorObjectOwned> {
+    /// Fetch the ComputeResult sequence number, given the request TX hash
+    async fn get_compute_result_seq_number(
+        &self, request_tx_hash: tx::TxHash,
+    ) -> Result<u64, ErrorObjectOwned> {
         let db_handler = self.db.clone();
 
-        let result_reference = db_handler
-            .get::<compute::ResultReference>(query.request_tx_hash().to_bytes())
+        let result = db_handler
+            .get::<compute::ResultReference>(request_tx_hash.to_bytes())
             .map_err(|e| {
-                error!("{}", e);
+                if let db::Error::RocksDB(err) = e {
+                } else {
+                    error!("{}", e);
+                }
                 ErrorObjectOwned::from(ErrorCode::InternalError)
             })?;
 
-        let key = compute::Result::construct_full_key(*result_reference.seq_number());
-        let result = db_handler.get::<compute::Result>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
-        let key = Tx::construct_full_key(
-            consts::COMPUTE_COMMITMENT,
-            result.compute_commitment_tx_hash().clone(),
-        );
-        let tx = db_handler.get::<Tx>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
-        let commitment = match tx.body().clone() {
-            tx::Body::ComputeCommitment(commitment) => Ok(commitment),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-        }?;
-        let create_scores_tx: Vec<Tx> = {
-            let mut create_scores_tx = Vec::new();
-            for tx_hash in commitment.scores_tx_hashes().iter() {
-                let key = Tx::construct_full_key(consts::COMPUTE_SCORES, tx_hash.clone());
-                let tx = db_handler.get::<Tx>(key).map_err(|e| {
-                    error!("{}", e);
-                    ErrorObjectOwned::from(ErrorCode::InternalError)
-                })?;
-                create_scores_tx.push(tx);
-            }
-            create_scores_tx
-        };
-        let create_scores: Vec<compute::Scores> = {
-            let mut create_scores = Vec::new();
-            for tx in create_scores_tx.into_iter() {
-                let scores = match tx.body().clone() {
-                    tx::Body::ComputeScores(scores) => Ok(scores),
-                    _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-                }?;
-                create_scores.push(scores);
-            }
-            create_scores
-        };
-        let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().flat_map(|x| x.entries().clone()).collect();
-        score_entries.sort_by(|a, b| match a.value().partial_cmp(b.value()) {
-            Some(ordering) => ordering,
-            None => {
-                if a.value().is_nan() && b.value().is_nan() {
-                    Ordering::Equal
-                } else if a.value().is_nan() {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                }
-            },
-        });
-        score_entries.reverse();
-        let score_entries: Vec<ScoreEntry> = score_entries
-            .split_at(*query.start() as usize)
-            .1
-            .iter()
-            .take(*query.size() as usize)
-            .cloned()
-            .collect();
-
-        let verificarion_results_tx: Vec<Tx> = {
-            let mut verification_resutls_tx = Vec::new();
-            for tx_hash in result.compute_verification_tx_hashes().iter() {
-                let key = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx_hash.clone());
-                let tx = db_handler.get::<Tx>(key).map_err(|e| {
-                    error!("{}", e);
-                    ErrorObjectOwned::from(ErrorCode::InternalError)
-                })?;
-                verification_resutls_tx.push(tx);
-            }
-            verification_resutls_tx
-        };
-        let verification_results: Vec<compute::Verification> = {
-            let mut verification_results = Vec::new();
-            for tx in verificarion_results_tx.into_iter() {
-                let result = match tx.body().clone() {
-                    tx::Body::ComputeVerification(result) => Ok(result),
-                    _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-                }?;
-                verification_results.push(result);
-            }
-            verification_results
-        };
-        let verification_results_bools: Vec<bool> =
-            verification_results.into_iter().map(|x| *x.verification_result()).collect();
-
-        Ok((verification_results_bools, score_entries))
+        Ok(result.seq_number().clone())
     }
 
     /// Fetch the ComputeResult TX by its sequence number
