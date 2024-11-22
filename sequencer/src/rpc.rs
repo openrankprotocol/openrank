@@ -2,17 +2,32 @@ use alloy_rlp::{encode, Decodable};
 use getset::Getters;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::types::error::{INVALID_REQUEST_CODE, PARSE_ERROR_CODE};
-use jsonrpsee::types::{ErrorCode, ErrorObjectOwned};
+use jsonrpsee::types::ErrorObjectOwned;
 use openrank_common::db::{self, Db, RocksDBErrorKind};
-use openrank_common::result::GetResultsQuery;
 use openrank_common::tx::consts;
-use openrank_common::tx::{self, compute, trust::ScoreEntry, Address, Tx};
+use openrank_common::tx::{self, compute, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
-use std::cmp::Ordering;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error};
+
+const GOSSIPSUB_FAILED_CODE: i32 = -32012;
+const INVALID_TX_KIND_CODE: i32 = -32013;
+const ROCKS_DB_FAILED_CODE: i32 = -32014;
+const COMMON_DB_FAILED_CODE: i32 = -32015;
+const NOT_FOUND_CODE: i32 = -32016;
+const PARSE_FAILED_CODE: i32 = -32017;
+const INVALID_SIGNATURE_CODE: i32 = -32018;
+const NOT_WHITELISTED_CODE: i32 = -32019;
+
+const GOSSIPSUB_FAILED_MESSAGE: &str = "Gossipsub failed";
+const INVALID_TX_KIND_MESSAGE: &str = "Invalid tx kind";
+const ROCKS_DB_FAILED_MESSAGE: &str = "RocksDB failed";
+const COMMON_DB_FAILED_MESSAGE: &str = "Common DB failed";
+const NOT_FOUND_MESSAGE: &str = "Object not found";
+const PARSE_FAILED_MESSAGE: &str = "Failed to parse TX data";
+const INVALID_SIGNATURE_MESSAGE: &str = "Failed to verify TX Signature";
+const NOT_WHITELISTED_MESSAGE: &str = "TX signer is not whitelisted";
 
 #[rpc(server, namespace = "sequencer")]
 pub trait Rpc {
@@ -62,39 +77,39 @@ impl SequencerServer {
         &self, tx_str: String, kind: &str,
     ) -> Result<(Vec<u8>, tx::Body), ErrorObjectOwned> {
         let tx_bytes = hex::decode(tx_str).map_err(|e| {
-            error!("{}", e);
+            debug!("{}", e);
             ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
+                PARSE_FAILED_CODE,
+                PARSE_FAILED_MESSAGE.to_string(),
                 Some(e.to_string()),
             )
         })?;
 
         let tx = Tx::decode(&mut tx_bytes.as_slice()).map_err(|e| {
             ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
+                PARSE_FAILED_CODE,
+                PARSE_FAILED_MESSAGE.to_string(),
                 Some(e.to_string()),
             )
         })?;
         if tx.body().prefix() != kind {
             return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid tx kind".to_string(),
+                INVALID_TX_KIND_CODE,
+                INVALID_TX_KIND_MESSAGE.to_string(),
                 None::<String>,
             ));
         }
         let address = tx.verify().map_err(|e| {
             ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Failed to verify TX Signature".to_string(),
+                INVALID_SIGNATURE_CODE,
+                INVALID_SIGNATURE_MESSAGE.to_string(),
                 Some(e.to_string()),
             )
         })?;
         if !self.whitelisted_users.contains(&address) {
             return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid TX signer".to_string(),
+                NOT_WHITELISTED_CODE,
+                NOT_WHITELISTED_MESSAGE.to_string(),
                 None::<String>,
             ));
         }
@@ -103,12 +118,33 @@ impl SequencerServer {
     }
 
     pub fn map_db_error(e: db::Error) -> ErrorObjectOwned {
-        if let db::Error::RocksDB(err) = e {
-            if err.kind() == RocksDBErrorKind::NotFound {
-                debug!("{}", err);
-            }
+        match e {
+            db::Error::RocksDB(err) => {
+                if err.kind() == RocksDBErrorKind::NotFound {
+                    debug!("{}", err);
+                    ErrorObjectOwned::owned(
+                        NOT_FOUND_CODE,
+                        NOT_FOUND_MESSAGE.to_string(),
+                        Some(err.to_string()),
+                    )
+                } else {
+                    error!("{}", err);
+                    ErrorObjectOwned::owned(
+                        ROCKS_DB_FAILED_CODE,
+                        ROCKS_DB_FAILED_MESSAGE.to_string(),
+                        Some(err.to_string()),
+                    )
+                }
+            },
+            err => {
+                error!("{}", err);
+                ErrorObjectOwned::owned(
+                    COMMON_DB_FAILED_CODE,
+                    COMMON_DB_FAILED_MESSAGE.to_string(),
+                    Some(err.to_string()),
+                )
+            },
         }
-        ErrorObjectOwned::from(ErrorCode::InternalError)
     }
 }
 
@@ -120,7 +156,11 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::TRUST_UPDATE)?;
         let trust_update = match body {
             tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            _ => Err(ErrorObjectOwned::owned(
+                INVALID_TX_KIND_CODE,
+                INVALID_TX_KIND_MESSAGE.to_string(),
+                None::<String>,
+            )),
         }?;
 
         // Build Tx Event
@@ -132,7 +172,11 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
+            ErrorObjectOwned::owned(
+                GOSSIPSUB_FAILED_CODE,
+                GOSSIPSUB_FAILED_MESSAGE.to_string(),
+                None::<String>,
+            )
         })?;
         Ok(tx_event)
     }
@@ -143,7 +187,11 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::SEED_UPDATE)?;
         let seed_update = match body {
             tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            _ => Err(ErrorObjectOwned::owned(
+                INVALID_TX_KIND_CODE,
+                INVALID_TX_KIND_MESSAGE.to_string(),
+                None::<String>,
+            )),
         }?;
 
         // Build Tx Event
@@ -155,7 +203,11 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
+            ErrorObjectOwned::owned(
+                GOSSIPSUB_FAILED_CODE,
+                GOSSIPSUB_FAILED_MESSAGE.to_string(),
+                None::<String>,
+            )
         })?;
         Ok(tx_event)
     }
@@ -166,7 +218,11 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::COMPUTE_REQUEST)?;
         let compute_request = match body {
             tx::Body::ComputeRequest(compute_request) => Ok(compute_request),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            _ => Err(ErrorObjectOwned::owned(
+                INVALID_TX_KIND_CODE,
+                INVALID_TX_KIND_MESSAGE.to_string(),
+                None::<String>,
+            )),
         }?;
 
         // Build Tx Event
@@ -178,7 +234,11 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
+            ErrorObjectOwned::owned(
+                GOSSIPSUB_FAILED_CODE,
+                GOSSIPSUB_FAILED_MESSAGE.to_string(),
+                None::<String>,
+            )
         })?;
         Ok(tx_event)
     }
@@ -191,13 +251,7 @@ impl RpcServer for SequencerServer {
 
         let result = db_handler
             .get::<compute::ResultReference>(request_tx_hash.to_bytes())
-            .map_err(|e| {
-                if let db::Error::RocksDB(err) = e {
-                } else {
-                    error!("{}", e);
-                }
-                ErrorObjectOwned::from(ErrorCode::InternalError)
-            })?;
+            .map_err(SequencerServer::map_db_error)?;
 
         Ok(result.seq_number().clone())
     }
@@ -209,10 +263,8 @@ impl RpcServer for SequencerServer {
         let db_handler = self.db.clone();
 
         let key = compute::Result::construct_full_key(seq_number);
-        let result = db_handler.get::<compute::Result>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
+        let result =
+            db_handler.get::<compute::Result>(key).map_err(SequencerServer::map_db_error)?;
 
         Ok(result)
     }
@@ -222,10 +274,7 @@ impl RpcServer for SequencerServer {
         let db_handler = self.db.clone();
 
         let key = Tx::construct_full_key(&kind, tx_hash);
-        let tx = db_handler.get::<Tx>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
+        let tx = db_handler.get::<Tx>(key).map_err(SequencerServer::map_db_error)?;
 
         Ok(tx)
     }
@@ -239,10 +288,7 @@ impl RpcServer for SequencerServer {
             let full_key = Tx::construct_full_key(&kind, tx_hash);
             key_bytes.push(full_key);
         }
-        let txs = db_handler.get_multi::<Tx>(key_bytes).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
+        let txs = db_handler.get_multi::<Tx>(key_bytes).map_err(SequencerServer::map_db_error)?;
 
         Ok(txs)
     }

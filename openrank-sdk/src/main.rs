@@ -4,14 +4,16 @@ use csv::StringRecord;
 use dotenv::dotenv;
 use getset::Getters;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
-use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
+use k256::{ecdsa::Error as EcdsaError, ecdsa::SigningKey, schnorr::CryptoRngCore};
 use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
     merkle::hash_leaf,
     topics::Domain,
     tx::{
-        self, compute, consts,
+        self,
+        compute::{self, Verification},
+        consts,
         trust::{ScoreEntry, SeedUpdate, TrustEntry, TrustUpdate},
         Address, Body, Tx, TxHash,
     },
@@ -26,10 +28,41 @@ use std::{
     fs::File,
     io::{Read, Write},
 };
-use std::{error::Error, io::BufWriter};
+use std::{
+    io::{self, BufWriter},
+    num,
+};
 
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
+
+#[derive(thiserror::Error, Debug)]
+pub enum SdkError {
+    #[error("IO error: {0}")]
+    IoError(io::Error),
+    #[error("Toml error: {0}")]
+    TomlError(toml::de::Error),
+    #[error("Csv error: {0}")]
+    CsvError(csv::Error),
+    #[error("JsonRPC client error: {0}")]
+    JsonRpcClientError(jsonrpsee::core::ClientError),
+    #[error("Ecdsa error: {0}")]
+    EcdsaError(EcdsaError),
+    #[error("Hex error: {0}")]
+    HexError(hex::FromHexError),
+    #[error("Parse int error: {0}")]
+    ParseIntError(num::ParseIntError),
+    #[error("Invalid TX kind")]
+    InvalidTxKind,
+    #[error("Arg parse error: {0}")]
+    ArgParseError(String),
+    #[error("Serde error: {0}")]
+    SerdeError(serde_json::Error),
+    #[error("Incomplete result: expected {0}, verifications, got {1}")]
+    IncompleteResult(usize, usize),
+    #[error("Compute job verification failed: {0}/{1}")]
+    ComputeJobFailed(usize, usize),
+}
 
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
@@ -111,11 +144,12 @@ impl ComputeRequestResult {
 }
 
 /// Creates a new `Config` from a local TOML file, given file path.
-fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
-    let mut f = File::open(path)?;
+fn read_config(path: &str) -> Result<Config, SdkError> {
+    let mut f = File::open(path).map_err(|e| SdkError::IoError(e))?;
     let mut toml_config = String::new();
-    f.read_to_string(&mut toml_config)?;
-    let config: Config = toml::from_str(toml_config.as_str())?;
+    f.read_to_string(&mut toml_config).map_err(|e| SdkError::IoError(e))?;
+    let config: Config =
+        toml::from_str(toml_config.as_str()).map_err(|e| SdkError::TomlError(e))?;
     Ok(config)
 }
 
@@ -124,20 +158,23 @@ fn read_config(path: &str) -> Result<Config, Box<dyn Error>> {
 /// 3. Sends the list of `TrustEntry` to the Sequencer.
 async fn update_trust(
     sk: SigningKey, path: &str, config_path: &str,
-) -> Result<Vec<TxEvent>, Box<dyn Error>> {
-    let f = File::open(path)?;
+) -> Result<Vec<TxEvent>, SdkError> {
+    let f = File::open(path).map_err(SdkError::IoError)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
     for result in rdr.records() {
-        let record: StringRecord = result?;
-        let (from, to, value): (String, String, f32) = record.deserialize(None)?;
+        let record: StringRecord = result.map_err(SdkError::CsvError)?;
+        let (from, to, value): (String, String, f32) =
+            record.deserialize(None).map_err(SdkError::CsvError)?;
         let trust_entry = TrustEntry::new(from, to, value);
         entries.push(trust_entry);
     }
 
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
 
     let mut results = Vec::new();
     for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
@@ -145,10 +182,12 @@ async fn update_trust(
             config.domain.trust_namespace(),
             chunk.to_vec(),
         )));
-        tx.sign(&sk)?;
+        tx.sign(&sk).map_err(SdkError::EcdsaError)?;
 
-        let result: TxEvent =
-            client.request("sequencer_trust_update", vec![hex::encode(encode(tx))]).await?;
+        let result: TxEvent = client
+            .request("sequencer_trust_update", vec![hex::encode(encode(tx))])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
         results.push(result);
     }
     Ok(results)
@@ -159,20 +198,22 @@ async fn update_trust(
 /// 3. Sends the list of `ScoreEntry` to the Sequencer.
 async fn update_seed(
     sk: SigningKey, path: &str, config_path: &str,
-) -> Result<Vec<TxEvent>, Box<dyn Error>> {
-    let f = File::open(path)?;
+) -> Result<Vec<TxEvent>, SdkError> {
+    let f = File::open(path).map_err(SdkError::IoError)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
     for result in rdr.records() {
-        let record: StringRecord = result?;
-        let (i, value): (String, f32) = record.deserialize(None)?;
+        let record: StringRecord = result.map_err(SdkError::CsvError)?;
+        let (i, value): (String, f32) = record.deserialize(None).map_err(SdkError::CsvError)?;
         let score_entry = ScoreEntry::new(i, value);
         entries.push(score_entry);
     }
 
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
 
     let mut results = Vec::new();
     for chunk in entries.chunks(SEED_CHUNK_SIZE) {
@@ -180,10 +221,12 @@ async fn update_seed(
             config.domain.seed_namespace(),
             chunk.to_vec(),
         )));
-        tx.sign(&sk)?;
+        tx.sign(&sk).map_err(SdkError::EcdsaError)?;
 
-        let tx_event: TxEvent =
-            client.request("sequencer_seed_update", vec![hex::encode(encode(tx))]).await?;
+        let tx_event: TxEvent = client
+            .request("sequencer_seed_update", vec![hex::encode(encode(tx))])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
         results.push(tx_event);
     }
     Ok(results)
@@ -191,12 +234,12 @@ async fn update_seed(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Sends a `ComputeRequest` transaction to the Sequencer.
-async fn compute_request(
-    sk: SigningKey, path: &str,
-) -> Result<ComputeRequestResult, Box<dyn Error>> {
+async fn compute_request(sk: SigningKey, path: &str) -> Result<ComputeRequestResult, SdkError> {
     let config = read_config(path)?;
     // Creates a new client
-    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
 
     let rng = &mut thread_rng();
     let domain_id = config.domain.to_hash();
@@ -204,55 +247,81 @@ async fn compute_request(
     let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
         domain_id, 0, hash,
     )));
-    tx.sign(&sk)?;
+    tx.sign(&sk).map_err(SdkError::EcdsaError)?;
     let tx_hash = tx.hash();
 
-    let tx_event: TxEvent =
-        client.request("sequencer_compute_request", vec![hex::encode(encode(tx))]).await?;
+    let tx_event: TxEvent = client
+        .request("sequencer_compute_request", vec![hex::encode(encode(tx))])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
 
     let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
     Ok(compute_result)
 }
 
+fn is_verification_passed(ver: Vec<Verification>) -> (bool, usize) {
+    let mut passed = true;
+    let mut count = 0;
+    for v in ver {
+        if !v.verification_result() {
+            passed = false;
+        } else {
+            count += 1;
+        }
+    }
+    (passed, count)
+}
+
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
 async fn get_results(
-    arg: String, config_path: &str,
-) -> Result<(Vec<bool>, Vec<ScoreEntry>), Box<dyn Error>> {
+    arg: String, config_path: &str, allow_in_progress: bool, allow_failed: bool,
+) -> Result<(Vec<bool>, Vec<ScoreEntry>), SdkError> {
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let tx_hash_bytes = hex::decode(arg)?;
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
+    let tx_hash_bytes = hex::decode(arg).map_err(SdkError::HexError)?;
     let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
     let seq_number: u64 = client
         .request(
             "sequencer_get_compute_result_seq_number",
             vec![compute_request_tx_hash.clone()],
         )
-        .await?;
-    let result: compute::Result =
-        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
+    let result: compute::Result = client
+        .request("sequencer_get_compute_result", vec![seq_number])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
 
     let commitment_tx_key = (
         consts::COMPUTE_COMMITMENT,
         result.compute_commitment_tx_hash().clone(),
     );
-    let commitment_tx: Tx = client.request("sequencer_get_tx", vec![commitment_tx_key]).await?;
+    let commitment_tx: Tx = client
+        .request("sequencer_get_tx", vec![commitment_tx_key])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
     let commitment = match commitment_tx.body() {
-        tx::Body::ComputeCommitment(commitment) => commitment,
-        _ => panic!("unexpected TX"),
-    };
+        tx::Body::ComputeCommitment(commitment) => Ok(commitment),
+        _ => Err(SdkError::InvalidTxKind),
+    }?;
     let mut scores_tx_keys = Vec::new();
     for scores_tx_hash in commitment.scores_tx_hashes() {
         scores_tx_keys.push((consts::COMPUTE_SCORES, scores_tx_hash));
     }
-    let scores_txs: Vec<Tx> = client.request("sequencer_get_txs", vec![scores_tx_keys]).await?;
+    let scores_txs: Vec<Tx> = client
+        .request("sequencer_get_txs", vec![scores_tx_keys])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
     let mut score_entries = Vec::new();
     for scores_tx in &scores_txs {
         let scores = match scores_tx.body() {
-            tx::Body::ComputeScores(scores) => scores,
-            _ => panic!("unexpected TX"),
-        };
+            tx::Body::ComputeScores(scores) => Ok(scores),
+            _ => Err(SdkError::InvalidTxKind),
+        }?;
         score_entries.extend(scores.entries().clone());
     }
 
@@ -269,20 +338,51 @@ async fn get_results(
         },
     });
 
+    let assignment_key = (consts::COMPUTE_ASSIGNMENT, commitment.assignment_tx_hash());
+    let assignment_tx: Tx = client
+        .request("sequencer_get_tx", vec![assignment_key])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
+    let _assignment = match assignment_tx.body() {
+        tx::Body::ComputeAssignment(assignment) => Ok(assignment),
+        _ => Err(SdkError::InvalidTxKind),
+    }?;
+
+    // let num_assigned_verifiers = assignment.assigned_verifier_node().len();
+    let num_assigned_verifiers = 1;
+    let verification_tx_hashes = result.compute_verification_tx_hashes();
+    if (verification_tx_hashes.len() < num_assigned_verifiers) && !allow_in_progress {
+        return Err(SdkError::IncompleteResult(
+            verification_tx_hashes.len(),
+            num_assigned_verifiers,
+        ));
+    }
+
     let mut verification_tx_keys = Vec::new();
-    for verification_tx_hash in result.compute_verification_tx_hashes() {
+    for verification_tx_hash in verification_tx_hashes {
         verification_tx_keys.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
     }
-    let verification_txs: Vec<Tx> =
-        client.request("sequencer_get_txs", vec![verification_tx_keys]).await?;
+    let verification_txs: Vec<Tx> = client
+        .request("sequencer_get_txs", vec![verification_tx_keys])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
 
     let mut verification_results = Vec::new();
     for verification_tx in &verification_txs {
         let res = match verification_tx.body() {
-            tx::Body::ComputeVerification(res) => res,
-            _ => panic!("unexpected TX"),
-        };
-        verification_results.push(res);
+            tx::Body::ComputeVerification(res) => Ok(res),
+            _ => Err(SdkError::InvalidTxKind),
+        }?;
+        verification_results.push(res.clone());
+    }
+
+    let (verification_result, count_positive) =
+        is_verification_passed(verification_results.clone());
+    if !verification_result && !allow_failed {
+        return Err(SdkError::ComputeJobFailed(
+            count_positive,
+            verification_tx_hashes.len(),
+        ));
     }
 
     let votes = verification_results.iter().map(|x| x.verification_result().clone()).collect();
@@ -291,27 +391,33 @@ async fn get_results(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
-async fn get_compute_result(
-    arg: String, config_path: &str,
-) -> Result<compute::Result, Box<dyn Error>> {
+async fn get_compute_result(arg: String, config_path: &str) -> Result<compute::Result, SdkError> {
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let seq_number = arg.parse::<u64>().unwrap();
-    let result: compute::Result =
-        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
+    let seq_number = arg.parse::<u64>().map_err(SdkError::ParseIntError)?;
+    let result: compute::Result = client
+        .request("sequencer_get_compute_result", vec![seq_number])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
     Ok(result)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
-async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx>, Box<dyn Error>> {
+async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx>, SdkError> {
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let seq_number = arg.parse::<u64>().unwrap();
-    let result: compute::Result =
-        client.request("sequencer_get_compute_result", vec![seq_number]).await?;
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
+    let seq_number = arg.parse::<u64>().map_err(SdkError::ParseIntError)?;
+    let result: compute::Result = client
+        .request("sequencer_get_compute_result", vec![seq_number])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
 
     let mut txs_arg = Vec::new();
     txs_arg.push((
@@ -326,20 +432,29 @@ async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx
         txs_arg.push((consts::COMPUTE_VERIFICATION, verification_tx_hash.clone()));
     }
 
-    let txs_res = client.request("sequencer_get_txs", vec![txs_arg]).await?;
+    let txs_res = client
+        .request("sequencer_get_txs", vec![txs_arg])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
     Ok(txs_res)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the TX given a TX hash.
-async fn get_tx(arg: String, config_path: &str) -> Result<Tx, Box<dyn Error>> {
+async fn get_tx(arg: String, config_path: &str) -> Result<Tx, SdkError> {
     let config = read_config(config_path)?;
     // Creates a new client
-    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
-    let (prefix, tx_hash) = arg.split_once(':').ok_or("Failed to parse argument")?;
-    let tx_hash_bytes = hex::decode(tx_hash)?;
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
+    let arg_clone = arg.clone();
+    let (prefix, tx_hash) = arg.split_once(':').ok_or(SdkError::ArgParseError(arg_clone))?;
+    let tx_hash_bytes = hex::decode(tx_hash).map_err(SdkError::HexError)?;
     let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let tx: Tx = client.request("sequencer_get_tx", (prefix.to_string(), tx_hash)).await?;
+    let tx: Tx = client
+        .request("sequencer_get_tx", (prefix.to_string(), tx_hash))
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
     Ok(tx)
 }
 
@@ -353,13 +468,13 @@ fn generate_keypair<R: CryptoRngCore>(rng: &mut R) -> (SigningKey, Address) {
 /// Checks the score integrity against the ones stored in `path`.
 fn check_score_integrity(
     votes: Vec<bool>, scores: Vec<ScoreEntry>, path: &str,
-) -> Result<bool, Box<dyn Error>> {
-    let f = File::open(path)?;
+) -> Result<bool, SdkError> {
+    let f = File::open(path).map_err(SdkError::IoError)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut test_vector = Vec::new();
     for result in rdr.records() {
-        let record: StringRecord = result?;
-        let (i, value): (String, f32) = record.deserialize(None)?;
+        let record: StringRecord = result.map_err(SdkError::CsvError)?;
+        let (i, value): (String, f32) = record.deserialize(None).map_err(SdkError::CsvError)?;
         let score_entry = ScoreEntry::new(i, value);
         test_vector.push(score_entry);
     }
@@ -381,24 +496,25 @@ fn check_score_integrity(
 }
 
 /// Utility function for writing json to a file.
-fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), Box<dyn Error>> {
-    let file = File::create(path)?;
+fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), SdkError> {
+    let file = File::create(path).map_err(SdkError::IoError)?;
     let mut writer = BufWriter::new(file);
-    serde_json::to_writer(&mut writer, &data)?;
-    writer.flush()?;
+    serde_json::to_writer(&mut writer, &data).map_err(SdkError::SerdeError)?;
+    writer.flush().map_err(SdkError::IoError)?;
     Ok(())
 }
 
 /// Returns the secret key from the environment variable.
-fn get_secret_key() -> Result<SigningKey, Box<dyn Error>> {
+fn get_secret_key() -> Result<SigningKey, SdkError> {
     let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
-    let secret_key_bytes = hex::decode(secret_key_hex)?;
-    let secret_key = SigningKey::from_slice(secret_key_bytes.as_slice())?;
+    let secret_key_bytes = hex::decode(secret_key_hex).map_err(SdkError::HexError)?;
+    let secret_key =
+        SigningKey::from_slice(secret_key_bytes.as_slice()).map_err(SdkError::EcdsaError)?;
     Ok(secret_key)
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), SdkError> {
     dotenv().ok();
     let cli = Args::parse();
 
@@ -433,7 +549,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             allow_in_progress,
             allow_failed,
         } => {
-            let (votes, scores) = get_results(request_id, config_path.as_str()).await?;
+            let (votes, scores) = get_results(
+                request_id,
+                config_path.as_str(),
+                allow_in_progress,
+                allow_failed,
+            )
+            .await?;
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, scores)?;
             } else {
@@ -444,7 +566,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
         Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
-            let (votes, results) = get_results(request_id, config_path.as_str()).await?;
+            let (votes, results) =
+                get_results(request_id, config_path.as_str(), false, false).await?;
             let res = check_score_integrity(votes, results, &test_vector)?;
             println!("Integrity check result: {}", res);
             assert!(res);
