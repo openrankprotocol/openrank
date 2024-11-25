@@ -27,6 +27,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{Read, Write},
+    process,
 };
 use std::{
     io::{self, BufWriter},
@@ -35,6 +36,12 @@ use std::{
 
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
+
+const NOT_FOUND_CODE: i32 = -32016;
+
+const ERROR_STATUS_CODE: i32 = 0;
+const PERMANENT_STATUS_CODE: i32 = 1;
+const TRANSIENT_STATUS_CODE: i32 = 2;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SdkError {
@@ -62,6 +69,8 @@ pub enum SdkError {
     IncompleteResult(usize, usize),
     #[error("Compute job verification failed: {0}/{1}")]
     ComputeJobFailed(usize, usize),
+    #[error("Compute job still in progress.")]
+    ComputeJobInProgress,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -291,10 +300,25 @@ async fn get_results(
         )
         .await
         .map_err(SdkError::JsonRpcClientError)?;
-    let result: compute::Result = client
+    let result: Result<compute::Result, SdkError> = client
         .request("sequencer_get_compute_result", vec![seq_number])
         .await
-        .map_err(SdkError::JsonRpcClientError)?;
+        .map_err(SdkError::JsonRpcClientError);
+    let result = match result {
+        Ok(res) => Ok(res),
+        Err(e) => match e {
+            SdkError::JsonRpcClientError(jsonrpsee::core::ClientError::Call(call_e)) => {
+                if call_e.code() == NOT_FOUND_CODE {
+                    Err(SdkError::ComputeJobInProgress)
+                } else {
+                    Err(SdkError::JsonRpcClientError(
+                        jsonrpsee::core::ClientError::Call(call_e),
+                    ))
+                }
+            },
+            e => Err(e),
+        },
+    }?;
 
     let commitment_tx_key = (
         consts::COMPUTE_COMMITMENT,
@@ -521,25 +545,49 @@ async fn main() -> Result<(), SdkError> {
     match cli.method {
         Method::TrustUpdate { path, config_path, output_path } => {
             let secret_key = get_secret_key()?;
-            let res = update_trust(secret_key, path.as_str(), config_path.as_str()).await?;
-            if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, res)?;
+            let res = update_trust(secret_key, path.as_str(), config_path.as_str()).await;
+            match res {
+                Ok(tx_events) => {
+                    if let Some(output_path) = output_path {
+                        write_json_to_file(&output_path, tx_events)?;
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    process::exit(ERROR_STATUS_CODE)
+                },
             }
         },
         Method::SeedUpdate { path, config_path, output_path } => {
             let secret_key = get_secret_key()?;
-            let res = update_seed(secret_key, path.as_str(), config_path.as_str()).await?;
-            if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, res)?;
+            let res = update_seed(secret_key, path.as_str(), config_path.as_str()).await;
+            match res {
+                Ok(tx_events) => {
+                    if let Some(output_path) = output_path {
+                        write_json_to_file(&output_path, tx_events)?;
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    process::exit(ERROR_STATUS_CODE)
+                },
             }
         },
         Method::ComputeRequest { path, output_path } => {
             let secret_key = get_secret_key()?;
-            let res = compute_request(secret_key, path.as_str()).await?;
-            let hex_encoded_tx_hash = hex::encode(res.compute_tx_hash.inner());
-            println!("{}", hex_encoded_tx_hash);
-            if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, res)?;
+            let res = compute_request(secret_key, path.as_str()).await;
+            match res {
+                Ok(result) => {
+                    let hex_encoded_tx_hash = hex::encode(result.compute_tx_hash.inner());
+                    println!("{}", hex_encoded_tx_hash);
+                    if let Some(output_path) = output_path {
+                        write_json_to_file(&output_path, result)?;
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    process::exit(ERROR_STATUS_CODE)
+                },
             }
         },
         Method::GetResults {
@@ -549,45 +597,97 @@ async fn main() -> Result<(), SdkError> {
             allow_in_progress,
             allow_failed,
         } => {
-            let (votes, scores) = get_results(
+            let res = get_results(
                 request_id,
                 config_path.as_str(),
                 allow_in_progress,
                 allow_failed,
             )
-            .await?;
-            if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, scores)?;
-            } else {
-                println!("votes: {:?}", votes);
-                for res in &scores {
-                    println!("{}: {}", res.id().clone(), *res.value());
-                }
+            .await;
+            match res {
+                Ok((votes, scores)) => {
+                    if let Some(output_path) = output_path {
+                        write_json_to_file(&output_path, scores)?;
+                    } else {
+                        println!("votes: {:?}", votes);
+                        for res in &scores {
+                            println!("{}: {}", res.id().clone(), *res.value());
+                        }
+                    }
+                },
+                Err(e) => match e {
+                    SdkError::ComputeJobInProgress => {
+                        println!("ComputeJob still in progress");
+                        process::exit(TRANSIENT_STATUS_CODE);
+                    },
+                    SdkError::ComputeJobFailed(positive, total) => {
+                        println!(
+                            "ComputeJob verification failed. Votes: {}/{}",
+                            positive, total
+                        );
+                        process::exit(PERMANENT_STATUS_CODE);
+                    },
+                    e => {
+                        println!("Error: {}", e);
+                        process::exit(ERROR_STATUS_CODE);
+                    },
+                },
             }
         },
         Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
-            let (votes, results) =
-                get_results(request_id, config_path.as_str(), false, false).await?;
-            let res = check_score_integrity(votes, results, &test_vector)?;
-            println!("Integrity check result: {}", res);
-            assert!(res);
+            let res = get_results(request_id, config_path.as_str(), false, false).await;
+            match res {
+                Ok((votes, results)) => {
+                    let res = check_score_integrity(votes, results, &test_vector)?;
+                    println!("Integrity check result: {}", res);
+                    assert!(res);
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    process::exit(ERROR_STATUS_CODE);
+                },
+            }
         },
         Method::GetComputeResult { seq_number, config_path, output_path } => {
-            let res = get_compute_result(seq_number, &config_path).await?;
-            if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, res)?;
+            let res = get_compute_result(seq_number, &config_path).await;
+            match res {
+                Ok(result) => {
+                    if let Some(output_path) = output_path {
+                        write_json_to_file(&output_path, result)?;
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    process::exit(ERROR_STATUS_CODE);
+                },
             }
         },
         Method::GetComputeResultTxs { seq_number, config_path, output_path } => {
-            let res = get_compute_result_txs(seq_number, &config_path).await?;
-            if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, res)?;
+            let res = get_compute_result_txs(seq_number, &config_path).await;
+            match res {
+                Ok(txs) => {
+                    if let Some(output_path) = output_path {
+                        write_json_to_file(&output_path, txs)?;
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    process::exit(ERROR_STATUS_CODE);
+                },
             }
         },
         Method::GetTx { tx_id, config_path, output_path } => {
-            let res = get_tx(tx_id, &config_path).await?;
-            if let Some(output_path) = output_path {
-                write_json_to_file(&output_path, res)?;
+            let res = get_tx(tx_id, &config_path).await;
+            match res {
+                Ok(tx) => {
+                    if let Some(output_path) = output_path {
+                        write_json_to_file(&output_path, tx)?;
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                    process::exit(ERROR_STATUS_CODE);
+                },
             }
         },
         Method::GenerateKeypair => {
