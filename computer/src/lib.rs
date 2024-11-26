@@ -265,8 +265,7 @@ impl Node {
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new(&config.database, &[&Tx::get_cf()])?;
 
-        let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
-        let compute_runner = ComputeRunner::new(domain_hashes);
+        let compute_runner = ComputeRunner::new(&config.domains);
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
