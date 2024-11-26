@@ -25,7 +25,7 @@ pub struct VerificationRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
     local_trust: HashMap<OwnedNamespace, HashMap<(u64, u64), f32>>,
-    seed_trust: HashMap<DomainHash, HashMap<u64, f32>>,
+    seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
     compute_scores: HashMap<DomainHash, HashMap<TxHash, compute::Scores>>,
@@ -51,7 +51,7 @@ impl VerificationRunner {
             count.insert(domain_hash, 0);
             indices.insert(domain_hash, HashMap::new());
             local_trust.insert(domain.trust_namespace(), HashMap::new());
-            seed_trust.insert(domain_hash, HashMap::new());
+            seed_trust.insert(domain.trust_namespace(), HashMap::new());
             lt_sub_trees.insert(domain_hash, HashMap::new());
             lt_master_tree.insert(
                 domain_hash,
@@ -99,8 +99,8 @@ impl VerificationRunner {
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
         let seed = self
             .seed_trust
-            .get(&domain.to_hash())
-            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
+            .get(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(entry.from()) {
@@ -157,8 +157,8 @@ impl VerificationRunner {
             .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
-            .get_mut(&domain.to_hash())
-            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
+            .get_mut(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
             let index = if let Some(i) = domain_indices.get(entry.id()) {
@@ -331,8 +331,8 @@ impl VerificationRunner {
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
         let seed = self
             .seed_trust
-            .get(&domain.to_hash())
-            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
+            .get(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let scores: Vec<&compute::Scores> = {
             let mut scores = Vec::new();
             for tx_hash in commitment.scores_tx_hashes().iter() {
@@ -393,7 +393,7 @@ pub enum Error {
 
     LocalTrustNotFound(OwnedNamespace),
 
-    SeedTrustNotFound(DomainHash),
+    SeedTrustNotFound(OwnedNamespace),
 
     ComputeTreeNotFoundWithDomain(DomainHash),
     ComputeTreeNotFoundWithTxHash(TxHash),
