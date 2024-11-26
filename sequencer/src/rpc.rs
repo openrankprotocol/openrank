@@ -5,8 +5,9 @@ use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::{INVALID_REQUEST_CODE, PARSE_ERROR_CODE};
 use jsonrpsee::types::{ErrorCode, ErrorObjectOwned};
 use openrank_common::db::Db;
-use openrank_common::result::GetResultsQuery;
+use openrank_common::query::{GetResultsQuery, GetSeedUpdateQuery, GetTrustUpdateQuery};
 use openrank_common::tx::consts;
+use openrank_common::tx::trust::{SeedUpdate, TrustUpdate};
 use openrank_common::tx::{self, compute, trust::ScoreEntry, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::cmp::Ordering;
@@ -40,6 +41,16 @@ pub trait Rpc {
 
     #[method(name = "get_txs")]
     async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned>;
+
+    #[method(name = "get_trust_update")]
+    async fn get_trust_update(
+        &self, query: GetTrustUpdateQuery,
+    ) -> Result<TrustUpdate, ErrorObjectOwned>;
+
+    #[method(name = "get_seed_update")]
+    async fn get_seed_update(
+        &self, query: GetSeedUpdateQuery,
+    ) -> Result<SeedUpdate, ErrorObjectOwned>;
 }
 
 #[derive(Getters)]
@@ -323,5 +334,31 @@ impl RpcServer for SequencerServer {
         })?;
 
         Ok(txs)
+    }
+
+    /// Fetch TrustUpdate contents
+    async fn get_trust_update(
+        &self, query: GetTrustUpdateQuery,
+    ) -> Result<TrustUpdate, ErrorObjectOwned> {
+        let trust_update_tx =
+            self.get_tx(consts::TRUST_UPDATE.to_string(), query.tu_tx_hash().clone()).await?;
+        let trust_update = match trust_update_tx.body().clone() {
+            tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
+            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+        }?;
+        Ok(trust_update)
+    }
+
+    /// Fetch SeedUpdate contents
+    async fn get_seed_update(
+        &self, query: GetSeedUpdateQuery,
+    ) -> Result<SeedUpdate, ErrorObjectOwned> {
+        let seed_update_tx =
+            self.get_tx(consts::SEED_UPDATE.to_string(), query.su_tx_hash().clone()).await?;
+        let seed_update = match seed_update_tx.body().clone() {
+            tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
+            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+        }?;
+        Ok(seed_update)
     }
 }
