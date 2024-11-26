@@ -2,7 +2,7 @@ pub mod algos;
 pub mod config;
 pub mod merkle;
 pub mod net;
-pub mod result;
+pub mod query;
 pub mod topics;
 pub mod tx;
 pub mod tx_event;
