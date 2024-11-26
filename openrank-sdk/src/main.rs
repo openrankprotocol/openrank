@@ -153,11 +153,10 @@ impl ComputeRequestResult {
 
 /// Creates a new `Config` from a local TOML file, given file path.
 fn read_config(path: &str) -> Result<Config, SdkError> {
-    let mut f = File::open(path).map_err(|e| SdkError::IoError(e))?;
+    let mut f = File::open(path).map_err(SdkError::IoError)?;
     let mut toml_config = String::new();
-    f.read_to_string(&mut toml_config).map_err(|e| SdkError::IoError(e))?;
-    let config: Config =
-        toml::from_str(toml_config.as_str()).map_err(|e| SdkError::TomlError(e))?;
+    f.read_to_string(&mut toml_config).map_err(SdkError::IoError)?;
+    let config: Config = toml::from_str(toml_config.as_str()).map_err(SdkError::TomlError)?;
     Ok(config)
 }
 
@@ -418,7 +417,7 @@ async fn get_results(
         ));
     }
 
-    let votes = verification_results.iter().map(|x| x.verification_result().clone()).collect();
+    let votes = verification_results.iter().map(|x| *x.verification_result()).collect();
     Ok((votes, score_entries))
 }
 

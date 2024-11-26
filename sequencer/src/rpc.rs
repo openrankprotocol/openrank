@@ -249,7 +249,7 @@ impl RpcServer for SequencerServer {
             .get::<compute::ResultReference>(request_tx_hash.to_bytes())
             .map_err(SequencerServer::map_db_error)?;
 
-        Ok(result.seq_number().clone())
+        Ok(*result.seq_number())
     }
 
     /// Fetch the ComputeResult TX by its sequence number
