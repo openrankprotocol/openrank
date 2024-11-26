@@ -115,8 +115,6 @@ impl Node {
         let config_loader = config::Loader::new("openrank-verifier")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new(&config.database, &[&Tx::get_cf()])?;
-        // let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
-        // let verification_runner = VerificationRunner::new(domain_hashes);
         let verification_runner = VerificationRunner::new(&config.domains);
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
@@ -149,7 +147,6 @@ impl Node {
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == trust_update.trust_id());
-                            // TODO: nitto. (reference computer node logic TODO)
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
@@ -175,7 +172,6 @@ impl Node {
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == seed_update.seed_id());
-                            // TODO: nitto.
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
@@ -363,7 +359,6 @@ impl Node {
             match tx.body() {
                 tx::Body::TrustUpdate(trust_update) => {
                     let namespace = trust_update.trust_id().clone();
-                    // TODO: nitto.
                     let domain = self
                         .config
                         .domains
@@ -376,7 +371,6 @@ impl Node {
                 },
                 tx::Body::SeedUpdate(seed_update) => {
                     let namespace = seed_update.seed_id().clone();
-                    // TODO: nitto.
                     let domain = self
                         .config
                         .domains

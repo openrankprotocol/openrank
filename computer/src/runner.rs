@@ -47,7 +47,10 @@ impl ComputeRunner {
             local_trust.insert(domain.trust_namespace(), HashMap::new());
             seed_trust.insert(domain_hash, HashMap::new());
             lt_sub_trees.insert(domain_hash, HashMap::new());
-            lt_master_tree.insert(domain_hash, DenseIncrementalMerkleTree::<Keccak256>::new(32));
+            lt_master_tree.insert(
+                domain_hash,
+                DenseIncrementalMerkleTree::<Keccak256>::new(32),
+            );
             compute_results.insert(domain_hash, Vec::<(u64, f32)>::new());
         }
         Self {

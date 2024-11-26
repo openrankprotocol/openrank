@@ -114,9 +114,6 @@ impl Node {
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == trust_update.trust_id());
-                            // TODO: If the domains share the same trust namespace, 
-                            //      there could be multiple domains for the same trust namespace.
-                            //      Is it okay for each domain to update shared trust namespace?
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
@@ -143,7 +140,6 @@ impl Node {
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == seed_update.seed_id());
-                            // TODO: nitto.
                             let domain = domains
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
@@ -269,8 +265,6 @@ impl Node {
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new(&config.database, &[&Tx::get_cf()])?;
 
-        // let domain_hashes = config.domains.iter().map(|x| x.to_hash()).collect();
-        // let compute_runner = ComputeRunner::new(domain_hashes);
         let compute_runner = ComputeRunner::new(&config.domains);
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
@@ -383,7 +377,6 @@ impl Node {
             match tx.body() {
                 Body::TrustUpdate(trust_update) => {
                     let namespace = trust_update.trust_id().clone();
-                    // TODO: nitto.
                     let domain = self
                         .config
                         .domains
@@ -396,7 +389,6 @@ impl Node {
                 },
                 Body::SeedUpdate(seed_update) => {
                     let namespace = seed_update.seed_id().clone();
-                    // TODO: nitto.
                     let domain = self
                         .config
                         .domains
