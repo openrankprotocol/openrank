@@ -27,7 +27,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{Read, Write},
-    process,
+    process::ExitCode,
 };
 use std::{
     io::{self, BufWriter},
@@ -36,12 +36,8 @@ use std::{
 
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
-
 const NOT_FOUND_CODE: i32 = -32016;
-
-const ERROR_STATUS_CODE: i32 = 0;
-const PERMANENT_STATUS_CODE: i32 = 1;
-const TRANSIENT_STATUS_CODE: i32 = 2;
+const TRANSIENT_STATUS_CODE: u8 = 2;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SdkError {
@@ -65,7 +61,7 @@ pub enum SdkError {
     ArgParseError(String),
     #[error("Serde error: {0}")]
     SerdeError(serde_json::Error),
-    #[error("Incomplete result: expected {0}, verifications, got {1}")]
+    #[error("Incomplete result: expected {0} verifications, got {1}")]
     IncompleteResult(usize, usize),
     #[error("Compute job verification failed: {0}/{1}")]
     ComputeJobFailed(usize, usize),
@@ -87,7 +83,9 @@ enum Method {
         request_id: String,
         config_path: String,
         output_path: Option<String>,
-        allow_in_progress: bool,
+        #[arg(long)]
+        allow_incomplete: bool,
+        #[arg(long)]
         allow_failed: bool,
     },
     /// The method takes a ComputeRequest TX hash and returns the computed results,
@@ -284,7 +282,7 @@ fn is_verification_passed(ver: Vec<Verification>) -> (bool, usize) {
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
 async fn get_results(
-    arg: String, config_path: &str, allow_in_progress: bool, allow_failed: bool,
+    arg: String, config_path: &str, allow_incomplete: bool, allow_failed: bool,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), SdkError> {
     let config = read_config(config_path)?;
     // Creates a new client
@@ -293,18 +291,22 @@ async fn get_results(
         .map_err(SdkError::JsonRpcClientError)?;
     let tx_hash_bytes = hex::decode(arg).map_err(SdkError::HexError)?;
     let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let seq_number: u64 = client
+    // Checking if ComputeRequest exists, if not, it should return an error
+    let compute_request_key = (consts::COMPUTE_REQUEST, compute_request_tx_hash.clone());
+    let _: Tx = client
+        .request("sequencer_get_tx", compute_request_key)
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
+
+    // If ComputeRequest exists, we can proceed with fetching results
+    let res: Result<u64, SdkError> = client
         .request(
             "sequencer_get_compute_result_seq_number",
             vec![compute_request_tx_hash.clone()],
         )
         .await
-        .map_err(SdkError::JsonRpcClientError)?;
-    let result: Result<compute::Result, SdkError> = client
-        .request("sequencer_get_compute_result", vec![seq_number])
-        .await
         .map_err(SdkError::JsonRpcClientError);
-    let result = match result {
+    let seq_number = match res {
         Ok(res) => Ok(res),
         Err(e) => match e {
             SdkError::JsonRpcClientError(jsonrpsee::core::ClientError::Call(call_e)) => {
@@ -320,12 +322,17 @@ async fn get_results(
         },
     }?;
 
+    let result: compute::Result = client
+        .request("sequencer_get_compute_result", vec![seq_number])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
+
     let commitment_tx_key = (
         consts::COMPUTE_COMMITMENT,
         result.compute_commitment_tx_hash().clone(),
     );
     let commitment_tx: Tx = client
-        .request("sequencer_get_tx", vec![commitment_tx_key])
+        .request("sequencer_get_tx", commitment_tx_key)
         .await
         .map_err(SdkError::JsonRpcClientError)?;
     let commitment = match commitment_tx.body() {
@@ -361,10 +368,11 @@ async fn get_results(
             }
         },
     });
+    score_entries.reverse();
 
     let assignment_key = (consts::COMPUTE_ASSIGNMENT, commitment.assignment_tx_hash());
     let assignment_tx: Tx = client
-        .request("sequencer_get_tx", vec![assignment_key])
+        .request("sequencer_get_tx", assignment_key)
         .await
         .map_err(SdkError::JsonRpcClientError)?;
     let _assignment = match assignment_tx.body() {
@@ -375,10 +383,10 @@ async fn get_results(
     // let num_assigned_verifiers = assignment.assigned_verifier_node().len();
     let num_assigned_verifiers = 1;
     let verification_tx_hashes = result.compute_verification_tx_hashes();
-    if (verification_tx_hashes.len() < num_assigned_verifiers) && !allow_in_progress {
+    if (verification_tx_hashes.len() < num_assigned_verifiers) & !allow_incomplete {
         return Err(SdkError::IncompleteResult(
-            verification_tx_hashes.len(),
             num_assigned_verifiers,
+            verification_tx_hashes.len(),
         ));
     }
 
@@ -402,7 +410,7 @@ async fn get_results(
 
     let (verification_result, count_positive) =
         is_verification_passed(verification_results.clone());
-    if !verification_result && !allow_failed {
+    if !verification_result & !allow_failed {
         return Err(SdkError::ComputeJobFailed(
             count_positive,
             verification_tx_hashes.len(),
@@ -538,55 +546,79 @@ fn get_secret_key() -> Result<SigningKey, SdkError> {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), SdkError> {
+async fn main() -> ExitCode {
     dotenv().ok();
     let cli = Args::parse();
 
     match cli.method {
         Method::TrustUpdate { path, config_path, output_path } => {
-            let secret_key = get_secret_key()?;
-            let res = update_trust(secret_key, path.as_str(), config_path.as_str()).await;
-            match res {
+            let secret_key = match get_secret_key() {
+                Ok(secret_key) => secret_key,
+                Err(e) => {
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
+            match update_trust(secret_key, path.as_str(), config_path.as_str()).await {
                 Ok(tx_events) => {
                     if let Some(output_path) = output_path {
-                        write_json_to_file(&output_path, tx_events)?;
+                        if let Err(e) = write_json_to_file(&output_path, tx_events) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
                     }
                 },
                 Err(e) => {
-                    println!("Error: {}", e);
-                    process::exit(ERROR_STATUS_CODE)
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
                 },
             }
         },
         Method::SeedUpdate { path, config_path, output_path } => {
-            let secret_key = get_secret_key()?;
-            let res = update_seed(secret_key, path.as_str(), config_path.as_str()).await;
-            match res {
+            let secret_key = match get_secret_key() {
+                Ok(secret_key) => secret_key,
+                Err(e) => {
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
+            match update_seed(secret_key, path.as_str(), config_path.as_str()).await {
                 Ok(tx_events) => {
                     if let Some(output_path) = output_path {
-                        write_json_to_file(&output_path, tx_events)?;
+                        if let Err(e) = write_json_to_file(&output_path, tx_events) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
                     }
                 },
                 Err(e) => {
-                    println!("Error: {}", e);
-                    process::exit(ERROR_STATUS_CODE)
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
                 },
             }
         },
         Method::ComputeRequest { path, output_path } => {
-            let secret_key = get_secret_key()?;
-            let res = compute_request(secret_key, path.as_str()).await;
-            match res {
+            let secret_key = match get_secret_key() {
+                Ok(secret_key) => secret_key,
+                Err(e) => {
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
+            match compute_request(secret_key, path.as_str()).await {
                 Ok(result) => {
                     let hex_encoded_tx_hash = hex::encode(result.compute_tx_hash.inner());
                     println!("{}", hex_encoded_tx_hash);
                     if let Some(output_path) = output_path {
-                        write_json_to_file(&output_path, result)?;
+                        if let Err(e) = write_json_to_file(&output_path, result) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
                     }
                 },
                 Err(e) => {
-                    println!("Error: {}", e);
-                    process::exit(ERROR_STATUS_CODE)
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
                 },
             }
         },
@@ -594,20 +626,23 @@ async fn main() -> Result<(), SdkError> {
             request_id,
             config_path,
             output_path,
-            allow_in_progress,
+            allow_incomplete,
             allow_failed,
         } => {
             let res = get_results(
                 request_id,
                 config_path.as_str(),
-                allow_in_progress,
+                allow_incomplete,
                 allow_failed,
             )
             .await;
             match res {
                 Ok((votes, scores)) => {
                     if let Some(output_path) = output_path {
-                        write_json_to_file(&output_path, scores)?;
+                        if let Err(e) = write_json_to_file(&output_path, scores) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
                     } else {
                         println!("votes: {:?}", votes);
                         for res in &scores {
@@ -618,75 +653,86 @@ async fn main() -> Result<(), SdkError> {
                 Err(e) => match e {
                     SdkError::ComputeJobInProgress => {
                         println!("ComputeJob still in progress");
-                        process::exit(TRANSIENT_STATUS_CODE);
+                        return ExitCode::from(TRANSIENT_STATUS_CODE);
                     },
                     SdkError::ComputeJobFailed(positive, total) => {
                         println!(
                             "ComputeJob verification failed. Votes: {}/{}",
                             positive, total
                         );
-                        process::exit(PERMANENT_STATUS_CODE);
+                        return ExitCode::FAILURE;
                     },
                     e => {
-                        println!("Error: {}", e);
-                        process::exit(ERROR_STATUS_CODE);
+                        println!("{}", e);
+                        return ExitCode::FAILURE;
                     },
                 },
             }
         },
         Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
-            let res = get_results(request_id, config_path.as_str(), false, false).await;
-            match res {
+            match get_results(request_id, config_path.as_str(), false, false).await {
                 Ok((votes, results)) => {
-                    let res = check_score_integrity(votes, results, &test_vector)?;
+                    let res = match check_score_integrity(votes, results, &test_vector) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        },
+                    };
                     println!("Integrity check result: {}", res);
                     assert!(res);
                 },
                 Err(e) => {
-                    println!("Error: {}", e);
-                    process::exit(ERROR_STATUS_CODE);
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
                 },
             }
         },
         Method::GetComputeResult { seq_number, config_path, output_path } => {
-            let res = get_compute_result(seq_number, &config_path).await;
-            match res {
+            match get_compute_result(seq_number, &config_path).await {
                 Ok(result) => {
                     if let Some(output_path) = output_path {
-                        write_json_to_file(&output_path, result)?;
+                        if let Err(e) = write_json_to_file(&output_path, result) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
                     }
                 },
                 Err(e) => {
-                    println!("Error: {}", e);
-                    process::exit(ERROR_STATUS_CODE);
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
                 },
             }
         },
         Method::GetComputeResultTxs { seq_number, config_path, output_path } => {
-            let res = get_compute_result_txs(seq_number, &config_path).await;
-            match res {
+            match get_compute_result_txs(seq_number, &config_path).await {
                 Ok(txs) => {
                     if let Some(output_path) = output_path {
-                        write_json_to_file(&output_path, txs)?;
+                        if let Err(e) = write_json_to_file(&output_path, txs) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
                     }
                 },
                 Err(e) => {
-                    println!("Error: {}", e);
-                    process::exit(ERROR_STATUS_CODE);
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
                 },
             }
         },
         Method::GetTx { tx_id, config_path, output_path } => {
-            let res = get_tx(tx_id, &config_path).await;
-            match res {
+            match get_tx(tx_id, &config_path).await {
                 Ok(tx) => {
                     if let Some(output_path) = output_path {
-                        write_json_to_file(&output_path, tx)?;
+                        if let Err(e) = write_json_to_file(&output_path, tx) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
                     }
                 },
                 Err(e) => {
-                    println!("Error: {}", e);
-                    process::exit(ERROR_STATUS_CODE);
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
                 },
             }
         },
@@ -697,11 +743,17 @@ async fn main() -> Result<(), SdkError> {
             println!("SECRET_KEY=\"{}\"", hex::encode(sk_bytes));
             println!("# ADDRESS: {}", address);
         },
-        Method::ShowAddress => {
-            let secret_key = get_secret_key()?;
-            let addr = address_from_sk(&secret_key);
-            println!("ADDRESS: {}", addr);
+        Method::ShowAddress => match get_secret_key() {
+            Ok(secret_key) => {
+                let addr = address_from_sk(&secret_key);
+                println!("ADDRESS: {}", addr);
+            },
+            Err(e) => {
+                println!("{}", e);
+                return ExitCode::FAILURE;
+            },
         },
     }
-    Ok(())
+
+    ExitCode::SUCCESS
 }

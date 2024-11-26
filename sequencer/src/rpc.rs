@@ -3,7 +3,7 @@ use getset::Getters;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
-use openrank_common::db::{self, Db, RocksDBErrorKind};
+use openrank_common::db::{self, Db};
 use openrank_common::tx::consts;
 use openrank_common::tx::{self, compute, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
@@ -119,22 +119,18 @@ impl SequencerServer {
 
     pub fn map_db_error(e: db::Error) -> ErrorObjectOwned {
         match e {
+            db::Error::NotFound => ErrorObjectOwned::owned(
+                NOT_FOUND_CODE,
+                NOT_FOUND_MESSAGE.to_string(),
+                None::<String>,
+            ),
             db::Error::RocksDB(err) => {
-                if err.kind() == RocksDBErrorKind::NotFound {
-                    debug!("{}", err);
-                    ErrorObjectOwned::owned(
-                        NOT_FOUND_CODE,
-                        NOT_FOUND_MESSAGE.to_string(),
-                        Some(err.to_string()),
-                    )
-                } else {
-                    error!("{}", err);
-                    ErrorObjectOwned::owned(
-                        ROCKS_DB_FAILED_CODE,
-                        ROCKS_DB_FAILED_MESSAGE.to_string(),
-                        Some(err.to_string()),
-                    )
-                }
+                error!("{}", err);
+                ErrorObjectOwned::owned(
+                    ROCKS_DB_FAILED_CODE,
+                    ROCKS_DB_FAILED_MESSAGE.to_string(),
+                    Some(err.to_string()),
+                )
             },
             err => {
                 error!("{}", err);
