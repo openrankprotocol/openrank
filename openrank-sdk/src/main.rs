@@ -117,6 +117,7 @@ struct Args {
 /// The configuration for the Sequencer.
 pub struct Sequencer {
     endpoint: String,
+    result_start: Option<u32>,
     result_size: u32,
 }
 
