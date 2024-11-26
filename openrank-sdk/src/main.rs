@@ -9,7 +9,7 @@ use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
     merkle::hash_leaf,
-    result::GetResultsQuery,
+    query::{GetResultsQuery, GetSeedUpdateQuery, GetTrustUpdateQuery},
     topics::Domain,
     tx::{
         compute, consts,
@@ -51,6 +51,10 @@ enum Method {
     GetComputeResultTxs { seq_number: String, config_path: String, output_path: Option<String> },
     /// Get arbitrary TX
     GetTx { tx_id: String, config_path: String, output_path: Option<String> },
+    /// Get TrustUpdate contents
+    GetTrustUpdate { tu_tx_hash: String, config_path: String, output_path: Option<String> },
+    /// Get SeedUpdate contents
+    GetSeedUpdate { su_tx_hash: String, config_path: String, output_path: Option<String> },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -320,6 +324,36 @@ fn check_score_integrity(
     Ok(is_converged & votes)
 }
 
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the TrustUpdate given a TX hash.
+async fn get_trust_update(arg: String, config_path: &str) -> Result<TrustUpdate, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    // Calls the Sequencer to get the TrustUpdate given a TX hash.
+    let tx_hash_bytes = hex::decode(arg)?;
+    let trust_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let results_query = GetTrustUpdateQuery::new(trust_update_tx_hash);
+    let trust_update: TrustUpdate =
+        client.request("sequencer_get_trust_update", vec![results_query]).await?;
+    Ok(trust_update)
+}
+
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the SeedUpdate given a TX hash.
+async fn get_seed_update(arg: String, config_path: &str) -> Result<SeedUpdate, Box<dyn Error>> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
+    // Calls the Sequencer to get the SeedUpdate given a TX hash.
+    let tx_hash_bytes = hex::decode(arg)?;
+    let seed_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+    let results_query = GetSeedUpdateQuery::new(seed_update_tx_hash);
+    let seed_update: SeedUpdate =
+        client.request("sequencer_get_seed_update", vec![results_query]).await?;
+    Ok(seed_update)
+}
+
 /// Utility function for writing json to a file.
 fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), Box<dyn Error>> {
     let file = File::create(path)?;
@@ -397,6 +431,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
         Method::GetTx { tx_id, config_path, output_path } => {
             let res = get_tx(tx_id, &config_path).await?;
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::GetTrustUpdate { tu_tx_hash, config_path, output_path } => {
+            let res = get_trust_update(tu_tx_hash, &config_path).await?;
+            println!("TrustUpdate: {:?}", res);
+            if let Some(output_path) = output_path {
+                write_json_to_file(&output_path, res)?;
+            }
+        },
+        Method::GetSeedUpdate { su_tx_hash, config_path, output_path } => {
+            let res = get_seed_update(su_tx_hash, &config_path).await?;
+            println!("SeedUpdate: {:?}", res);
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }
