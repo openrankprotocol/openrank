@@ -361,12 +361,12 @@ impl Node {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
-            self.db.read_from_end(consts::TRUST_UPDATE, None, None).map_err(Error::Db)?;
+            self.db.get_range_from_start(consts::TRUST_UPDATE, None, None).map_err(Error::Db)?;
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
         let mut seed_update_txs: Vec<Tx> =
-            self.db.read_from_end(consts::SEED_UPDATE, None, None).map_err(Error::Db)?;
+            self.db.get_range_from_start(consts::SEED_UPDATE, None, None).map_err(Error::Db)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
 

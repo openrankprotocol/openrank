@@ -138,8 +138,8 @@ impl Db {
         Ok(values)
     }
 
-    /// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
-    pub fn read_from_end<I: DbItem + DeserializeOwned>(
+    /// Gets values from database from the start, up to `num_elements`, starting from `from`, with `prefix`.
+    pub fn get_range_from_start<I: DbItem + DeserializeOwned>(
         &self, prefix: &str, from: Option<Vec<u8>>, num_elements: Option<usize>,
     ) -> Result<Vec<I>, Error> {
         let num_elements = num_elements.unwrap_or(usize::MAX);
@@ -185,7 +185,7 @@ mod test {
     }
 
     #[test]
-    fn test_read_from_end() {
+    fn test_get_range_from_start() {
         let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
         let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
@@ -195,9 +195,11 @@ mod test {
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>(consts::COMPUTE_REQUEST, None, Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>(consts::COMPUTE_ASSIGNMENT, None, Some(1)).unwrap();
-        let items3 = db.read_from_end::<Tx>(consts::COMPUTE_VERIFICATION, None, Some(1)).unwrap();
+        let items1 = db.get_range_from_start::<Tx>(consts::COMPUTE_REQUEST, None, Some(1)).unwrap();
+        let items2 =
+            db.get_range_from_start::<Tx>(consts::COMPUTE_ASSIGNMENT, None, Some(1)).unwrap();
+        let items3 =
+            db.get_range_from_start::<Tx>(consts::COMPUTE_VERIFICATION, None, Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);
