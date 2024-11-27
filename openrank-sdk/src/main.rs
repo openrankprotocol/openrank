@@ -118,7 +118,7 @@ struct Args {
 pub struct Sequencer {
     endpoint: String,
     result_start: Option<u32>,
-    result_size: u32,
+    result_size: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
@@ -157,6 +157,16 @@ fn read_config(path: &str) -> Result<Config, SdkError> {
     let mut toml_config = String::new();
     f.read_to_string(&mut toml_config).map_err(SdkError::IoError)?;
     let config: Config = toml::from_str(toml_config.as_str()).map_err(SdkError::TomlError)?;
+    if let Some(_) = config.sequencer.result_start {
+        println!(
+            "'sequencer.result_start' is depricated. This will become a hard error in the future."
+        );
+    }
+    if let Some(_) = config.sequencer.result_size {
+        println!(
+            "'sequencer.result_size' is depricated. This will become a hard error in the future."
+        );
+    }
     Ok(config)
 }
 
