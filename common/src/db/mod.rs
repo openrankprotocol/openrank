@@ -1,5 +1,5 @@
 use getset::Getters;
-use rocksdb::{self, Options, DB};
+use rocksdb::{self, Direction, IteratorMode, Options, ReadOptions, DB};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{self, to_vec};
 use std::error::Error as StdError;
@@ -140,11 +140,22 @@ impl Db {
 
     /// Gets values from database from the end, up to `num_elements`, starting from `prefix`.
     pub fn read_from_end<I: DbItem + DeserializeOwned>(
-        &self, prefix: &str, num_elements: Option<usize>,
+        &self, prefix: &str, from: Option<Vec<u8>>, num_elements: Option<usize>,
     ) -> Result<Vec<I>, Error> {
         let num_elements = num_elements.unwrap_or(usize::MAX);
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
-        let iter = self.connection.prefix_iterator_cf(&cf, prefix);
+
+        let mut readopts = ReadOptions::default();
+        readopts.set_prefix_same_as_start(true);
+        if let Some(from) = from {
+            readopts.set_iterate_range(from..);
+        }
+        let iter = self.connection.iterator_cf_opt(
+            &cf,
+            readopts,
+            IteratorMode::From(prefix.as_ref(), Direction::Forward),
+        );
+
         let mut elements = Vec::new();
         for (_, db_value) in iter.map(Result::unwrap).take(num_elements) {
             let tx = serde_json::from_slice(db_value.as_ref()).map_err(Error::Serde)?;
@@ -184,9 +195,9 @@ mod test {
         db.put(tx3.clone()).unwrap();
 
         // FIX: Test fails if you specify reading more than 1 item for a single prefix
-        let items1 = db.read_from_end::<Tx>(consts::COMPUTE_REQUEST, Some(1)).unwrap();
-        let items2 = db.read_from_end::<Tx>(consts::COMPUTE_ASSIGNMENT, Some(1)).unwrap();
-        let items3 = db.read_from_end::<Tx>(consts::COMPUTE_VERIFICATION, Some(1)).unwrap();
+        let items1 = db.read_from_end::<Tx>(consts::COMPUTE_REQUEST, None, Some(1)).unwrap();
+        let items2 = db.read_from_end::<Tx>(consts::COMPUTE_ASSIGNMENT, None, Some(1)).unwrap();
+        let items3 = db.read_from_end::<Tx>(consts::COMPUTE_VERIFICATION, None, Some(1)).unwrap();
         assert_eq!(vec![tx1], items1);
         assert_eq!(vec![tx2], items2);
         assert_eq!(vec![tx3], items3);
