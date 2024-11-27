@@ -52,9 +52,19 @@ enum Method {
     /// Get arbitrary TX
     GetTx { tx_id: String, config_path: String, output_path: Option<String> },
     /// Get TrustUpdate contents
-    GetTrustUpdate { tu_tx_hash: String, config_path: String, output_path: Option<String> },
+    GetTrustUpdate {
+        from: String,
+        size: Option<usize>,
+        config_path: String,
+        output_path: Option<String>,
+    },
     /// Get SeedUpdate contents
-    GetSeedUpdate { su_tx_hash: String, config_path: String, output_path: Option<String> },
+    GetSeedUpdate {
+        from: String,
+        size: Option<usize>,
+        config_path: String,
+        output_path: Option<String>,
+    },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -326,32 +336,36 @@ fn check_score_integrity(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the TrustUpdate given a TX hash.
-async fn get_trust_update(arg: String, config_path: &str) -> Result<TrustUpdate, Box<dyn Error>> {
+async fn get_trust_update(
+    from: String, size: Option<usize>, config_path: &str,
+) -> Result<Vec<TrustUpdate>, Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
     // Calls the Sequencer to get the TrustUpdate given a TX hash.
-    let tx_hash_bytes = hex::decode(arg)?;
+    let tx_hash_bytes = hex::decode(from)?;
     let trust_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query = GetTrustUpdateQuery::new(trust_update_tx_hash);
-    let trust_update: TrustUpdate =
+    let results_query = GetTrustUpdateQuery::new(trust_update_tx_hash, size);
+    let trust_updates: Vec<TrustUpdate> =
         client.request("sequencer_get_trust_update", vec![results_query]).await?;
-    Ok(trust_update)
+    Ok(trust_updates)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the SeedUpdate given a TX hash.
-async fn get_seed_update(arg: String, config_path: &str) -> Result<SeedUpdate, Box<dyn Error>> {
+async fn get_seed_update(
+    from: String, size: Option<usize>, config_path: &str,
+) -> Result<Vec<SeedUpdate>, Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
     // Calls the Sequencer to get the SeedUpdate given a TX hash.
-    let tx_hash_bytes = hex::decode(arg)?;
+    let tx_hash_bytes = hex::decode(from)?;
     let seed_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query = GetSeedUpdateQuery::new(seed_update_tx_hash);
-    let seed_update: SeedUpdate =
+    let results_query = GetSeedUpdateQuery::new(seed_update_tx_hash, size);
+    let seed_updates: Vec<SeedUpdate> =
         client.request("sequencer_get_seed_update", vec![results_query]).await?;
-    Ok(seed_update)
+    Ok(seed_updates)
 }
 
 /// Utility function for writing json to a file.
@@ -435,15 +449,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetTrustUpdate { tu_tx_hash, config_path, output_path } => {
-            let res = get_trust_update(tu_tx_hash, &config_path).await?;
+        Method::GetTrustUpdate { from, size, config_path, output_path } => {
+            let res = get_trust_update(from, size, &config_path).await?;
             println!("TrustUpdate: {:?}", res);
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetSeedUpdate { su_tx_hash, config_path, output_path } => {
-            let res = get_seed_update(su_tx_hash, &config_path).await?;
+        Method::GetSeedUpdate { from, size, config_path, output_path } => {
+            let res = get_seed_update(from, size, &config_path).await?;
             println!("SeedUpdate: {:?}", res);
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;

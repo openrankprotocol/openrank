@@ -45,12 +45,12 @@ pub trait Rpc {
     #[method(name = "get_trust_update")]
     async fn get_trust_update(
         &self, query: GetTrustUpdateQuery,
-    ) -> Result<TrustUpdate, ErrorObjectOwned>;
+    ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned>;
 
     #[method(name = "get_seed_update")]
     async fn get_seed_update(
         &self, query: GetSeedUpdateQuery,
-    ) -> Result<SeedUpdate, ErrorObjectOwned>;
+    ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned>;
 }
 
 #[derive(Getters)]
@@ -339,26 +339,50 @@ impl RpcServer for SequencerServer {
     /// Fetch TrustUpdate contents
     async fn get_trust_update(
         &self, query: GetTrustUpdateQuery,
-    ) -> Result<TrustUpdate, ErrorObjectOwned> {
-        let trust_update_tx =
-            self.get_tx(consts::TRUST_UPDATE.to_string(), query.tu_tx_hash().clone()).await?;
-        let trust_update = match trust_update_tx.body().clone() {
-            tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-        }?;
-        Ok(trust_update)
+    ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned> {
+        let db_handler = self.db.clone();
+
+        let key = Tx::construct_full_key(consts::TRUST_UPDATE, query.from().clone());
+        let txs = db_handler
+            .get_range_from_start::<Tx>(consts::TRUST_UPDATE, Some(key), *query.size())
+            .map_err(|e| {
+                error!("{}", e);
+                ErrorObjectOwned::from(ErrorCode::InternalError)
+            })?;
+
+        let trust_updates = txs
+            .into_iter()
+            .map(|tx| match tx.body().clone() {
+                tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
+                _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            })
+            .collect::<Result<Vec<TrustUpdate>, ErrorObjectOwned>>()?;
+
+        Ok(trust_updates)
     }
 
     /// Fetch SeedUpdate contents
     async fn get_seed_update(
         &self, query: GetSeedUpdateQuery,
-    ) -> Result<SeedUpdate, ErrorObjectOwned> {
-        let seed_update_tx =
-            self.get_tx(consts::SEED_UPDATE.to_string(), query.su_tx_hash().clone()).await?;
-        let seed_update = match seed_update_tx.body().clone() {
-            tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-        }?;
-        Ok(seed_update)
+    ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned> {
+        let db_handler = self.db.clone();
+
+        let key = Tx::construct_full_key(consts::SEED_UPDATE, query.from().clone());
+        let txs = db_handler
+            .get_range_from_start::<Tx>(consts::SEED_UPDATE, Some(key), *query.size())
+            .map_err(|e| {
+                error!("{}", e);
+                ErrorObjectOwned::from(ErrorCode::InternalError)
+            })?;
+
+        let seed_updates = txs
+            .into_iter()
+            .map(|tx| match tx.body().clone() {
+                tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
+                _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            })
+            .collect::<Result<Vec<SeedUpdate>, ErrorObjectOwned>>()?;
+
+        Ok(seed_updates)
     }
 }
