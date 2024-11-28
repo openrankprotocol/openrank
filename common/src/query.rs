@@ -19,12 +19,12 @@ impl GetResultsQuery {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 pub struct GetTrustUpdateQuery {
-    from: tx::TxHash,
+    from: Option<tx::TxHash>,
     size: Option<usize>,
 }
 
 impl GetTrustUpdateQuery {
-    pub fn new(from: tx::TxHash, size: Option<usize>) -> Self {
+    pub fn new(from: Option<tx::TxHash>, size: Option<usize>) -> Self {
         Self { from, size }
     }
 }
@@ -32,12 +32,12 @@ impl GetTrustUpdateQuery {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 pub struct GetSeedUpdateQuery {
-    from: tx::TxHash,
+    from: Option<tx::TxHash>,
     size: Option<usize>,
 }
 
 impl GetSeedUpdateQuery {
-    pub fn new(from: tx::TxHash, size: Option<usize>) -> Self {
+    pub fn new(from: Option<tx::TxHash>, size: Option<usize>) -> Self {
         Self { from, size }
     }
 }

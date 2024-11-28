@@ -42,13 +42,13 @@ pub trait Rpc {
     #[method(name = "get_txs")]
     async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned>;
 
-    #[method(name = "get_trust_update")]
-    async fn get_trust_update(
+    #[method(name = "get_trust_updates")]
+    async fn get_trust_updates(
         &self, query: GetTrustUpdateQuery,
     ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned>;
 
-    #[method(name = "get_seed_update")]
-    async fn get_seed_update(
+    #[method(name = "get_seed_updates")]
+    async fn get_seed_updates(
         &self, query: GetSeedUpdateQuery,
     ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned>;
 }
@@ -337,18 +337,21 @@ impl RpcServer for SequencerServer {
     }
 
     /// Fetch TrustUpdate contents
-    async fn get_trust_update(
+    async fn get_trust_updates(
         &self, query: GetTrustUpdateQuery,
     ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned> {
         let db_handler = self.db.clone();
 
-        let key = Tx::construct_full_key(consts::TRUST_UPDATE, query.from().clone());
+        let key = query
+            .from()
+            .clone()
+            .map(|tx_hash| Tx::construct_full_key(consts::TRUST_UPDATE, tx_hash));
         let txs = db_handler
-            .get_range_from_start::<Tx>(consts::TRUST_UPDATE, Some(key), *query.size())
+            .get_range_from_start::<Tx>(consts::TRUST_UPDATE, key, *query.size())
             .map_err(|e| {
-                error!("{}", e);
-                ErrorObjectOwned::from(ErrorCode::InternalError)
-            })?;
+            error!("{}", e);
+            ErrorObjectOwned::from(ErrorCode::InternalError)
+        })?;
 
         let trust_updates = txs
             .into_iter()
@@ -362,14 +365,17 @@ impl RpcServer for SequencerServer {
     }
 
     /// Fetch SeedUpdate contents
-    async fn get_seed_update(
+    async fn get_seed_updates(
         &self, query: GetSeedUpdateQuery,
     ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned> {
         let db_handler = self.db.clone();
 
-        let key = Tx::construct_full_key(consts::SEED_UPDATE, query.from().clone());
+        let key = query
+            .from()
+            .clone()
+            .map(|tx_hash| Tx::construct_full_key(consts::SEED_UPDATE, tx_hash));
         let txs = db_handler
-            .get_range_from_start::<Tx>(consts::SEED_UPDATE, Some(key), *query.size())
+            .get_range_from_start::<Tx>(consts::SEED_UPDATE, key, *query.size())
             .map_err(|e| {
                 error!("{}", e);
                 ErrorObjectOwned::from(ErrorCode::InternalError)

@@ -52,9 +52,19 @@ enum Method {
     /// Get arbitrary TX
     GetTx { tx_id: String, config_path: String, output_path: Option<String> },
     /// Get TrustUpdate contents
-    GetTrustUpdate { from: String, size: usize, config_path: String, output_path: Option<String> },
+    GetTrustUpdates {
+        config_path: String,
+        output_path: Option<String>,
+        from: Option<String>,
+        size: Option<usize>,
+    },
     /// Get SeedUpdate contents
-    GetSeedUpdate { from: String, size: usize, config_path: String, output_path: Option<String> },
+    GetSeedUpdates {
+        config_path: String,
+        output_path: Option<String>,
+        from: Option<String>,
+        size: Option<usize>,
+    },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -326,35 +336,45 @@ fn check_score_integrity(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the TrustUpdate given a TX hash.
-async fn get_trust_update(
-    from: String, size: Option<usize>, config_path: &str,
+async fn get_trust_updates(
+    config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<TrustUpdate>, Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
     // Calls the Sequencer to get the TrustUpdate given a TX hash.
-    let tx_hash_bytes = hex::decode(from)?;
-    let trust_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query = GetTrustUpdateQuery::new(trust_update_tx_hash, size);
+    let from = if let Some(data) = from {
+        let tx_hash_bytes = hex::decode(data)?;
+        let trust_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        Some(trust_update_tx_hash)
+    } else {
+        None
+    };
+    let results_query = GetTrustUpdateQuery::new(from, size);
     let trust_updates: Vec<TrustUpdate> =
-        client.request("sequencer_get_trust_update", vec![results_query]).await?;
+        client.request("sequencer_get_trust_updates", vec![results_query]).await?;
     Ok(trust_updates)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the SeedUpdate given a TX hash.
-async fn get_seed_update(
-    from: String, size: Option<usize>, config_path: &str,
+async fn get_seed_updates(
+    config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<SeedUpdate>, Box<dyn Error>> {
     let config = read_config(config_path)?;
     // Creates a new client
     let client = HttpClient::builder().build(config.sequencer.endpoint.as_str())?;
     // Calls the Sequencer to get the SeedUpdate given a TX hash.
-    let tx_hash_bytes = hex::decode(from)?;
-    let seed_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let results_query = GetSeedUpdateQuery::new(seed_update_tx_hash, size);
+    let from = if let Some(data) = from {
+        let tx_hash_bytes = hex::decode(data)?;
+        let seed_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        Some(seed_update_tx_hash)
+    } else {
+        None
+    };
+    let results_query = GetSeedUpdateQuery::new(from, size);
     let seed_updates: Vec<SeedUpdate> =
-        client.request("sequencer_get_seed_update", vec![results_query]).await?;
+        client.request("sequencer_get_seed_updates", vec![results_query]).await?;
     Ok(seed_updates)
 }
 
@@ -439,18 +459,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetTrustUpdate { from, size, config_path, output_path } => {
-            let size = if size == 0 { None } else { Some(size) };
-            let res = get_trust_update(from, size, &config_path).await?;
-            println!("TrustUpdate: {:?}", res);
+        Method::GetTrustUpdates { from, size, config_path, output_path } => {
+            let res = get_trust_updates(&config_path, from, size).await?;
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }
         },
-        Method::GetSeedUpdate { from, size, config_path, output_path } => {
-            let size = if size == 0 { None } else { Some(size) };
-            let res = get_seed_update(from, size, &config_path).await?;
-            println!("SeedUpdate: {:?}", res);
+        Method::GetSeedUpdates { from, size, config_path, output_path } => {
+            let res = get_seed_updates(&config_path, from, size).await?;
             if let Some(output_path) = output_path {
                 write_json_to_file(&output_path, res)?;
             }
