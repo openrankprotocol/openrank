@@ -553,7 +553,7 @@ fn check_score_integrity(
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get the TrustUpdate given a TX hash.
+/// 2. Calls the Sequencer to get the `TrustUpdate`s.
 async fn get_trust_updates(
     config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<TrustUpdate>, SdkError> {
@@ -579,7 +579,7 @@ async fn get_trust_updates(
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get the SeedUpdate given a TX hash.
+/// 2. Calls the Sequencer to get the `SeedUpdate`s.
 async fn get_seed_updates(
     config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<SeedUpdate>, SdkError> {
