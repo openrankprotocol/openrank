@@ -7,6 +7,8 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 mod items;
 
+pub use rocksdb::ErrorKind as RocksDBErrorKind;
+
 #[derive(Debug)]
 /// Errors that can arise while using database.
 pub enum Error {
