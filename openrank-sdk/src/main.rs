@@ -157,12 +157,12 @@ fn read_config(path: &str) -> Result<Config, SdkError> {
     let mut toml_config = String::new();
     f.read_to_string(&mut toml_config).map_err(SdkError::IoError)?;
     let config: Config = toml::from_str(toml_config.as_str()).map_err(SdkError::TomlError)?;
-    if let Some(_) = config.sequencer.result_start {
+    if config.sequencer.result_start.is_some() {
         println!(
             "'sequencer.result_start' is depricated. This will become a hard error in the future."
         );
     }
-    if let Some(_) = config.sequencer.result_size {
+    if config.sequencer.result_size.is_some() {
         println!(
             "'sequencer.result_size' is depricated. This will become a hard error in the future."
         );
