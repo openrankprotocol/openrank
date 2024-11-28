@@ -119,7 +119,13 @@ impl VerificationRunner {
                 *count += 1;
                 curr_count
             };
-            lt.insert((from_index, to_index), *entry.value());
+            let is_zero = entry.value() == &0.0;
+            let exists = lt.contains_key(&(from_index, to_index));
+            if is_zero && exists {
+                lt.remove(&(from_index, to_index));
+            } else if !is_zero {
+                lt.insert((from_index, to_index), *entry.value());
+            }
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
@@ -169,6 +175,13 @@ impl VerificationRunner {
                 *count += 1;
                 curr_count
             };
+            let is_zero = entry.value() == &0.0;
+            let exists = seed.contains_key(&index);
+            if is_zero && exists {
+                seed.remove(&index);
+            } else if !is_zero {
+                seed.insert(index, *entry.value());
+            }
 
             lt_sub_trees.entry(index).or_insert_with(|| default_sub_tree.clone());
             let sub_tree = lt_sub_trees
@@ -178,8 +191,6 @@ impl VerificationRunner {
             let seed_hash = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
             let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
             lt_master_tree.insert_leaf(index, leaf);
-
-            seed.insert(index, *entry.value());
         }
 
         Ok(())
