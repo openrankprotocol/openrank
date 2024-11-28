@@ -52,19 +52,9 @@ enum Method {
     /// Get arbitrary TX
     GetTx { tx_id: String, config_path: String, output_path: Option<String> },
     /// Get TrustUpdate contents
-    GetTrustUpdate {
-        from: String,
-        size: Option<usize>,
-        config_path: String,
-        output_path: Option<String>,
-    },
+    GetTrustUpdate { from: String, size: usize, config_path: String, output_path: Option<String> },
     /// Get SeedUpdate contents
-    GetSeedUpdate {
-        from: String,
-        size: Option<usize>,
-        config_path: String,
-        output_path: Option<String>,
-    },
+    GetSeedUpdate { from: String, size: usize, config_path: String, output_path: Option<String> },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -450,6 +440,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
         Method::GetTrustUpdate { from, size, config_path, output_path } => {
+            let size = if size == 0 { None } else { Some(size) };
             let res = get_trust_update(from, size, &config_path).await?;
             println!("TrustUpdate: {:?}", res);
             if let Some(output_path) = output_path {
@@ -457,6 +448,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
         Method::GetSeedUpdate { from, size, config_path, output_path } => {
+            let size = if size == 0 { None } else { Some(size) };
             let res = get_seed_update(from, size, &config_path).await?;
             println!("SeedUpdate: {:?}", res);
             if let Some(output_path) = output_path {
