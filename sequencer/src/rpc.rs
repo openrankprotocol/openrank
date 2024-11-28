@@ -7,27 +7,46 @@ use openrank_common::db::{self, Db};
 use openrank_common::tx::consts;
 use openrank_common::tx::{self, compute, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
+use std::fmt;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error};
 
-const GOSSIPSUB_FAILED_CODE: i32 = -32012;
-const INVALID_TX_KIND_CODE: i32 = -32013;
-const ROCKS_DB_FAILED_CODE: i32 = -32014;
-const COMMON_DB_FAILED_CODE: i32 = -32015;
-const NOT_FOUND_CODE: i32 = -32016;
-const PARSE_FAILED_CODE: i32 = -32017;
-const INVALID_SIGNATURE_CODE: i32 = -32018;
-const NOT_WHITELISTED_CODE: i32 = -32019;
+#[derive(Debug, Clone, Copy)]
+pub enum ErrorCode {
+    GossipsubFailed = -32012,
+    InvalidTxKind = -32013,
+    RocksDbFailed = -32014,
+    CommonDbFailed = -32015,
+    NotFound = -32016,
+    ParseFailed = -32017,
+    InvalidSignature = -32018,
+    NotWhitelisted = -32019,
+}
+impl fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            ErrorCode::GossipsubFailed => "Gossipsub failed",
+            ErrorCode::InvalidTxKind => "Invalid tx kind",
+            ErrorCode::RocksDbFailed => "RocksDB failed",
+            ErrorCode::CommonDbFailed => "Common DB failed",
+            ErrorCode::NotFound => "Object not found",
+            ErrorCode::ParseFailed => "Failed to parse TX data",
+            ErrorCode::InvalidSignature => "Failed to verify TX Signature",
+            ErrorCode::NotWhitelisted => "TX signer is not whitelisted",
+        };
+        write!(f, "{}", message)
+    }
+}
+impl ErrorCode {
+    pub fn code(&self) -> i32 {
+        *self as i32
+    }
+}
 
-const GOSSIPSUB_FAILED_MESSAGE: &str = "Gossipsub failed";
-const INVALID_TX_KIND_MESSAGE: &str = "Invalid tx kind";
-const ROCKS_DB_FAILED_MESSAGE: &str = "RocksDB failed";
-const COMMON_DB_FAILED_MESSAGE: &str = "Common DB failed";
-const NOT_FOUND_MESSAGE: &str = "Object not found";
-const PARSE_FAILED_MESSAGE: &str = "Failed to parse TX data";
-const INVALID_SIGNATURE_MESSAGE: &str = "Failed to verify TX Signature";
-const NOT_WHITELISTED_MESSAGE: &str = "TX signer is not whitelisted";
+fn to_error_object<T: ToString>(code: ErrorCode, data: Option<T>) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(code.code(), code.to_string(), data.map(|d| d.to_string()))
+}
 
 #[rpc(server, namespace = "sequencer")]
 pub trait Rpc {
@@ -78,40 +97,18 @@ impl SequencerServer {
     ) -> Result<(Vec<u8>, tx::Body), ErrorObjectOwned> {
         let tx_bytes = hex::decode(tx_str).map_err(|e| {
             debug!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_FAILED_CODE,
-                PARSE_FAILED_MESSAGE.to_string(),
-                Some(e.to_string()),
-            )
+            to_error_object(ErrorCode::ParseFailed, Some(e))
         })?;
 
-        let tx = Tx::decode(&mut tx_bytes.as_slice()).map_err(|e| {
-            ErrorObjectOwned::owned(
-                PARSE_FAILED_CODE,
-                PARSE_FAILED_MESSAGE.to_string(),
-                Some(e.to_string()),
-            )
-        })?;
+        let tx = Tx::decode(&mut tx_bytes.as_slice())
+            .map_err(|e| to_error_object(ErrorCode::ParseFailed, Some(e)))?;
         if tx.body().prefix() != kind {
-            return Err(ErrorObjectOwned::owned(
-                INVALID_TX_KIND_CODE,
-                INVALID_TX_KIND_MESSAGE.to_string(),
-                None::<String>,
-            ));
+            return Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>));
         }
-        let address = tx.verify().map_err(|e| {
-            ErrorObjectOwned::owned(
-                INVALID_SIGNATURE_CODE,
-                INVALID_SIGNATURE_MESSAGE.to_string(),
-                Some(e.to_string()),
-            )
-        })?;
+        let address =
+            tx.verify().map_err(|e| to_error_object(ErrorCode::InvalidSignature, Some(e)))?;
         if !self.whitelisted_users.contains(&address) {
-            return Err(ErrorObjectOwned::owned(
-                NOT_WHITELISTED_CODE,
-                NOT_WHITELISTED_MESSAGE.to_string(),
-                None::<String>,
-            ));
+            return Err(to_error_object(ErrorCode::NotWhitelisted, None::<String>));
         }
 
         Ok((tx_bytes, tx.body().clone()))
@@ -119,26 +116,14 @@ impl SequencerServer {
 
     pub fn map_db_error(e: db::Error) -> ErrorObjectOwned {
         match e {
-            db::Error::NotFound => ErrorObjectOwned::owned(
-                NOT_FOUND_CODE,
-                NOT_FOUND_MESSAGE.to_string(),
-                None::<String>,
-            ),
+            db::Error::NotFound => to_error_object(ErrorCode::NotFound, None::<String>),
             db::Error::RocksDB(err) => {
                 error!("{}", err);
-                ErrorObjectOwned::owned(
-                    ROCKS_DB_FAILED_CODE,
-                    ROCKS_DB_FAILED_MESSAGE.to_string(),
-                    Some(err.to_string()),
-                )
+                to_error_object(ErrorCode::RocksDbFailed, Some(err))
             },
             err => {
                 error!("{}", err);
-                ErrorObjectOwned::owned(
-                    COMMON_DB_FAILED_CODE,
-                    COMMON_DB_FAILED_MESSAGE.to_string(),
-                    Some(err.to_string()),
-                )
+                to_error_object(ErrorCode::CommonDbFailed, Some(err))
             },
         }
     }
@@ -152,11 +137,7 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::TRUST_UPDATE)?;
         let trust_update = match body {
             tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
-            _ => Err(ErrorObjectOwned::owned(
-                INVALID_TX_KIND_CODE,
-                INVALID_TX_KIND_MESSAGE.to_string(),
-                None::<String>,
-            )),
+            _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
         }?;
 
         // Build Tx Event
@@ -168,11 +149,7 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::owned(
-                GOSSIPSUB_FAILED_CODE,
-                GOSSIPSUB_FAILED_MESSAGE.to_string(),
-                None::<String>,
-            )
+            to_error_object(ErrorCode::GossipsubFailed, None::<String>)
         })?;
         Ok(tx_event)
     }
@@ -183,11 +160,7 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::SEED_UPDATE)?;
         let seed_update = match body {
             tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
-            _ => Err(ErrorObjectOwned::owned(
-                INVALID_TX_KIND_CODE,
-                INVALID_TX_KIND_MESSAGE.to_string(),
-                None::<String>,
-            )),
+            _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
         }?;
 
         // Build Tx Event
@@ -199,11 +172,7 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::owned(
-                GOSSIPSUB_FAILED_CODE,
-                GOSSIPSUB_FAILED_MESSAGE.to_string(),
-                None::<String>,
-            )
+            to_error_object(ErrorCode::GossipsubFailed, None::<String>)
         })?;
         Ok(tx_event)
     }
@@ -214,11 +183,7 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::COMPUTE_REQUEST)?;
         let compute_request = match body {
             tx::Body::ComputeRequest(compute_request) => Ok(compute_request),
-            _ => Err(ErrorObjectOwned::owned(
-                INVALID_TX_KIND_CODE,
-                INVALID_TX_KIND_MESSAGE.to_string(),
-                None::<String>,
-            )),
+            _ => Err(to_error_object(ErrorCode::GossipsubFailed, None::<String>)),
         }?;
 
         // Build Tx Event
@@ -230,11 +195,7 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::owned(
-                GOSSIPSUB_FAILED_CODE,
-                GOSSIPSUB_FAILED_MESSAGE.to_string(),
-                None::<String>,
-            )
+            to_error_object(ErrorCode::GossipsubFailed, None::<String>)
         })?;
         Ok(tx_event)
     }
