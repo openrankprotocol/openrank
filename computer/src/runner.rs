@@ -8,7 +8,7 @@ use openrank_common::{
     topics::{Domain, DomainHash},
     tx::{
         compute,
-        trust::{ScoreEntry, TrustEntry},
+        trust::{OwnedNamespace, ScoreEntry, TrustEntry},
     },
 };
 use sha3::Keccak256;
@@ -23,8 +23,8 @@ use std::{
 pub struct ComputeRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    local_trust: HashMap<DomainHash, HashMap<(u64, u64), f32>>,
-    seed_trust: HashMap<DomainHash, HashMap<u64, f32>>,
+    local_trust: HashMap<OwnedNamespace, HashMap<(u64, u64), f32>>,
+    seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
     compute_results: HashMap<DomainHash, Vec<(u64, f32)>>,
@@ -32,7 +32,7 @@ pub struct ComputeRunner {
 }
 
 impl ComputeRunner {
-    pub fn new(domains: Vec<DomainHash>) -> Self {
+    pub fn new(domains: &[Domain]) -> Self {
         let mut count = HashMap::new();
         let mut indices = HashMap::new();
         let mut local_trust = HashMap::new();
@@ -41,13 +41,17 @@ impl ComputeRunner {
         let mut lt_master_tree = HashMap::new();
         let mut compute_results = HashMap::new();
         for domain in domains {
-            count.insert(domain, 0);
-            indices.insert(domain, HashMap::new());
-            local_trust.insert(domain, HashMap::new());
-            seed_trust.insert(domain, HashMap::new());
-            lt_sub_trees.insert(domain, HashMap::new());
-            lt_master_tree.insert(domain, DenseIncrementalMerkleTree::<Keccak256>::new(32));
-            compute_results.insert(domain, Vec::<(u64, f32)>::new());
+            let domain_hash = domain.to_hash();
+            count.insert(domain_hash, 0);
+            indices.insert(domain_hash, HashMap::new());
+            local_trust.insert(domain.trust_namespace(), HashMap::new());
+            seed_trust.insert(domain.seed_namespace(), HashMap::new());
+            lt_sub_trees.insert(domain_hash, HashMap::new());
+            lt_master_tree.insert(
+                domain_hash,
+                DenseIncrementalMerkleTree::<Keccak256>::new(32),
+            );
+            compute_results.insert(domain_hash, Vec::<(u64, f32)>::new());
         }
         Self {
             count,
@@ -80,12 +84,12 @@ impl ComputeRunner {
             .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
         let lt = self
             .local_trust
-            .get_mut(&domain.to_hash())
-            .ok_or(Error::LocalTrustNotFound(domain.to_hash()))?;
+            .get_mut(&domain.trust_namespace())
+            .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
         let seed = self
             .seed_trust
-            .get(&domain.to_hash())
-            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
+            .get(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(entry.from()) {
@@ -142,8 +146,8 @@ impl ComputeRunner {
             .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
-            .get_mut(&domain.to_hash())
-            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
+            .get_mut(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
             let index = if let Some(i) = domain_indices.get(entry.id()) {
@@ -174,12 +178,12 @@ impl ComputeRunner {
     pub fn compute(&mut self, domain: Domain) -> Result<(), Error> {
         let lt = self
             .local_trust
-            .get(&domain.to_hash())
-            .ok_or(Error::LocalTrustNotFound(domain.to_hash()))?;
+            .get(&domain.trust_namespace())
+            .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
         let seed = self
             .seed_trust
-            .get(&domain.to_hash())
-            .ok_or(Error::SeedTrustNotFound(domain.to_hash()))?;
+            .get(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let res = positive_run(lt.clone(), seed.clone()).map_err(Error::Algo)?;
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
@@ -254,9 +258,9 @@ pub enum Error {
     /// The local trust master tree for the domain are not found.
     LocalTrustMasterTreeNotFound(DomainHash),
     /// The local trust for the domain are not found.
-    LocalTrustNotFound(DomainHash),
+    LocalTrustNotFound(OwnedNamespace),
     /// The seed trust for the domain are not found.
-    SeedTrustNotFound(DomainHash),
+    SeedTrustNotFound(OwnedNamespace),
     /// The compute results for the domain are not found.
     ComputeResultsNotFound(DomainHash),
     /// The index to address mapping for the domain are not found.

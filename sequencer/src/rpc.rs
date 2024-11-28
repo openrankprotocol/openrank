@@ -3,17 +3,53 @@ use getset::Getters;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::error::{INVALID_REQUEST_CODE, PARSE_ERROR_CODE};
-use jsonrpsee::types::{ErrorCode, ErrorObjectOwned};
-use openrank_common::db::Db;
+use jsonrpsee::types::ErrorObjectOwned;
+use openrank_common::db::{self, Db};
 use openrank_common::query::{GetResultsQuery, GetSeedUpdateQuery, GetTrustUpdateQuery};
 use openrank_common::tx::consts;
 use openrank_common::tx::trust::{SeedUpdate, TrustUpdate};
 use openrank_common::tx::{self, compute, trust::ScoreEntry, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
-use std::cmp::Ordering;
+use std::fmt;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tracing::error;
+use tracing::{debug, error};
+
+#[derive(Debug, Clone, Copy)]
+pub enum ErrorCode {
+    GossipsubFailed = -32012,
+    InvalidTxKind = -32013,
+    RocksDbFailed = -32014,
+    CommonDbFailed = -32015,
+    NotFound = -32016,
+    ParseFailed = -32017,
+    InvalidSignature = -32018,
+    NotWhitelisted = -32019,
+}
+impl fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            ErrorCode::GossipsubFailed => "Gossipsub failed",
+            ErrorCode::InvalidTxKind => "Invalid tx kind",
+            ErrorCode::RocksDbFailed => "RocksDB failed",
+            ErrorCode::CommonDbFailed => "Common DB failed",
+            ErrorCode::NotFound => "Object not found",
+            ErrorCode::ParseFailed => "Failed to parse TX data",
+            ErrorCode::InvalidSignature => "Failed to verify TX Signature",
+            ErrorCode::NotWhitelisted => "TX signer is not whitelisted",
+        };
+        write!(f, "{}", message)
+    }
+}
+impl ErrorCode {
+    pub fn code(&self) -> i32 {
+        *self as i32
+    }
+}
+
+fn to_error_object<T: ToString>(code: ErrorCode, data: Option<T>) -> ErrorObjectOwned {
+    ErrorObjectOwned::owned(code.code(), code.to_string(), data.map(|d| d.to_string()))
+}
 
 #[rpc(server, namespace = "sequencer")]
 pub trait Rpc {
@@ -26,10 +62,10 @@ pub trait Rpc {
     #[method(name = "compute_request")]
     async fn compute_request(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned>;
 
-    #[method(name = "get_results")]
-    async fn get_results(
-        &self, query: GetResultsQuery,
-    ) -> Result<(Vec<bool>, Vec<ScoreEntry>), ErrorObjectOwned>;
+    #[method(name = "get_compute_result_seq_number")]
+    async fn get_compute_result_seq_number(
+        &self, request_tx_hash: tx::TxHash,
+    ) -> Result<u64, ErrorObjectOwned>;
 
     #[method(name = "get_compute_result")]
     async fn get_compute_result(
@@ -73,44 +109,36 @@ impl SequencerServer {
         &self, tx_str: String, kind: &str,
     ) -> Result<(Vec<u8>, tx::Body), ErrorObjectOwned> {
         let tx_bytes = hex::decode(tx_str).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
+            debug!("{}", e);
+            to_error_object(ErrorCode::ParseFailed, Some(e))
         })?;
 
-        let tx = Tx::decode(&mut tx_bytes.as_slice()).map_err(|e| {
-            ErrorObjectOwned::owned(
-                PARSE_ERROR_CODE,
-                "Failed to parse TX data".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
+        let tx = Tx::decode(&mut tx_bytes.as_slice())
+            .map_err(|e| to_error_object(ErrorCode::ParseFailed, Some(e)))?;
         if tx.body().prefix() != kind {
-            return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid tx kind".to_string(),
-                None::<String>,
-            ));
+            return Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>));
         }
-        let address = tx.verify().map_err(|e| {
-            ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Failed to verify TX Signature".to_string(),
-                Some(e.to_string()),
-            )
-        })?;
+        let address =
+            tx.verify().map_err(|e| to_error_object(ErrorCode::InvalidSignature, Some(e)))?;
         if !self.whitelisted_users.contains(&address) {
-            return Err(ErrorObjectOwned::owned(
-                INVALID_REQUEST_CODE,
-                "Invalid TX signer".to_string(),
-                None::<String>,
-            ));
+            return Err(to_error_object(ErrorCode::NotWhitelisted, None::<String>));
         }
 
         Ok((tx_bytes, tx.body().clone()))
+    }
+
+    pub fn map_db_error(e: db::Error) -> ErrorObjectOwned {
+        match e {
+            db::Error::NotFound => to_error_object(ErrorCode::NotFound, None::<String>),
+            db::Error::RocksDB(err) => {
+                error!("{}", err);
+                to_error_object(ErrorCode::RocksDbFailed, Some(err))
+            },
+            err => {
+                error!("{}", err);
+                to_error_object(ErrorCode::CommonDbFailed, Some(err))
+            },
+        }
     }
 }
 
@@ -122,7 +150,7 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::TRUST_UPDATE)?;
         let trust_update = match body {
             tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
         }?;
 
         // Build Tx Event
@@ -134,7 +162,7 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
+            to_error_object(ErrorCode::GossipsubFailed, None::<String>)
         })?;
         Ok(tx_event)
     }
@@ -145,7 +173,7 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::SEED_UPDATE)?;
         let seed_update = match body {
             tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
         }?;
 
         // Build Tx Event
@@ -157,7 +185,7 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
+            to_error_object(ErrorCode::GossipsubFailed, None::<String>)
         })?;
         Ok(tx_event)
     }
@@ -168,7 +196,7 @@ impl RpcServer for SequencerServer {
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::COMPUTE_REQUEST)?;
         let compute_request = match body {
             tx::Body::ComputeRequest(compute_request) => Ok(compute_request),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+            _ => Err(to_error_object(ErrorCode::GossipsubFailed, None::<String>)),
         }?;
 
         // Build Tx Event
@@ -180,115 +208,22 @@ impl RpcServer for SequencerServer {
         );
         self.sender.send(channel_message).await.map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
+            to_error_object(ErrorCode::GossipsubFailed, None::<String>)
         })?;
         Ok(tx_event)
     }
 
-    /// Gets the results(EigenTrust scores) of the `ComputeRequest` with the ComputeRequest TX hash,
-    /// along with start and size parameters.
-    async fn get_results(
-        &self, query: GetResultsQuery,
-    ) -> Result<(Vec<bool>, Vec<ScoreEntry>), ErrorObjectOwned> {
+    /// Fetch the ComputeResult sequence number, given the request TX hash
+    async fn get_compute_result_seq_number(
+        &self, request_tx_hash: tx::TxHash,
+    ) -> Result<u64, ErrorObjectOwned> {
         let db_handler = self.db.clone();
 
-        let result_reference = db_handler
-            .get::<compute::ResultReference>(query.request_tx_hash().to_bytes())
-            .map_err(|e| {
-                error!("{}", e);
-                ErrorObjectOwned::from(ErrorCode::InternalError)
-            })?;
+        let result = db_handler
+            .get::<compute::ResultReference>(request_tx_hash.to_bytes())
+            .map_err(SequencerServer::map_db_error)?;
 
-        let key = compute::Result::construct_full_key(*result_reference.seq_number());
-        let result = db_handler.get::<compute::Result>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
-        let key = Tx::construct_full_key(
-            consts::COMPUTE_COMMITMENT,
-            result.compute_commitment_tx_hash().clone(),
-        );
-        let tx = db_handler.get::<Tx>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
-        let commitment = match tx.body().clone() {
-            tx::Body::ComputeCommitment(commitment) => Ok(commitment),
-            _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-        }?;
-        let create_scores_tx: Vec<Tx> = {
-            let mut create_scores_tx = Vec::new();
-            for tx_hash in commitment.scores_tx_hashes().iter() {
-                let key = Tx::construct_full_key(consts::COMPUTE_SCORES, tx_hash.clone());
-                let tx = db_handler.get::<Tx>(key).map_err(|e| {
-                    error!("{}", e);
-                    ErrorObjectOwned::from(ErrorCode::InternalError)
-                })?;
-                create_scores_tx.push(tx);
-            }
-            create_scores_tx
-        };
-        let create_scores: Vec<compute::Scores> = {
-            let mut create_scores = Vec::new();
-            for tx in create_scores_tx.into_iter() {
-                let scores = match tx.body().clone() {
-                    tx::Body::ComputeScores(scores) => Ok(scores),
-                    _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-                }?;
-                create_scores.push(scores);
-            }
-            create_scores
-        };
-        let mut score_entries: Vec<ScoreEntry> =
-            create_scores.into_iter().flat_map(|x| x.entries().clone()).collect();
-        score_entries.sort_by(|a, b| match a.value().partial_cmp(b.value()) {
-            Some(ordering) => ordering,
-            None => {
-                if a.value().is_nan() && b.value().is_nan() {
-                    Ordering::Equal
-                } else if a.value().is_nan() {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                }
-            },
-        });
-        score_entries.reverse();
-        let score_entries: Vec<ScoreEntry> = score_entries
-            .split_at(*query.start() as usize)
-            .1
-            .iter()
-            .take(*query.size() as usize)
-            .cloned()
-            .collect();
-
-        let verificarion_results_tx: Vec<Tx> = {
-            let mut verification_resutls_tx = Vec::new();
-            for tx_hash in result.compute_verification_tx_hashes().iter() {
-                let key = Tx::construct_full_key(consts::COMPUTE_VERIFICATION, tx_hash.clone());
-                let tx = db_handler.get::<Tx>(key).map_err(|e| {
-                    error!("{}", e);
-                    ErrorObjectOwned::from(ErrorCode::InternalError)
-                })?;
-                verification_resutls_tx.push(tx);
-            }
-            verification_resutls_tx
-        };
-        let verification_results: Vec<compute::Verification> = {
-            let mut verification_results = Vec::new();
-            for tx in verificarion_results_tx.into_iter() {
-                let result = match tx.body().clone() {
-                    tx::Body::ComputeVerification(result) => Ok(result),
-                    _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
-                }?;
-                verification_results.push(result);
-            }
-            verification_results
-        };
-        let verification_results_bools: Vec<bool> =
-            verification_results.into_iter().map(|x| *x.verification_result()).collect();
-
-        Ok((verification_results_bools, score_entries))
+        Ok(*result.seq_number())
     }
 
     /// Fetch the ComputeResult TX by its sequence number
@@ -298,10 +233,8 @@ impl RpcServer for SequencerServer {
         let db_handler = self.db.clone();
 
         let key = compute::Result::construct_full_key(seq_number);
-        let result = db_handler.get::<compute::Result>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
+        let result =
+            db_handler.get::<compute::Result>(key).map_err(SequencerServer::map_db_error)?;
 
         Ok(result)
     }
@@ -311,10 +244,7 @@ impl RpcServer for SequencerServer {
         let db_handler = self.db.clone();
 
         let key = Tx::construct_full_key(&kind, tx_hash);
-        let tx = db_handler.get::<Tx>(key).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
+        let tx = db_handler.get::<Tx>(key).map_err(SequencerServer::map_db_error)?;
 
         Ok(tx)
     }
@@ -328,10 +258,7 @@ impl RpcServer for SequencerServer {
             let full_key = Tx::construct_full_key(&kind, tx_hash);
             key_bytes.push(full_key);
         }
-        let txs = db_handler.get_multi::<Tx>(key_bytes).map_err(|e| {
-            error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
-        })?;
+        let txs = db_handler.get_multi::<Tx>(key_bytes).map_err(SequencerServer::map_db_error)?;
 
         Ok(txs)
     }
@@ -350,14 +277,14 @@ impl RpcServer for SequencerServer {
             .get_range_from_start::<Tx>(consts::TRUST_UPDATE, key, *query.size())
             .map_err(|e| {
             error!("{}", e);
-            ErrorObjectOwned::from(ErrorCode::InternalError)
+            to_error_object(ErrorCode::RocksDbFailed, Some(e))
         })?;
 
         let trust_updates = txs
             .into_iter()
             .map(|tx| match tx.body().clone() {
                 tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
-                _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+                _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
             })
             .collect::<Result<Vec<TrustUpdate>, ErrorObjectOwned>>()?;
 
@@ -378,14 +305,14 @@ impl RpcServer for SequencerServer {
             .get_range_from_start::<Tx>(consts::SEED_UPDATE, key, *query.size())
             .map_err(|e| {
                 error!("{}", e);
-                ErrorObjectOwned::from(ErrorCode::InternalError)
+                to_error_object(ErrorCode::RocksDbFailed, Some(e))
             })?;
 
         let seed_updates = txs
             .into_iter()
             .map(|tx| match tx.body().clone() {
                 tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
-                _ => Err(ErrorObjectOwned::from(ErrorCode::InternalError)),
+                _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
             })
             .collect::<Result<Vec<SeedUpdate>, ErrorObjectOwned>>()?;
 
