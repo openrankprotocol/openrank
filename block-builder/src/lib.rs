@@ -317,7 +317,7 @@ impl Node {
     /// Node recovery method. Used for loading results from the DB into the memory, for future indexing.
     pub fn node_recovery(&mut self) -> Result<(), Error> {
         let job_results: Vec<compute::Result> =
-            self.db.read_from_end(consts::COMPUTE_RESULT, None).map_err(Error::Db)?;
+            self.db.get_range_from_start(consts::COMPUTE_RESULT, None, None).map_err(Error::Db)?;
         for mut job_result in job_results {
             self.coordinator.add_job_result(&mut job_result);
         }

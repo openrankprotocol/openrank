@@ -4,7 +4,9 @@ use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
 use openrank_common::db::{self, Db};
+use openrank_common::query::{GetSeedUpdateQuery, GetTrustUpdateQuery};
 use openrank_common::tx::consts;
+use openrank_common::tx::trust::{SeedUpdate, TrustUpdate};
 use openrank_common::tx::{self, compute, Address, Tx};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::fmt;
@@ -74,6 +76,16 @@ pub trait Rpc {
 
     #[method(name = "get_txs")]
     async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned>;
+
+    #[method(name = "get_trust_updates")]
+    async fn get_trust_updates(
+        &self, query: GetTrustUpdateQuery,
+    ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned>;
+
+    #[method(name = "get_seed_updates")]
+    async fn get_seed_updates(
+        &self, query: GetSeedUpdateQuery,
+    ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned>;
 }
 
 #[derive(Getters)]
@@ -248,5 +260,61 @@ impl RpcServer for SequencerServer {
         let txs = db_handler.get_multi::<Tx>(key_bytes).map_err(SequencerServer::map_db_error)?;
 
         Ok(txs)
+    }
+
+    /// Fetch TrustUpdate contents
+    async fn get_trust_updates(
+        &self, query: GetTrustUpdateQuery,
+    ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned> {
+        let db_handler = self.db.clone();
+
+        let key = query
+            .from()
+            .clone()
+            .map(|tx_hash| Tx::construct_full_key(consts::TRUST_UPDATE, tx_hash));
+        let txs = db_handler
+            .get_range_from_start::<Tx>(consts::TRUST_UPDATE, key, *query.size())
+            .map_err(|e| {
+            error!("{}", e);
+            to_error_object(ErrorCode::RocksDbFailed, Some(e))
+        })?;
+
+        let trust_updates = txs
+            .into_iter()
+            .map(|tx| match tx.body().clone() {
+                tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
+                _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
+            })
+            .collect::<Result<Vec<TrustUpdate>, ErrorObjectOwned>>()?;
+
+        Ok(trust_updates)
+    }
+
+    /// Fetch SeedUpdate contents
+    async fn get_seed_updates(
+        &self, query: GetSeedUpdateQuery,
+    ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned> {
+        let db_handler = self.db.clone();
+
+        let key = query
+            .from()
+            .clone()
+            .map(|tx_hash| Tx::construct_full_key(consts::SEED_UPDATE, tx_hash));
+        let txs = db_handler
+            .get_range_from_start::<Tx>(consts::SEED_UPDATE, key, *query.size())
+            .map_err(|e| {
+                error!("{}", e);
+                to_error_object(ErrorCode::RocksDbFailed, Some(e))
+            })?;
+
+        let seed_updates = txs
+            .into_iter()
+            .map(|tx| match tx.body().clone() {
+                tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
+                _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
+            })
+            .collect::<Result<Vec<SeedUpdate>, ErrorObjectOwned>>()?;
+
+        Ok(seed_updates)
     }
 }

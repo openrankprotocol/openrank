@@ -9,6 +9,7 @@ use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
     merkle::hash_leaf,
+    query::{GetSeedUpdateQuery, GetTrustUpdateQuery},
     topics::Domain,
     tx::{
         self,
@@ -97,6 +98,20 @@ enum Method {
     GetComputeResultTxs { seq_number: String, config_path: String, output_path: Option<String> },
     /// Get arbitrary TX
     GetTx { tx_id: String, config_path: String, output_path: Option<String> },
+    /// Get TrustUpdate contents
+    GetTrustUpdates {
+        config_path: String,
+        output_path: Option<String>,
+        from: Option<String>,
+        size: Option<usize>,
+    },
+    /// Get SeedUpdate contents
+    GetSeedUpdates {
+        config_path: String,
+        output_path: Option<String>,
+        from: Option<String>,
+        size: Option<usize>,
+    },
     /// The method generates a new ECDSA keypair and returns the address and the private key.
     GenerateKeypair,
     /// The method shows the address of the node, given the private key.
@@ -537,6 +552,58 @@ fn check_score_integrity(
     Ok(is_converged & votes)
 }
 
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the `TrustUpdate`s.
+async fn get_trust_updates(
+    config_path: &str, from: Option<String>, size: Option<usize>,
+) -> Result<Vec<TrustUpdate>, SdkError> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
+    // Calls the Sequencer to get the TrustUpdate given a TX hash.
+    let from = if let Some(data) = from {
+        let tx_hash_bytes = hex::decode(data).map_err(SdkError::HexError)?;
+        let trust_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        Some(trust_update_tx_hash)
+    } else {
+        None
+    };
+    let results_query = GetTrustUpdateQuery::new(from, size);
+    let trust_updates: Vec<TrustUpdate> = client
+        .request("sequencer_get_trust_updates", vec![results_query])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
+    Ok(trust_updates)
+}
+
+/// 1. Creates a new `Client`, which can be used to call the Sequencer.
+/// 2. Calls the Sequencer to get the `SeedUpdate`s.
+async fn get_seed_updates(
+    config_path: &str, from: Option<String>, size: Option<usize>,
+) -> Result<Vec<SeedUpdate>, SdkError> {
+    let config = read_config(config_path)?;
+    // Creates a new client
+    let client = HttpClient::builder()
+        .build(config.sequencer.endpoint.as_str())
+        .map_err(SdkError::JsonRpcClientError)?;
+    // Calls the Sequencer to get the SeedUpdate given a TX hash.
+    let from = if let Some(data) = from {
+        let tx_hash_bytes = hex::decode(data).map_err(SdkError::HexError)?;
+        let seed_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        Some(seed_update_tx_hash)
+    } else {
+        None
+    };
+    let results_query = GetSeedUpdateQuery::new(from, size);
+    let seed_updates: Vec<SeedUpdate> = client
+        .request("sequencer_get_seed_updates", vec![results_query])
+        .await
+        .map_err(SdkError::JsonRpcClientError)?;
+    Ok(seed_updates)
+}
+
 /// Utility function for writing json to a file.
 fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), SdkError> {
     let file = File::create(path).map_err(SdkError::IoError)?;
@@ -735,6 +802,38 @@ async fn main() -> ExitCode {
                 Ok(tx) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, tx) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                },
+                Err(e) => {
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            }
+        },
+        Method::GetTrustUpdates { from, size, config_path, output_path } => {
+            match get_trust_updates(&config_path, from, size).await {
+                Ok(res) => {
+                    if let Some(output_path) = output_path {
+                        if let Err(e) = write_json_to_file(&output_path, res) {
+                            println!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                },
+                Err(e) => {
+                    println!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            }
+        },
+        Method::GetSeedUpdates { from, size, config_path, output_path } => {
+            match get_seed_updates(&config_path, from, size).await {
+                Ok(res) => {
+                    if let Some(output_path) = output_path {
+                        if let Err(e) = write_json_to_file(&output_path, res) {
                             println!("{}", e);
                             return ExitCode::FAILURE;
                         }
