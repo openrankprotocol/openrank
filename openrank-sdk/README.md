@@ -59,8 +59,11 @@ openrank-sdk compute-request [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
 
 Get Results - Get results of a specific compute request identified by it's TX hash:
 ```sh
-openrank-sdk get-results [ComputeRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH]
+openrank-sdk get-results [ComputeRequest_TX_HASH] [OPENRANK_SDK_CONFIG_PATH] [*OUTPUT_PATH] [*--allow-incomplete] [*--allow-failed]
 ```
+where:
+- `--allow-incomplete` - Allow for jobs that are partially verified. (Not all assigned verifiers casted their vote.)
+- `--allow-failed` - Allow for jobs that have failed verification.
 
 Get Results and Check Integrity - Get the results of a specific compute request, and perform the convergence check of top X amount of scores.
 The scores will be compared against a predefined test vector with `TEST_VECTOR_PATH` path:
@@ -106,3 +109,4 @@ Where:
 and will be used for comparing with the scores resulted from the compute
 
 Parameters marked with `*` are optional
+Parameters with prefix `--` are boolean flags
