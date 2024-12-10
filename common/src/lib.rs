@@ -10,6 +10,8 @@ pub mod tx_event;
 #[cfg(feature = "db")]
 pub mod db;
 
+pub mod file_storage;
+
 use alloy_rlp::encode;
 use getset::Getters;
 use k256::ecdsa::SigningKey;
