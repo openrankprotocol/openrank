@@ -80,28 +80,22 @@ fn pre_process(lt: &mut HashMap<(u64, u64), f32>, seed: &mut HashMap<u64, f32>) 
 fn normalise_lt(lt: &mut HashMap<(u64, u64), f32>) -> Result<(), algos::Error> {
     let sum_map = lt
         .par_iter()
-        .fold(
-            || HashMap::new(),
-            |mut sum_map, ((from, _), value)| {
-                let val = sum_map.get(from).unwrap_or(&0.0);
-                sum_map.insert(*from, val + value);
-                sum_map
-            },
-        )
-        .reduce(
-            || HashMap::new(),
-            |mut acc, sum_map| {
-                for (i, v) in sum_map {
-                    if acc.contains_key(&i) {
-                        let val = acc.get(&i).unwrap();
-                        acc.insert(i, v + val);
-                    } else {
-                        acc.insert(i, v);
-                    }
+        .fold(HashMap::new, |mut sum_map, ((from, _), value)| {
+            let val = sum_map.get(from).unwrap_or(&0.0);
+            sum_map.insert(*from, val + value);
+            sum_map
+        })
+        .reduce(HashMap::new, |mut acc, sum_map| {
+            for (i, v) in sum_map {
+                if acc.contains_key(&i) {
+                    let val = acc.get(&i).unwrap();
+                    acc.insert(i, v + val);
+                } else {
+                    acc.insert(i, v);
                 }
-                acc
-            },
-        );
+            }
+            acc
+        });
 
     // Divide each element in the local trust matrix by the sum of its row.
     for ((from, _), value) in lt {
@@ -122,20 +116,14 @@ fn normalise_scores(scores: &HashMap<u64, f32>) -> Result<HashMap<u64, f32>, alg
 
     let scores = scores
         .par_iter()
-        .fold(
-            || HashMap::new(),
-            |mut scores, (i, value)| {
-                scores.insert(*i, *value / sum);
-                scores
-            },
-        )
-        .reduce(
-            || HashMap::new(),
-            |mut acc, scores| {
-                acc.extend(scores);
-                acc
-            },
-        );
+        .fold(HashMap::new, |mut scores, (i, value)| {
+            scores.insert(*i, *value / sum);
+            scores
+        })
+        .reduce(HashMap::new, |mut acc, scores| {
+            acc.extend(scores);
+            acc
+        });
     Ok(scores)
 }
 
@@ -225,17 +213,14 @@ fn iteration(
     lt: &HashMap<(u64, u64), f32>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
 ) -> HashMap<u64, f32> {
     lt.par_iter()
-        .fold(
-            || HashMap::new(),
-            |mut next_scores, ((from, to), value)| {
-                let origin_score = scores.get(from).unwrap_or(&0.0);
-                let score = *value * origin_score;
-                let to_score = next_scores.get(to).unwrap_or(&0.0);
-                let final_to_score = to_score + score;
-                next_scores.insert(*to, final_to_score);
-                next_scores
-            },
-        )
+        .fold(HashMap::new, |mut next_scores, ((from, to), value)| {
+            let origin_score = scores.get(from).unwrap_or(&0.0);
+            let score = *value * origin_score;
+            let to_score = next_scores.get(to).unwrap_or(&0.0);
+            let final_to_score = to_score + score;
+            next_scores.insert(*to, final_to_score);
+            next_scores
+        })
         .map(|mut next_scores| {
             // Calculate the weighted next scores of each node
             for (i, v) in &mut next_scores {
@@ -246,18 +231,15 @@ fn iteration(
             }
             next_scores
         })
-        .reduce(
-            || HashMap::new(),
-            |mut acc, next| {
-                for (i, v) in next {
-                    if acc.contains_key(&i) {
-                        let val = acc.get(&i).unwrap();
-                        acc.insert(i, v + val);
-                    } else {
-                        acc.insert(i, v);
-                    }
+        .reduce(HashMap::new, |mut acc, next| {
+            for (i, v) in next {
+                if acc.contains_key(&i) {
+                    let val = acc.get(&i).unwrap();
+                    acc.insert(i, v + val);
+                } else {
+                    acc.insert(i, v);
                 }
-                acc
-            },
-        )
+            }
+            acc
+        })
 }
