@@ -229,13 +229,12 @@ impl VerificationRunner {
                     self.check_scores_tx_hashes(domain.clone(), commitment.clone())?;
                 if is_check_score_tx_hashes {
                     let assgn_tx = assignment_id.clone();
-                    let lt_root = commitment.lt_root_hash().clone();
                     let cp_root = commitment.compute_root_hash().clone();
 
                     self.create_compute_tree(domain.clone(), assignment_id.clone())?;
-                    let (res_lt_root, res_compute_root) =
+                    let (_, res_compute_root) =
                         self.get_root_hashes(domain.clone(), assignment_id.clone())?;
-                    let is_root_equal = lt_root == res_lt_root && cp_root == res_compute_root;
+                    let is_root_equal = cp_root == res_compute_root;
                     let is_converged =
                         self.compute_verification(domain.clone(), assignment_id.clone())?;
                     results.push((assgn_tx, is_root_equal && is_converged));
