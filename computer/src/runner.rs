@@ -1,6 +1,6 @@
 use getset::Getters;
 use openrank_common::{
-    algos::{self, et::positive_run},
+    algos::et::positive_run,
     merkle::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,
@@ -23,7 +23,7 @@ use std::{
 pub struct ComputeRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    local_trust: HashMap<OwnedNamespace, HashMap<(u64, u64), f32>>,
+    local_trust: HashMap<OwnedNamespace, HashMap<u64, HashMap<u64, f32>>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
@@ -108,12 +108,14 @@ impl ComputeRunner {
                 *count += 1;
                 curr_count
             };
-            let is_zero = entry.value() == &0.0;
-            let exists = lt.contains_key(&(from_index, to_index));
-            if is_zero && exists {
-                lt.remove(&(from_index, to_index));
-            } else if !is_zero {
-                lt.insert((from_index, to_index), *entry.value());
+            if let Some(from_map) = lt.get_mut(&from_index) {
+                let is_zero = entry.value() == &0.0;
+                let exists = from_map.contains_key(&to_index);
+                if is_zero && exists {
+                    from_map.remove(&to_index);
+                } else if !is_zero {
+                    from_map.insert(to_index, *entry.value());
+                }
             }
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
@@ -196,7 +198,7 @@ impl ComputeRunner {
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
-        let res = positive_run(lt.clone(), seed.clone()).map_err(Error::Algo)?;
+        let res = positive_run(lt.clone(), seed.clone());
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
     }
@@ -282,8 +284,6 @@ pub enum Error {
 
     /// The compute merkle tree error.
     Merkle(merkle::Error),
-    /// The compute algorithm error.
-    Algo(algos::Error),
 }
 
 impl Display for Error {
@@ -326,7 +326,6 @@ impl Display for Error {
             },
 
             Self::Merkle(err) => err.fmt(f),
-            Self::Algo(err) => err.fmt(f),
         }
     }
 }
