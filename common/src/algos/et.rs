@@ -19,7 +19,7 @@ fn find_reachable_peers(
     while let Some(i) = to_visit.pop() {
         visited.insert(*i);
         for (j, v) in lt.get(&i).unwrap() {
-            if visited.contains(&j) && *v > 0.0 {
+            if !visited.contains(&j) && *v > 0.0 {
                 to_visit.push(j);
             }
         }
