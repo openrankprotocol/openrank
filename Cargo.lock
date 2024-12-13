@@ -3156,7 +3156,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openrank-block-builder"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "alloy-rlp",
  "dotenv",
@@ -3178,7 +3178,7 @@ dependencies = [
 
 [[package]]
 name = "openrank-common"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -3201,7 +3201,7 @@ dependencies = [
 
 [[package]]
 name = "openrank-computer"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "alloy-rlp",
  "dotenv",
@@ -3222,11 +3222,11 @@ dependencies = [
 
 [[package]]
 name = "openrank-da"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "openrank-sdk"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "alloy-rlp",
  "clap",
@@ -3248,7 +3248,7 @@ dependencies = [
 
 [[package]]
 name = "openrank-sequencer"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "alloy-rlp",
  "futures",
@@ -3268,7 +3268,7 @@ dependencies = [
 
 [[package]]
 name = "openrank-verifier"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "alloy-rlp",
  "dotenv",
