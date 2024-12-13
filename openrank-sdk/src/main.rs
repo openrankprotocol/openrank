@@ -173,12 +173,12 @@ fn read_config(path: &str) -> Result<Config, SdkError> {
     f.read_to_string(&mut toml_config).map_err(SdkError::IoError)?;
     let config: Config = toml::from_str(toml_config.as_str()).map_err(SdkError::TomlError)?;
     if config.sequencer.result_start.is_some() {
-        println!(
+        eprintln!(
             "'sequencer.result_start' is depricated. This will become a hard error in the future."
         );
     }
     if config.sequencer.result_size.is_some() {
-        println!(
+        eprintln!(
             "'sequencer.result_size' is depricated. This will become a hard error in the future."
         );
     }
@@ -632,7 +632,7 @@ async fn main() -> ExitCode {
             let secret_key = match get_secret_key() {
                 Ok(secret_key) => secret_key,
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             };
@@ -640,13 +640,13 @@ async fn main() -> ExitCode {
                 Ok(tx_events) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, tx_events) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -655,7 +655,7 @@ async fn main() -> ExitCode {
             let secret_key = match get_secret_key() {
                 Ok(secret_key) => secret_key,
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             };
@@ -663,13 +663,13 @@ async fn main() -> ExitCode {
                 Ok(tx_events) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, tx_events) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -678,7 +678,7 @@ async fn main() -> ExitCode {
             let secret_key = match get_secret_key() {
                 Ok(secret_key) => secret_key,
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             };
@@ -688,13 +688,13 @@ async fn main() -> ExitCode {
                     println!("{}", hex_encoded_tx_hash);
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, result) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -717,7 +717,7 @@ async fn main() -> ExitCode {
                 Ok((votes, scores)) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, scores) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     } else {
@@ -729,18 +729,18 @@ async fn main() -> ExitCode {
                 },
                 Err(e) => match e {
                     SdkError::ComputeJobInProgress => {
-                        println!("ComputeJob still in progress");
+                        eprintln!("ComputeJob still in progress");
                         return ExitCode::from(TRANSIENT_STATUS_CODE);
                     },
                     SdkError::ComputeJobFailed(positive, total) => {
-                        println!(
+                        eprintln!(
                             "ComputeJob verification failed. Votes: {}/{}",
                             positive, total
                         );
                         return ExitCode::FAILURE;
                     },
                     e => {
-                        println!("{}", e);
+                        eprintln!("{}", e);
                         return ExitCode::FAILURE;
                     },
                 },
@@ -752,7 +752,7 @@ async fn main() -> ExitCode {
                     let res = match check_score_integrity(votes, results, &test_vector) {
                         Ok(res) => res,
                         Err(e) => {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         },
                     };
@@ -760,7 +760,7 @@ async fn main() -> ExitCode {
                     assert!(res);
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -770,13 +770,13 @@ async fn main() -> ExitCode {
                 Ok(result) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, result) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -786,13 +786,13 @@ async fn main() -> ExitCode {
                 Ok(txs) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, txs) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -802,13 +802,13 @@ async fn main() -> ExitCode {
                 Ok(tx) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, tx) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -818,13 +818,13 @@ async fn main() -> ExitCode {
                 Ok(res) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, res) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -834,13 +834,13 @@ async fn main() -> ExitCode {
                 Ok(res) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, res) {
-                            println!("{}", e);
+                            eprintln!("{}", e);
                             return ExitCode::FAILURE;
                         }
                     }
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE;
                 },
             }
@@ -858,7 +858,7 @@ async fn main() -> ExitCode {
                 println!("ADDRESS: {}", addr);
             },
             Err(e) => {
-                println!("{}", e);
+                eprintln!("{}", e);
                 return ExitCode::FAILURE;
             },
         },
