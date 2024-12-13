@@ -1,4 +1,3 @@
-use crate::algos;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 
@@ -27,11 +26,13 @@ fn _find_reachable_peers(
     visited
 }
 
-fn get_all_peers(lt: &HashMap<(u64, u64), f32>, seed: &HashMap<u64, f32>) -> HashSet<u64> {
+fn get_all_peers(lt: &HashMap<u64, HashMap<u64, f32>>, seed: &HashMap<u64, f32>) -> HashSet<u64> {
     let mut all_peers = HashSet::new();
-    for ((from, to), _) in lt.iter() {
+    for (from, from_map) in lt.iter() {
         all_peers.insert(*from);
-        all_peers.insert(*to);
+        for to in from_map.keys() {
+            all_peers.insert(*to);
+        }
     }
 
     for (i, _) in seed.iter() {
@@ -44,7 +45,7 @@ fn get_all_peers(lt: &HashMap<(u64, u64), f32>, seed: &HashMap<u64, f32>) -> Has
 /// Pre-processes a mutable local trust matrix `lt` by modifying it in-place:
 ///
 /// - Removes self-trust (diagonal entries), as prohibited by EigenTrust.
-fn pre_process(lt: &mut HashMap<(u64, u64), f32>, seed: &mut HashMap<u64, f32>) {
+fn pre_process(lt: &mut HashMap<u64, HashMap<u64, f32>>, seed: &mut HashMap<u64, f32>) {
     let all_peers = get_all_peers(lt, seed);
     // Calculate the sum of all seed trust values.
     let sum: f32 = seed.par_iter().map(|(_, v)| v).sum();
@@ -57,9 +58,9 @@ fn pre_process(lt: &mut HashMap<(u64, u64), f32>, seed: &mut HashMap<u64, f32>) 
 
     // Calculate the sum of each row in the local trust matrix.
     let mut outbound_sum_map: HashMap<u64, f32> = HashMap::new();
-    for ((from, _), value) in lt.iter() {
-        let out_val = outbound_sum_map.get(from).unwrap_or(&0.0);
-        outbound_sum_map.insert(*from, out_val + value);
+    for (from, from_map) in lt.iter() {
+        let out_sum = from_map.values().sum();
+        outbound_sum_map.insert(*from, out_sum);
     }
 
     for from in all_peers.iter() {
@@ -67,70 +68,58 @@ fn pre_process(lt: &mut HashMap<(u64, u64), f32>, seed: &mut HashMap<u64, f32>) 
         // If peer does not have outbound trust,
         // his trust will be distributed to seed peers based on their seed/pre-trust
         if *sum == 0.0 {
-            for (to, value) in seed.iter() {
-                lt.insert((*from, *to), *value);
-            }
+            lt.insert(*from, seed.clone());
         }
     }
 
     let mut inbound_sum_map: HashMap<u64, f32> = HashMap::new();
-    for ((_, to), value) in lt.iter() {
-        let in_val = inbound_sum_map.get(to).unwrap_or(&0.0);
-        inbound_sum_map.insert(*to, in_val + value);
+    for (_, from_map) in lt.iter() {
+        for (to, value) in from_map {
+            let in_val = inbound_sum_map.get(to).unwrap_or(&0.0);
+            inbound_sum_map.insert(*to, in_val + value);
+        }
     }
 
     // Set the trust value to 0 for all self-trust entries in the local trust matrix.
-    lt.retain(|(from, to), _| {
-        if from == to {
-            return false;
-        }
+    lt.retain(|from, from_map| {
         let sum = inbound_sum_map.get(from).unwrap_or(&0.0);
         if *sum == 0.0 {
             return false;
         }
+        from_map.retain(|to, _| {
+            if from == to {
+                return false;
+            }
+            true
+        });
         true
     });
 }
 
 /// Normalizes the `lt` matrix by dividing each element by the sum of its row.
-fn normalise_lt(lt: &mut HashMap<(u64, u64), f32>) -> Result<(), algos::Error> {
-    let sum_map = lt
-        .par_iter()
-        .fold(HashMap::new, |mut sum_map, ((from, _), value)| {
-            let val = sum_map.get(from).unwrap_or(&0.0);
-            sum_map.insert(*from, val + value);
-            sum_map
-        })
-        .reduce(HashMap::new, |mut acc, sum_map| {
-            for (i, v) in sum_map {
-                if acc.contains_key(&i) {
-                    let val = acc.get(&i).unwrap();
-                    acc.insert(i, v + val);
-                } else {
-                    acc.insert(i, v);
-                }
+fn normalise_lt(lt: &HashMap<u64, HashMap<u64, f32>>) -> HashMap<u64, HashMap<u64, f32>> {
+    lt.par_iter()
+        .fold(HashMap::new, |mut lt_norm, (from, from_map)| {
+            let mut from_map_norm = from_map.clone();
+            let sum: f32 = from_map_norm.values().sum();
+            for (_, value) in from_map_norm.iter_mut() {
+                *value /= sum;
             }
+            lt_norm.insert(*from, from_map_norm);
+            lt_norm
+        })
+        .reduce(HashMap::new, |mut acc, lt_norm| {
+            acc.extend(lt_norm);
             acc
-        });
-
-    // Divide each element in the local trust matrix by the sum of its row.
-    for ((from, _), value) in lt {
-        let sum = sum_map.get(from).ok_or(algos::Error::ZeroSum)?;
-        if *sum == 0.0 {
-            return Err(algos::Error::ZeroSum);
-        }
-        *value /= sum;
-    }
-
-    Ok(())
+        })
 }
 
 /// Normalizes the scores, to eliminate the rounding error
-fn normalise_scores(scores: &HashMap<u64, f32>) -> Result<HashMap<u64, f32>, algos::Error> {
+fn normalise_scores(scores: &HashMap<u64, f32>) -> HashMap<u64, f32> {
     // Calculate the sum of all seed trust values.
     let sum: f32 = scores.par_iter().map(|(_, v)| v).sum();
 
-    let scores = scores
+    scores
         .par_iter()
         .fold(HashMap::new, |mut scores, (i, value)| {
             scores.insert(*i, *value / sum);
@@ -139,19 +128,18 @@ fn normalise_scores(scores: &HashMap<u64, f32>) -> Result<HashMap<u64, f32>, alg
         .reduce(HashMap::new, |mut acc, scores| {
             acc.extend(scores);
             acc
-        });
-    Ok(scores)
+        })
 }
 
 /// Performs the positive EigenTrust algorithm on the given local trust matrix (`lt`) and seed trust values (`seed`).
 /// The algorithm iteratively updates the scores of each node until convergence.
 /// It returns a vector of tuples containing the node ID and the final score.
 pub fn positive_run(
-    mut lt: HashMap<(u64, u64), f32>, mut seed: HashMap<u64, f32>,
-) -> Result<Vec<(u64, f32)>, algos::Error> {
+    mut lt: HashMap<u64, HashMap<u64, f32>>, mut seed: HashMap<u64, f32>,
+) -> Vec<(u64, f32)> {
     pre_process(&mut lt, &mut seed);
-    let seed = normalise_scores(&seed)?;
-    normalise_lt(&mut lt)?;
+    seed = normalise_scores(&seed);
+    lt = normalise_lt(&lt);
 
     // Initialize the scores of each node to the seed trust values.
     let mut scores = seed.clone();
@@ -160,7 +148,7 @@ pub fn positive_run(
         // Calculate the next scores of each node.
         let next_scores = iteration(&lt, &seed, &scores);
         // Normalise the next scores.
-        let next_scores = normalise_scores(&next_scores)?;
+        let next_scores = normalise_scores(&next_scores);
         // Check for convergence.
         if is_converged(&scores, &next_scores) {
             break;
@@ -170,7 +158,7 @@ pub fn positive_run(
     }
 
     // Convert the scores to a vector of tuples and return it.
-    Ok(scores.into_iter().collect())
+    scores.into_iter().collect()
 }
 
 /// Given the previous scores (`scores`) and the next scores (`next_scores`), checks if the scores have converged.
@@ -211,30 +199,33 @@ pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<Str
 /// seed trust values (`seed`), and previous scores (`scores`).
 /// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
-    mut lt: HashMap<(u64, u64), f32>, mut seed: HashMap<u64, f32>, scores: &HashMap<u64, f32>,
-) -> Result<bool, algos::Error> {
+    mut lt: HashMap<u64, HashMap<u64, f32>>, mut seed: HashMap<u64, f32>,
+    scores: &HashMap<u64, f32>,
+) -> bool {
     pre_process(&mut lt, &mut seed);
-    let seed = normalise_scores(&seed)?;
-    normalise_lt(&mut lt)?;
+    seed = normalise_scores(&seed);
+    lt = normalise_lt(&lt);
     // Calculate the next scores of each node
     let next_scores = iteration(&lt, &seed, scores);
     // Normalize the weighted next scores
-    let next_scores = normalise_scores(&next_scores)?;
+    let next_scores = normalise_scores(&next_scores);
 
     // Check if the scores have converged
-    Ok(is_converged(scores, &next_scores))
+    is_converged(scores, &next_scores)
 }
 
 fn iteration(
-    lt: &HashMap<(u64, u64), f32>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
+    lt: &HashMap<u64, HashMap<u64, f32>>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
 ) -> HashMap<u64, f32> {
     lt.par_iter()
-        .fold(HashMap::new, |mut next_scores, ((from, to), value)| {
+        .fold(HashMap::new, |mut next_scores, (from, from_map)| {
             let origin_score = scores.get(from).unwrap_or(&0.0);
-            let score = *value * origin_score;
-            let to_score = next_scores.get(to).unwrap_or(&0.0);
-            let final_to_score = to_score + score;
-            next_scores.insert(*to, final_to_score);
+            for (to, value) in from_map {
+                let score = *value * origin_score;
+                let to_score = next_scores.get(to).unwrap_or(&0.0);
+                let final_to_score = to_score + score;
+                next_scores.insert(*to, final_to_score);
+            }
             next_scores
         })
         .map(|mut next_scores| {
