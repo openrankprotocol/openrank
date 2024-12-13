@@ -10,6 +10,22 @@ const PRE_TRUST_WEIGHT: f32 = 0.5;
 /// less than `DELTA`, the score has converged.
 const DELTA: f32 = 0.01;
 
+fn _find_reachable_peers(
+    lt: &HashMap<u64, HashMap<u64, f32>>, seed: &HashMap<u64, f32>,
+) -> HashSet<u64> {
+    let mut to_visit: Vec<&u64> = seed.keys().collect();
+    let mut visited = HashSet::new();
+    while let Some(i) = to_visit.pop() {
+        visited.insert(*i);
+        for (j, v) in lt.get(i).unwrap() {
+            if !visited.contains(j) && *v > 0.0 {
+                to_visit.push(j);
+            }
+        }
+    }
+    visited
+}
+
 fn get_all_peers(lt: &HashMap<u64, HashMap<u64, f32>>, seed: &HashMap<u64, f32>) -> HashSet<u64> {
     let mut all_peers = HashSet::new();
     for (from, from_map) in lt.iter() {
