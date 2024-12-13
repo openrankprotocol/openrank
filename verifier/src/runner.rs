@@ -28,6 +28,7 @@ pub struct VerificationRunner {
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
+    st_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
     compute_scores: HashMap<DomainHash, HashMap<TxHash, compute::Scores>>,
     compute_tree: HashMap<DomainHash, HashMap<TxHash, DenseMerkleTree<Keccak256>>>,
     active_assignments: HashMap<DomainHash, Vec<TxHash>>,
@@ -42,6 +43,7 @@ impl VerificationRunner {
         let mut seed_trust = HashMap::new();
         let mut lt_sub_trees = HashMap::new();
         let mut lt_master_tree = HashMap::new();
+        let mut st_master_tree = HashMap::new();
         let mut compute_results = HashMap::new();
         let mut compute_scores = HashMap::new();
         let mut compute_tree = HashMap::new();
@@ -57,6 +59,10 @@ impl VerificationRunner {
                 domain_hash,
                 DenseIncrementalMerkleTree::<Keccak256>::new(32),
             );
+            st_master_tree.insert(
+                domain_hash,
+                DenseIncrementalMerkleTree::<Keccak256>::new(32),
+            );
             compute_results.insert(domain_hash, Vec::<f32>::new());
             compute_scores.insert(domain_hash, HashMap::new());
             compute_tree.insert(domain_hash, HashMap::new());
@@ -69,6 +75,7 @@ impl VerificationRunner {
             seed_trust,
             lt_sub_trees,
             lt_master_tree,
+            st_master_tree,
             compute_scores,
             compute_tree,
             active_assignments,
@@ -97,10 +104,6 @@ impl VerificationRunner {
             .local_trust
             .get_mut(&domain.trust_namespace())
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
-        let seed = self
-            .seed_trust
-            .get(&domain.seed_namespace())
-            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(entry.from()) {
@@ -131,13 +134,13 @@ impl VerificationRunner {
             let sub_tree = lt_sub_trees
                 .get_mut(&from_index)
                 .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
+
             let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
             sub_tree.insert_leaf(to_index, leaf);
 
             let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
-            let seed_value = seed.get(&to_index).unwrap_or(&0.0);
-            let seed_hash = hash_leaf::<Keccak256>(seed_value.to_be_bytes().to_vec());
-            let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
+
+            let leaf = hash_leaf::<Keccak256>(sub_tree_root.inner().to_vec());
             lt_master_tree.insert_leaf(from_index, leaf);
         }
 
@@ -154,18 +157,14 @@ impl VerificationRunner {
             .ok_or(Error::IndicesNotFound(domain.to_hash()))?;
         let count =
             self.count.get_mut(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
-        let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or(
-            Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
-        )?;
-        let lt_master_tree = self
-            .lt_master_tree
+        let st_master_tree = self
+            .st_master_tree
             .get_mut(&domain.to_hash())
-            .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
+            .ok_or(Error::SeedTrustMasterTreeNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get_mut(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
-        let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in seed_entries {
             let index = if let Some(i) = domain_indices.get(entry.id()) {
                 *i
@@ -183,14 +182,8 @@ impl VerificationRunner {
                 seed.insert(index, *entry.value());
             }
 
-            lt_sub_trees.entry(index).or_insert_with(|| default_sub_tree.clone());
-            let sub_tree = lt_sub_trees
-                .get_mut(&index)
-                .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(index))?;
-            let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
-            let seed_hash = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
-            let leaf = hash_two::<Keccak256>(sub_tree_root, seed_hash);
-            lt_master_tree.insert_leaf(index, leaf);
+            let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
+            st_master_tree.insert_leaf(index, leaf);
         }
 
         Ok(())
@@ -378,6 +371,10 @@ impl VerificationRunner {
             .lt_master_tree
             .get(&domain.to_hash())
             .ok_or(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
+        let st_tree = self
+            .st_master_tree
+            .get(&domain.to_hash())
+            .ok_or(Error::SeedTrustMasterTreeNotFound(domain.to_hash()))?;
         let compute_tree_map = self
             .compute_tree
             .get(&domain.to_hash())
@@ -386,8 +383,10 @@ impl VerificationRunner {
             .get(&assignment_id)
             .ok_or(Error::ComputeTreeNotFoundWithTxHash(assignment_id.clone()))?;
         let lt_tree_root = lt_tree.root().map_err(Error::Merkle)?;
+        let st_tree_root = st_tree.root().map_err(Error::Merkle)?;
+        let tree_roots = hash_two::<Keccak256>(lt_tree_root, st_tree_root);
         let ct_tree_root = compute_tree.root().map_err(Error::Merkle)?;
-        Ok((lt_tree_root, ct_tree_root))
+        Ok((tree_roots, ct_tree_root))
     }
 }
 
@@ -400,6 +399,7 @@ pub enum Error {
     LocalTrustSubTreesNotFoundWithIndex(u64),
 
     LocalTrustMasterTreeNotFound(DomainHash),
+    SeedTrustMasterTreeNotFound(DomainHash),
 
     LocalTrustNotFound(OwnedNamespace),
 
@@ -442,6 +442,13 @@ impl Display for Error {
                 write!(
                     f,
                     "local_trust_master_tree not found for domain: {:?}",
+                    domain
+                )
+            },
+            Self::SeedTrustMasterTreeNotFound(domain) => {
+                write!(
+                    f,
+                    "seed_trust_master_tree not found for domain: {:?}",
                     domain
                 )
             },
