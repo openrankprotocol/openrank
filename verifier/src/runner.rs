@@ -1,6 +1,6 @@
 use getset::Getters;
 use openrank_common::{
-    algos::{self, et::convergence_check},
+    algos::et::convergence_check,
     merkle::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,
@@ -24,7 +24,7 @@ use std::{
 pub struct VerificationRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    local_trust: HashMap<OwnedNamespace, HashMap<(u64, u64), f32>>,
+    local_trust: HashMap<OwnedNamespace, HashMap<u64, HashMap<u64, f32>>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
@@ -119,12 +119,14 @@ impl VerificationRunner {
                 *count += 1;
                 curr_count
             };
-            let is_zero = entry.value() == &0.0;
-            let exists = lt.contains_key(&(from_index, to_index));
-            if is_zero && exists {
-                lt.remove(&(from_index, to_index));
-            } else if !is_zero {
-                lt.insert((from_index, to_index), *entry.value());
+            if let Some(from_map) = lt.get_mut(&from_index) {
+                let is_zero = entry.value() == &0.0;
+                let exists = from_map.contains_key(&to_index);
+                if is_zero && exists {
+                    from_map.remove(&to_index);
+                } else if !is_zero {
+                    from_map.insert(to_index, *entry.value());
+                }
             }
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
@@ -367,7 +369,7 @@ impl VerificationRunner {
             }
             score_entries_map
         };
-        convergence_check(lt.clone(), seed.clone(), &score_entries).map_err(Error::Algo)
+        Ok(convergence_check(lt.clone(), seed.clone(), &score_entries))
     }
 
     /// Get the local trust tree root and compute tree root of certain assignment, for certain domain
@@ -417,7 +419,6 @@ pub enum Error {
     DomainIndexNotFound(String),
 
     Merkle(merkle::Error),
-    Algo(algos::Error),
 }
 
 impl Display for Error {
@@ -479,7 +480,6 @@ impl Display for Error {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
             Self::Merkle(err) => err.fmt(f),
-            Self::Algo(err) => err.fmt(f),
         }
     }
 }
