@@ -130,21 +130,20 @@ impl VerificationRunner {
                 *count += 1;
                 curr_count
             };
-            if let Some(from_map) = lt.get_mut(&from_index) {
-                // subtract replaced local trust value from outbound sum
-                if let Some(old_lt_value) = from_map.get(&to_index) {
-                    if let Some(outbound_sum) = lt_outbound_sum_map.get_mut(&from_index) {
-                        *outbound_sum -= old_lt_value;
-                    }
+            let from_map = lt.entry(from_index).or_insert(HashMap::new());
+            // subtract replaced local trust value from outbound sum
+            if let Some(old_lt_value) = from_map.get(&to_index) {
+                if let Some(outbound_sum) = lt_outbound_sum_map.get_mut(&from_index) {
+                    *outbound_sum -= old_lt_value;
                 }
+            }
 
-                let is_zero = entry.value() == &0.0;
-                let exists = from_map.contains_key(&to_index);
-                if is_zero && exists {
-                    from_map.remove(&to_index);
-                } else if !is_zero {
-                    from_map.insert(to_index, *entry.value());
-                }
+            let is_zero = entry.value() == &0.0;
+            let exists = from_map.contains_key(&to_index);
+            if is_zero && exists {
+                from_map.remove(&to_index);
+            } else if !is_zero {
+                from_map.insert(to_index, *entry.value());
             }
 
             // update outbound sum
