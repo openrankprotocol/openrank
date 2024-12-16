@@ -358,6 +358,8 @@ impl VerificationRunner {
         let lt_outbound_sum_map = self.lt_outbound_sum_map.get(&domain.trust_namespace()).ok_or(
             Error::LocalTrustOutboundSumMapNotFound(domain.trust_namespace()),
         )?;
+        let count =
+            self.count.get(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
         let seed = self
             .seed_trust
             .get(&domain.seed_namespace())
@@ -391,6 +393,7 @@ impl VerificationRunner {
             seed.clone(),
             lt_outbound_sum_map,
             &score_entries,
+            *count,
         ))
     }
 

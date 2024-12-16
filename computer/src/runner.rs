@@ -214,7 +214,9 @@ impl ComputeRunner {
         let lt_outbound_sum_map = self.lt_outbound_sum_map.get(&domain.trust_namespace()).ok_or(
             Error::LocalTrustOutboundSumMapNotFound(domain.trust_namespace()),
         )?;
-        let res = positive_run(lt.clone(), seed.clone(), lt_outbound_sum_map);
+        let count =
+            self.count.get(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
+        let res = positive_run(lt.clone(), seed.clone(), lt_outbound_sum_map, *count);
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
     }
