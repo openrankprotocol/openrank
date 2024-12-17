@@ -130,6 +130,10 @@ impl Node {
                 if message.topic != topic_wrapper.hash() {
                     continue;
                 }
+                info!(
+                    "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
+                    message.topic.as_str(),
+                );
                 match topic {
                     Topic::NamespaceTrustUpdate(namespace) => {
                         let tx_event =
@@ -141,10 +145,6 @@ impl Node {
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -159,10 +159,6 @@ impl Node {
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -191,10 +187,6 @@ impl Node {
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             // After broadcasting ComputeAssignment, save to db
                             self.db.put(tx).map_err(Error::Db)?;
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -240,10 +232,6 @@ impl Node {
                                 );
                                 self.db.put(reference).map_err(Error::Db)?;
                             }
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -258,10 +246,6 @@ impl Node {
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -298,10 +282,6 @@ impl Node {
                             result.append_verification_tx_hash(tx.hash());
                             self.coordinator.add_job_result(&mut result);
                             self.db.put(result).map_err(Error::Db)?;
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }

@@ -1,5 +1,6 @@
 use crate::merkle::{self, hash_two, Hash};
 use getset::Getters;
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use sha3::Digest;
 use std::{collections::HashMap, marker::PhantomData};
 
@@ -53,6 +54,7 @@ where
         for i in 0..num_levels {
             let nodes = tree.get(&i).ok_or(merkle::Error::NodesNotFound)?;
             let next: Vec<Hash> = nodes
+                .par_iter()
                 .chunks(2)
                 .map(|chunk| {
                     if chunk.len() == 2 {
