@@ -16,6 +16,9 @@ fn find_reachable_peers(
     let mut to_visit: Vec<&u64> = seed.keys().collect();
     let mut visited = HashSet::new();
     while let Some(i) = to_visit.pop() {
+        if visited.contains(i) {
+            continue;
+        }
         visited.insert(*i);
         for (j, v) in lt.get(i).unwrap() {
             if !visited.contains(j) && *v > 0.0 {
@@ -105,20 +108,22 @@ pub fn positive_run(
     let mut scores = seed.clone();
     // Iterate until convergence.
     loop {
-        // Calculate the next scores of each node.
-        let next_scores = iteration(&lt, &seed, &scores);
-        // Normalise the next scores.
-        let next_scores = normalise_scores(&next_scores);
+        // Calculate the n+1 scores of each node.
+        let n_plus_1_scores = iteration(&lt, &seed, &scores);
+        // Normalise n+1 scores.
+        let n_plus_1_scores = normalise_scores(&n_plus_1_scores);
+        // Calculate the n+2 scores of each node.
+        let n_plus_2_scores = iteration(&lt, &seed, &n_plus_1_scores);
+        // Normalise n+2 scores
+        let n_plus_2_scores = normalise_scores(&n_plus_2_scores);
         // Check for convergence.
-        if is_converged(&scores, &next_scores) {
-            break;
+        if is_converged(&n_plus_1_scores, &n_plus_2_scores) {
+            // Convert the scores to a vector of tuples and return it.
+            return n_plus_1_scores.into_iter().collect();
         }
         // Update the scores.
-        scores = next_scores;
+        scores = n_plus_2_scores;
     }
-
-    // Convert the scores to a vector of tuples and return it.
-    scores.into_iter().collect()
 }
 
 /// Given the previous scores (`scores`) and the next scores (`next_scores`), checks if the scores have converged.
