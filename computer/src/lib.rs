@@ -13,14 +13,13 @@ use openrank_common::{
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
-use runner::ComputeRunner;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-mod runner;
+use openrank_common::runners::compute_runner::{self as runner, ComputeRunner};
 
 #[derive(Debug)]
 /// Errors that can arise while using the computer node.

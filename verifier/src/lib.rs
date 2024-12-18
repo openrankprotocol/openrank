@@ -14,7 +14,6 @@ use openrank_common::{
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
-use runner::VerificationRunner;
 use serde::{Deserialize, Serialize};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
@@ -22,7 +21,7 @@ use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-mod runner;
+use openrank_common::runners::verifiy_runner::{self as runner, VerificationRunner};
 
 #[derive(Debug)]
 /// Errors that can arise while using the verifier node.
