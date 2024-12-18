@@ -1,0 +1,37 @@
+name: Release OpenRank SDK Binary
+
+on:
+  release:
+    types: [published] # Trigger when a new release is published
+
+jobs:
+  build-and-upload:
+    name: Build and Upload Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the specific commit of the tag
+      - name: Checkout tag commit
+        uses: actions/checkout@v3
+
+      # Set up Rust environment
+      - name: Set up Rust
+        run: ./init.sh
+
+      # Build the Rust crate
+      - name: Build the binary
+        run: cargo build --release --package openrank-sdk
+
+      # Archive the binary
+      - name: Create tarball
+        run: |
+          mkdir -p dist
+          cp target/release/openrank-sdk dist/
+          tar -czvf openrank-sdk.tar.gz -C dist openrank-sdk
+
+      # Upload the binary as a release asset
+      - name: Upload binary to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: openrank-sdk.tar.gz
+          overwrite: true
