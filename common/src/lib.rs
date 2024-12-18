@@ -6,6 +6,7 @@ pub mod query;
 pub mod topics;
 pub mod tx;
 pub mod tx_event;
+pub mod runners;
 
 #[cfg(feature = "db")]
 pub mod db;

@@ -1,5 +1,5 @@
 use getset::Getters;
-use openrank_common::{
+use crate::{
     algos::{self, et::convergence_check},
     merkle::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
