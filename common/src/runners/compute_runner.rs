@@ -1,4 +1,3 @@
-use getset::Getters;
 use crate::{
     algos::{self, et::positive_run},
     merkle::{
@@ -11,6 +10,7 @@ use crate::{
         trust::{OwnedNamespace, ScoreEntry, TrustEntry},
     },
 };
+use getset::Getters;
 use sha3::Keccak256;
 use std::{
     collections::HashMap,

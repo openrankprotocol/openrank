@@ -1,4 +1,3 @@
-use getset::Getters;
 use crate::{
     algos::{self, et::convergence_check},
     merkle::{
@@ -12,6 +11,7 @@ use crate::{
         TxHash,
     },
 };
+use getset::Getters;
 use sha3::Keccak256;
 use std::{
     collections::HashMap,
