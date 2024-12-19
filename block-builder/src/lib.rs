@@ -140,13 +140,14 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::TrustUpdate(_) = tx.body() {
+                        if tx.body().prefix() != consts::TRUST_UPDATE {
+                            return Err(Error::InvalidTxKind);
+                        }
+                        if !self.db.contains(tx.clone()).map_err(Error::Db)? {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
@@ -154,13 +155,14 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::SeedUpdate(_) = tx.body() {
+                        if tx.body().prefix() != consts::SEED_UPDATE {
+                            return Err(Error::InvalidTxKind);
+                        }
+                        if !self.db.contains(tx.clone()).map_err(Error::Db)? {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::DomainRequest(domain_id) => {
