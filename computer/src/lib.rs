@@ -112,7 +112,11 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let Body::TrustUpdate(trust_update) = tx.body().clone() {
+                        let trust_update = match tx.body().clone() {
+                            Body::TrustUpdate(trust_update) => trust_update,
+                            _ => return Err(Error::InvalidTxKind),
+                        };
+                        if !self.db.contains(tx.clone()).map_err(Error::Db)? {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
@@ -125,8 +129,6 @@ impl Node {
                             self.compute_runner
                                 .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::NamespaceSeedUpdate(namespace) => {
@@ -134,7 +136,11 @@ impl Node {
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
                         let mut tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let Body::SeedUpdate(seed_update) = tx.body().clone() {
+                        let seed_update = match tx.body().clone() {
+                            Body::SeedUpdate(seed_update) => seed_update,
+                            _ => return Err(Error::InvalidTxKind),
+                        };
+                        if !self.db.contains(tx.clone()).map_err(Error::Db)? {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             // Add Tx to db
                             tx.set_sequence_number(message.sequence_number.unwrap_or_default());
@@ -147,8 +153,6 @@ impl Node {
                             self.compute_runner
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
                         }
                     },
                     Topic::DomainAssignent(domain_id) => {

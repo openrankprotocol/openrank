@@ -108,6 +108,13 @@ impl Db {
         self.connection.try_catch_up_with_primary().map_err(Error::RocksDB)
     }
 
+    /// Checks if `item` is in the DB.
+    pub fn contains<I: DbItem + Serialize>(&self, item: I) -> Result<bool, Error> {
+        let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
+        let key = item.get_full_key();
+        Ok(self.connection.key_may_exist_cf(&cf, key))
+    }
+
     /// Puts value into database.
     pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), Error> {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
