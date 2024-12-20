@@ -1,6 +1,6 @@
 use getset::Getters;
 use openrank_common::{
-    algos::{self, et::positive_run},
+    algos::et::positive_run,
     merkle::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,
@@ -23,7 +23,8 @@ use std::{
 pub struct ComputeRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    local_trust: HashMap<OwnedNamespace, HashMap<(u64, u64), f32>>,
+    local_trust: HashMap<OwnedNamespace, HashMap<u64, HashMap<u64, f32>>>,
+    lt_outbound_sum_map: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
@@ -37,6 +38,7 @@ impl ComputeRunner {
         let mut count = HashMap::new();
         let mut indices = HashMap::new();
         let mut local_trust = HashMap::new();
+        let mut lt_outbound_sum_map = HashMap::new();
         let mut seed_trust = HashMap::new();
         let mut lt_sub_trees = HashMap::new();
         let mut lt_master_tree = HashMap::new();
@@ -47,6 +49,7 @@ impl ComputeRunner {
             count.insert(domain_hash, 0);
             indices.insert(domain_hash, HashMap::new());
             local_trust.insert(domain.trust_namespace(), HashMap::new());
+            lt_outbound_sum_map.insert(domain.trust_namespace(), HashMap::new());
             seed_trust.insert(domain.seed_namespace(), HashMap::new());
             lt_sub_trees.insert(domain_hash, HashMap::new());
             lt_master_tree.insert(
@@ -63,6 +66,7 @@ impl ComputeRunner {
             count,
             indices,
             local_trust,
+            lt_outbound_sum_map,
             seed_trust,
             lt_sub_trees,
             lt_master_tree,
@@ -93,6 +97,10 @@ impl ComputeRunner {
             .local_trust
             .get_mut(&domain.trust_namespace())
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+        let lt_outbound_sum_map =
+            self.lt_outbound_sum_map.get_mut(&domain.trust_namespace()).ok_or(
+                Error::LocalTrustOutboundSumMapNotFound(domain.trust_namespace()),
+            )?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(entry.from()) {
@@ -111,12 +119,27 @@ impl ComputeRunner {
                 *count += 1;
                 curr_count
             };
+            let from_map = lt.entry(from_index).or_insert(HashMap::new());
+            // subtract replaced local trust value from outbound sum
+            if let Some(old_lt_value) = from_map.get(&to_index) {
+                if let Some(outbound_sum) = lt_outbound_sum_map.get_mut(&from_index) {
+                    *outbound_sum -= old_lt_value;
+                }
+            }
+
             let is_zero = entry.value() == &0.0;
-            let exists = lt.contains_key(&(from_index, to_index));
+            let exists = from_map.contains_key(&to_index);
             if is_zero && exists {
-                lt.remove(&(from_index, to_index));
+                from_map.remove(&to_index);
             } else if !is_zero {
-                lt.insert((from_index, to_index), *entry.value());
+                from_map.insert(to_index, *entry.value());
+            }
+
+            // update outbound sum
+            if let Some(outbound_sum) = lt_outbound_sum_map.get_mut(&from_index) {
+                *outbound_sum += entry.value();
+            } else {
+                lt_outbound_sum_map.insert(from_index, *entry.value());
             }
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
@@ -188,7 +211,12 @@ impl ComputeRunner {
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
-        let res = positive_run(lt.clone(), seed.clone()).map_err(Error::Algo)?;
+        let lt_outbound_sum_map = self.lt_outbound_sum_map.get(&domain.trust_namespace()).ok_or(
+            Error::LocalTrustOutboundSumMapNotFound(domain.trust_namespace()),
+        )?;
+        let count =
+            self.count.get(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
+        let res = positive_run(lt.clone(), seed.clone(), lt_outbound_sum_map, *count);
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
     }
@@ -282,8 +310,9 @@ pub enum Error {
 
     /// The compute merkle tree error.
     Merkle(merkle::Error),
-    /// The compute algorithm error.
-    Algo(algos::Error),
+
+    /// The local trust outbound sum map for the domain are not found.
+    LocalTrustOutboundSumMapNotFound(OwnedNamespace),
 }
 
 impl Display for Error {
@@ -333,7 +362,13 @@ impl Display for Error {
             },
 
             Self::Merkle(err) => err.fmt(f),
-            Self::Algo(err) => err.fmt(f),
+            Self::LocalTrustOutboundSumMapNotFound(domain) => {
+                write!(
+                    f,
+                    "local_trust_outbound_sum_map not found for domain: {:?}",
+                    domain
+                )
+            },
         }
     }
 }

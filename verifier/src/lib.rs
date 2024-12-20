@@ -135,6 +135,10 @@ impl Node {
                 if message.topic != topic_wrapper.hash() {
                     continue;
                 }
+                info!(
+                    "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
+                    message.topic.as_str(),
+                );
                 match topic {
                     Topic::NamespaceTrustUpdate(namespace) => {
                         let tx_event =
@@ -154,10 +158,6 @@ impl Node {
                             self.verification_runner
                                 .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -179,10 +179,6 @@ impl Node {
                             self.verification_runner
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -233,10 +229,6 @@ impl Node {
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -276,10 +268,6 @@ impl Node {
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -317,10 +305,6 @@ impl Node {
                                 )
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             }
-                            info!(
-                                "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
-                                message.topic.as_str(),
-                            );
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
