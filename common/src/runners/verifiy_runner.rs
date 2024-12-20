@@ -1,5 +1,5 @@
 use crate::{
-    algos::{self, et::convergence_check},
+    algos::et::convergence_check,
     merkle::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,

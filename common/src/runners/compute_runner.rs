@@ -1,5 +1,5 @@
 use crate::{
-    algos::{self, et::positive_run},
+    algos::et::positive_run,
     merkle::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,
