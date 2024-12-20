@@ -21,7 +21,7 @@ use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use openrank_common::runners::verifiy_runner::{self as runner, VerificationRunner};
+use openrank_common::runners::verification_runner::{self as runner, VerificationRunner};
 
 #[derive(Debug)]
 /// Errors that can arise while using the verifier node.
