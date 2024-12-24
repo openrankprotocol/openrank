@@ -5,6 +5,7 @@ use openrank_common::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,
     },
+    misc::SingleLT,
     topics::{Domain, DomainHash},
     tx::{
         compute,
@@ -24,7 +25,7 @@ use std::{
 pub struct VerificationRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    local_trust: HashMap<OwnedNamespace, HashMap<u64, HashMap<u64, f32>>>,
+    local_trust: HashMap<OwnedNamespace, HashMap<u64, SingleLT>>,
     lt_outbound_sum_map: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
@@ -130,7 +131,7 @@ impl VerificationRunner {
                 *count += 1;
                 curr_count
             };
-            let from_map = lt.entry(from_index).or_insert(HashMap::new());
+            let from_map = lt.entry(from_index).or_insert(SingleLT::new());
             // subtract replaced local trust value from outbound sum
             if let Some(old_lt_value) = from_map.get(&to_index) {
                 if let Some(outbound_sum) = lt_outbound_sum_map.get_mut(&from_index) {

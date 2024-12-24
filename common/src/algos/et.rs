@@ -1,6 +1,8 @@
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 
+use crate::misc::SingleLT;
+
 /// The trust weight given to the seed trust vector in the trust matrix calculation.
 const PRE_TRUST_WEIGHT: f32 = 0.5;
 
@@ -10,9 +12,7 @@ const PRE_TRUST_WEIGHT: f32 = 0.5;
 /// less than `DELTA`, the score has converged.
 const DELTA: f32 = 0.01;
 
-fn find_reachable_peers(
-    lt: &HashMap<u64, HashMap<u64, f32>>, seed: &HashMap<u64, f32>,
-) -> HashSet<u64> {
+fn find_reachable_peers(lt: &HashMap<u64, SingleLT>, seed: &HashMap<u64, f32>) -> HashSet<u64> {
     let mut to_visit: Vec<&u64> = seed.keys().collect();
     let mut visited = HashSet::new();
     while let Some(i) = to_visit.pop() {
@@ -20,7 +20,7 @@ fn find_reachable_peers(
             continue;
         }
         visited.insert(*i);
-        for (j, v) in lt.get(i).unwrap() {
+        for (j, v) in lt.get(i).unwrap().outbound_trust_scores() {
             if !visited.contains(j) && *v > 0.0 {
                 to_visit.push(j);
             }
@@ -33,7 +33,7 @@ fn find_reachable_peers(
 ///
 /// - Removes self-trust (diagonal entries), as prohibited by EigenTrust.
 fn pre_process(
-    lt: &mut HashMap<u64, HashMap<u64, f32>>, seed: &mut HashMap<u64, f32>,
+    lt: &mut HashMap<u64, SingleLT>, seed: &mut HashMap<u64, f32>,
     lt_outbound_sum_map: &HashMap<u64, f32>, count: u64,
 ) {
     // Calculate the sum of all seed trust values.
@@ -50,7 +50,8 @@ fn pre_process(
         // If peer does not have outbound trust,
         // his trust will be distributed to seed peers based on their seed/pre-trust
         if *sum == 0.0 {
-            lt.insert(from, seed.clone());
+            let single_lt = SingleLT::from_score_map(&seed);
+            lt.insert(from, single_lt);
         }
     }
 
@@ -59,14 +60,11 @@ fn pre_process(
 }
 
 /// Normalizes the `lt` matrix by dividing each element by the sum of its row.
-fn normalise_lt(lt: &HashMap<u64, HashMap<u64, f32>>) -> HashMap<u64, HashMap<u64, f32>> {
+fn normalise_lt(lt: &HashMap<u64, SingleLT>) -> HashMap<u64, SingleLT> {
     lt.par_iter()
         .fold(HashMap::new, |mut lt_norm, (from, from_map)| {
             let mut from_map_norm = from_map.clone();
-            let sum: f32 = from_map_norm.values().sum();
-            for (_, value) in from_map_norm.iter_mut() {
-                *value /= sum;
-            }
+            from_map_norm.normalize();
             lt_norm.insert(*from, from_map_norm);
             lt_norm
         })
@@ -97,7 +95,7 @@ fn normalise_scores(scores: &HashMap<u64, f32>) -> HashMap<u64, f32> {
 /// The algorithm iteratively updates the scores of each node until convergence.
 /// It returns a vector of tuples containing the node ID and the final score.
 pub fn positive_run(
-    mut lt: HashMap<u64, HashMap<u64, f32>>, mut seed: HashMap<u64, f32>,
+    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>,
     lt_outbound_sum_map: &HashMap<u64, f32>, count: u64,
 ) -> Vec<(u64, f32)> {
     pre_process(&mut lt, &mut seed, lt_outbound_sum_map, count);
@@ -164,7 +162,7 @@ pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<Str
 /// seed trust values (`seed`), and previous scores (`scores`).
 /// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
-    mut lt: HashMap<u64, HashMap<u64, f32>>, mut seed: HashMap<u64, f32>,
+    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>,
     lt_outbound_sum_map: &HashMap<u64, f32>, scores: &HashMap<u64, f32>, count: u64,
 ) -> bool {
     pre_process(&mut lt, &mut seed, lt_outbound_sum_map, count);
@@ -180,12 +178,12 @@ pub fn convergence_check(
 }
 
 fn iteration(
-    lt: &HashMap<u64, HashMap<u64, f32>>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
+    lt: &HashMap<u64, SingleLT>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
 ) -> HashMap<u64, f32> {
     lt.par_iter()
         .fold(HashMap::new, |mut next_scores, (from, from_map)| {
             let origin_score = scores.get(from).unwrap_or(&0.0);
-            for (to, value) in from_map {
+            for (to, value) in from_map.outbound_trust_scores() {
                 let score = *value * origin_score;
                 let to_score = next_scores.get(to).unwrap_or(&0.0);
                 let final_to_score = to_score + score;
