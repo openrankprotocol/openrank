@@ -4,6 +4,7 @@ pub mod merkle;
 pub mod misc;
 pub mod net;
 pub mod query;
+pub mod runners;
 pub mod topics;
 pub mod tx;
 pub mod tx_event;

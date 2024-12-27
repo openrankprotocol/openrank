@@ -1,5 +1,4 @@
-use getset::Getters;
-use openrank_common::{
+use crate::{
     algos::et::convergence_check,
     merkle::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
@@ -13,6 +12,7 @@ use openrank_common::{
         TxHash,
     },
 };
+use getset::Getters;
 use sha3::Keccak256;
 use std::{
     collections::HashMap,
