@@ -50,7 +50,7 @@ fn pre_process(
         // If peer does not have outbound trust,
         // his trust will be distributed to seed peers based on their seed/pre-trust
         if *sum == 0.0 {
-            let single_lt = SingleLT::from_score_map(&seed);
+            let single_lt = SingleLT::from_score_map(seed);
             lt.insert(from, single_lt);
         }
     }

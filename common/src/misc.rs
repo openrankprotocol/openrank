@@ -60,7 +60,7 @@ impl SingleLT {
 
     /*----------------- HashMap similar utils -----------------*/
     pub fn get(&self, peer_id: &u64) -> Option<f32> {
-        self.outbound_trust_scores.get(&peer_id).copied()
+        self.outbound_trust_scores.get(peer_id).copied()
     }
 
     pub fn contains_key(&self, peer_id: &u64) -> bool {
