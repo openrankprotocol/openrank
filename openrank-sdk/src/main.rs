@@ -6,6 +6,8 @@ use std::process::ExitCode;
 
 use openrank_sdk::*;
 
+const TRANSIENT_STATUS_CODE: u8 = 2;
+
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
 enum Method {

@@ -32,8 +32,6 @@ use std::{
     num,
 };
 
-pub const TRANSIENT_STATUS_CODE: u8 = 2;
-
 const TRUST_CHUNK_SIZE: usize = 500;
 const SEED_CHUNK_SIZE: usize = 1000;
 const NOT_FOUND_CODE: i32 = -32016;
