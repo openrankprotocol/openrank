@@ -67,12 +67,15 @@ impl SingleLT {
     }
 
     pub fn remove(&mut self, peer_id: &u64) {
+        let to_be_removed = self.outbound_trust_scores.get(peer_id).copied().unwrap_or(0.0);
+        self.outbound_sum -= to_be_removed;
         self.outbound_trust_scores.remove(peer_id);
-        self.outbound_sum = self.outbound_trust_scores.values().sum();
     }
 
     pub fn insert(&mut self, peer_id: u64, value: f32) {
+        let prev_value = self.outbound_trust_scores.get(&peer_id).copied().unwrap_or(0.0);
+        self.outbound_sum -= prev_value;
+        self.outbound_sum += value;
         self.outbound_trust_scores.insert(peer_id, value);
-        self.outbound_sum = self.outbound_trust_scores.values().sum();
     }
 }
