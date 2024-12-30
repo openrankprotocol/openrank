@@ -32,10 +32,7 @@ fn find_reachable_peers(lt: &HashMap<u64, SingleLT>, seed: &HashMap<u64, f32>) -
 /// Pre-processes a mutable local trust matrix `lt` by modifying it in-place:
 ///
 /// - Removes self-trust (diagonal entries), as prohibited by EigenTrust.
-fn pre_process(
-    lt: &mut HashMap<u64, SingleLT>, seed: &mut HashMap<u64, f32>,
-    lt_outbound_sum_map: &HashMap<u64, f32>, count: u64,
-) {
+fn pre_process(lt: &mut HashMap<u64, SingleLT>, seed: &mut HashMap<u64, f32>, count: u64) {
     // Calculate the sum of all seed trust values.
     let sum: f32 = seed.par_iter().map(|(_, v)| v).sum();
 
@@ -46,7 +43,7 @@ fn pre_process(
     }
 
     for from in 0..count {
-        let sum = lt_outbound_sum_map.get(&from).unwrap_or(&0.0);
+        let sum = lt.get(&from).map(|lt| lt.outbound_sum()).unwrap_or(&0.0);
         // If peer does not have outbound trust,
         // his trust will be distributed to seed peers based on their seed/pre-trust
         if *sum == 0.0 {
@@ -94,10 +91,9 @@ fn normalise_scores(scores: &HashMap<u64, f32>) -> HashMap<u64, f32> {
 /// The algorithm iteratively updates the scores of each node until convergence.
 /// It returns a vector of tuples containing the node ID and the final score.
 pub fn positive_run(
-    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>,
-    lt_outbound_sum_map: &HashMap<u64, f32>, count: u64,
+    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>, count: u64,
 ) -> Vec<(u64, f32)> {
-    pre_process(&mut lt, &mut seed, lt_outbound_sum_map, count);
+    pre_process(&mut lt, &mut seed, count);
     seed = normalise_scores(&seed);
     lt = normalise_lt(&lt);
 
@@ -161,10 +157,10 @@ pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<Str
 /// seed trust values (`seed`), and previous scores (`scores`).
 /// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
-    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>,
-    lt_outbound_sum_map: &HashMap<u64, f32>, scores: &HashMap<u64, f32>, count: u64,
+    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>, scores: &HashMap<u64, f32>,
+    count: u64,
 ) -> bool {
-    pre_process(&mut lt, &mut seed, lt_outbound_sum_map, count);
+    pre_process(&mut lt, &mut seed, count);
     seed = normalise_scores(&seed);
     lt = normalise_lt(&lt);
     // Calculate the next scores of each node
