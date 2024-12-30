@@ -63,8 +63,7 @@ fn pre_process(
 fn normalise_lt(lt: &HashMap<u64, SingleLT>) -> HashMap<u64, SingleLT> {
     lt.par_iter()
         .fold(HashMap::new, |mut lt_norm, (from, from_map)| {
-            let mut from_map_norm = from_map.clone();
-            from_map_norm.normalize();
+            let from_map_norm = from_map.norm();
             lt_norm.insert(*from, from_map_norm);
             lt_norm
         })

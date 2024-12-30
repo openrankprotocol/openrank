@@ -39,10 +39,7 @@ impl SingleLT {
 
     pub fn set_outbound_trust_scores(&mut self, outbound_trust_scores: HashMap<u64, f32>) {
         self.outbound_trust_scores = outbound_trust_scores;
-    }
-
-    pub fn set_outbound_sum(&mut self, outbound_sum: f32) {
-        self.outbound_sum = outbound_sum;
+        self.outbound_sum = self.outbound_trust_scores.values().sum();
     }
 
     pub fn from_score_map(score_map: &HashMap<u64, f32>) -> Self {
@@ -51,11 +48,13 @@ impl SingleLT {
         Self { outbound_trust_scores, outbound_sum }
     }
 
-    pub fn normalize(&mut self) {
-        for (_, value) in self.outbound_trust_scores.iter_mut() {
-            *value /= self.outbound_sum;
+    pub fn norm(&self) -> SingleLT {
+        let mut outbound_trust_scores = self.outbound_trust_scores.clone();
+        for (_, score) in outbound_trust_scores.iter_mut() {
+            *score /= self.outbound_sum;
         }
-        self.outbound_sum = 1.0;
+        let outbound_sum = 1.0;
+        SingleLT { outbound_trust_scores, outbound_sum }
     }
 
     /*----------------- HashMap similar utils -----------------*/
