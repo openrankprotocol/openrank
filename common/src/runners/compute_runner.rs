@@ -4,6 +4,7 @@ use crate::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,
     },
+    misc::OutboundLocalTrust,
     topics::{Domain, DomainHash},
     tx::{
         compute,
@@ -23,8 +24,7 @@ use std::{
 pub struct ComputeRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    local_trust: HashMap<OwnedNamespace, HashMap<u64, HashMap<u64, f32>>>,
-    lt_outbound_sum_map: HashMap<OwnedNamespace, HashMap<u64, f32>>,
+    local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
@@ -38,7 +38,6 @@ impl ComputeRunner {
         let mut count = HashMap::new();
         let mut indices = HashMap::new();
         let mut local_trust = HashMap::new();
-        let mut lt_outbound_sum_map = HashMap::new();
         let mut seed_trust = HashMap::new();
         let mut lt_sub_trees = HashMap::new();
         let mut lt_master_tree = HashMap::new();
@@ -49,7 +48,6 @@ impl ComputeRunner {
             count.insert(domain_hash, 0);
             indices.insert(domain_hash, HashMap::new());
             local_trust.insert(domain.trust_namespace(), HashMap::new());
-            lt_outbound_sum_map.insert(domain.trust_namespace(), HashMap::new());
             seed_trust.insert(domain.seed_namespace(), HashMap::new());
             lt_sub_trees.insert(domain_hash, HashMap::new());
             lt_master_tree.insert(
@@ -66,7 +64,6 @@ impl ComputeRunner {
             count,
             indices,
             local_trust,
-            lt_outbound_sum_map,
             seed_trust,
             lt_sub_trees,
             lt_master_tree,
@@ -97,10 +94,6 @@ impl ComputeRunner {
             .local_trust
             .get_mut(&domain.trust_namespace())
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
-        let lt_outbound_sum_map =
-            self.lt_outbound_sum_map.get_mut(&domain.trust_namespace()).ok_or(
-                Error::LocalTrustOutboundSumMapNotFound(domain.trust_namespace()),
-            )?;
         let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
         for entry in trust_entries {
             let from_index = if let Some(i) = domain_indices.get(entry.from()) {
@@ -119,27 +112,14 @@ impl ComputeRunner {
                 *count += 1;
                 curr_count
             };
-            let from_map = lt.entry(from_index).or_insert(HashMap::new());
-            // subtract replaced local trust value from outbound sum
-            if let Some(old_lt_value) = from_map.get(&to_index) {
-                if let Some(outbound_sum) = lt_outbound_sum_map.get_mut(&from_index) {
-                    *outbound_sum -= old_lt_value;
-                }
-            }
 
+            let from_map = lt.entry(from_index).or_insert(OutboundLocalTrust::new());
             let is_zero = entry.value() == &0.0;
             let exists = from_map.contains_key(&to_index);
             if is_zero && exists {
                 from_map.remove(&to_index);
             } else if !is_zero {
                 from_map.insert(to_index, *entry.value());
-            }
-
-            // update outbound sum
-            if let Some(outbound_sum) = lt_outbound_sum_map.get_mut(&from_index) {
-                *outbound_sum += entry.value();
-            } else {
-                lt_outbound_sum_map.insert(from_index, *entry.value());
             }
 
             lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
@@ -211,12 +191,9 @@ impl ComputeRunner {
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
-        let lt_outbound_sum_map = self.lt_outbound_sum_map.get(&domain.trust_namespace()).ok_or(
-            Error::LocalTrustOutboundSumMapNotFound(domain.trust_namespace()),
-        )?;
         let count =
             self.count.get(&domain.to_hash()).ok_or(Error::CountNotFound(domain.to_hash()))?;
-        let res = positive_run(lt.clone(), seed.clone(), lt_outbound_sum_map, *count);
+        let res = positive_run(lt.clone(), seed.clone(), *count);
         self.compute_results.insert(domain.to_hash(), res);
         Ok(())
     }
