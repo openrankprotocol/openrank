@@ -4,7 +4,7 @@ use crate::{
         self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
         Hash,
     },
-    misc::LocalTrustEntry,
+    misc::OutboundLocalTrust,
     topics::{Domain, DomainHash},
     tx::{
         compute,
@@ -24,7 +24,7 @@ use std::{
 pub struct ComputeRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    local_trust: HashMap<OwnedNamespace, HashMap<u64, LocalTrustEntry>>,
+    local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
@@ -113,7 +113,7 @@ impl ComputeRunner {
                 curr_count
             };
 
-            let from_map = lt.entry(from_index).or_insert(LocalTrustEntry::new());
+            let from_map = lt.entry(from_index).or_insert(OutboundLocalTrust::new());
             let is_zero = entry.value() == &0.0;
             let exists = from_map.contains_key(&to_index);
             if is_zero && exists {

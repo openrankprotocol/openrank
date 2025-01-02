@@ -10,7 +10,7 @@ use std::collections::HashMap;
 /// It also stores the sum of the trust values assigned to all peers.
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
-pub struct LocalTrustEntry {
+pub struct OutboundLocalTrust {
     /// The trust values that a node assigns to its peers.
     ///
     /// The `outbound_trust_scores` vector stores the trust values that a node
@@ -26,13 +26,13 @@ pub struct LocalTrustEntry {
     outbound_sum: f32,
 }
 
-impl Default for LocalTrustEntry {
+impl Default for OutboundLocalTrust {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl LocalTrustEntry {
+impl OutboundLocalTrust {
     pub fn new() -> Self {
         Self { outbound_trust_scores: HashMap::new(), outbound_sum: 0.0 }
     }
@@ -48,13 +48,13 @@ impl LocalTrustEntry {
         Self { outbound_trust_scores, outbound_sum }
     }
 
-    pub fn norm(&self) -> LocalTrustEntry {
+    pub fn norm(&self) -> Self {
         let mut outbound_trust_scores = self.outbound_trust_scores.clone();
         for (_, score) in outbound_trust_scores.iter_mut() {
             *score /= self.outbound_sum;
         }
         let outbound_sum = 1.0;
-        LocalTrustEntry { outbound_trust_scores, outbound_sum }
+        OutboundLocalTrust { outbound_trust_scores, outbound_sum }
     }
 
     /*----------------- HashMap similar utils -----------------*/
