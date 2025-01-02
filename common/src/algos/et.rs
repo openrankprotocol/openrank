@@ -1,7 +1,7 @@
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 
-use crate::misc::SingleLT;
+use crate::misc::LocalTrustEntry;
 
 /// The trust weight given to the seed trust vector in the trust matrix calculation.
 const PRE_TRUST_WEIGHT: f32 = 0.5;
@@ -12,7 +12,9 @@ const PRE_TRUST_WEIGHT: f32 = 0.5;
 /// less than `DELTA`, the score has converged.
 const DELTA: f32 = 0.01;
 
-fn find_reachable_peers(lt: &HashMap<u64, SingleLT>, seed: &HashMap<u64, f32>) -> HashSet<u64> {
+fn find_reachable_peers(
+    lt: &HashMap<u64, LocalTrustEntry>, seed: &HashMap<u64, f32>,
+) -> HashSet<u64> {
     let mut to_visit: Vec<&u64> = seed.keys().collect();
     let mut visited = HashSet::new();
     while let Some(i) = to_visit.pop() {
@@ -32,7 +34,7 @@ fn find_reachable_peers(lt: &HashMap<u64, SingleLT>, seed: &HashMap<u64, f32>) -
 /// Pre-processes a mutable local trust matrix `lt` by modifying it in-place:
 ///
 /// - Removes self-trust (diagonal entries), as prohibited by EigenTrust.
-fn pre_process(lt: &mut HashMap<u64, SingleLT>, seed: &mut HashMap<u64, f32>, count: u64) {
+fn pre_process(lt: &mut HashMap<u64, LocalTrustEntry>, seed: &mut HashMap<u64, f32>, count: u64) {
     // Calculate the sum of all seed trust values.
     let sum: f32 = seed.par_iter().map(|(_, v)| v).sum();
 
@@ -47,7 +49,7 @@ fn pre_process(lt: &mut HashMap<u64, SingleLT>, seed: &mut HashMap<u64, f32>, co
         // If peer does not have outbound trust,
         // his trust will be distributed to seed peers based on their seed/pre-trust
         if *sum == 0.0 {
-            let single_lt = SingleLT::from_score_map(seed);
+            let single_lt = LocalTrustEntry::from_score_map(seed);
             lt.insert(from, single_lt);
         }
     }
@@ -57,7 +59,7 @@ fn pre_process(lt: &mut HashMap<u64, SingleLT>, seed: &mut HashMap<u64, f32>, co
 }
 
 /// Normalizes the `lt` matrix by dividing each element by the sum of its row.
-fn normalise_lt(lt: &HashMap<u64, SingleLT>) -> HashMap<u64, SingleLT> {
+fn normalise_lt(lt: &HashMap<u64, LocalTrustEntry>) -> HashMap<u64, LocalTrustEntry> {
     lt.par_iter()
         .fold(HashMap::new, |mut lt_norm, (from, from_map)| {
             let from_map_norm = from_map.norm();
@@ -91,7 +93,7 @@ fn normalise_scores(scores: &HashMap<u64, f32>) -> HashMap<u64, f32> {
 /// The algorithm iteratively updates the scores of each node until convergence.
 /// It returns a vector of tuples containing the node ID and the final score.
 pub fn positive_run(
-    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>, count: u64,
+    mut lt: HashMap<u64, LocalTrustEntry>, mut seed: HashMap<u64, f32>, count: u64,
 ) -> Vec<(u64, f32)> {
     pre_process(&mut lt, &mut seed, count);
     seed = normalise_scores(&seed);
@@ -157,7 +159,7 @@ pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<Str
 /// seed trust values (`seed`), and previous scores (`scores`).
 /// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
-    mut lt: HashMap<u64, SingleLT>, mut seed: HashMap<u64, f32>, scores: &HashMap<u64, f32>,
+    mut lt: HashMap<u64, LocalTrustEntry>, mut seed: HashMap<u64, f32>, scores: &HashMap<u64, f32>,
     count: u64,
 ) -> bool {
     pre_process(&mut lt, &mut seed, count);
@@ -173,7 +175,7 @@ pub fn convergence_check(
 }
 
 fn iteration(
-    lt: &HashMap<u64, SingleLT>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
+    lt: &HashMap<u64, LocalTrustEntry>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
 ) -> HashMap<u64, f32> {
     lt.par_iter()
         .fold(HashMap::new, |mut next_scores, (from, from_map)| {
