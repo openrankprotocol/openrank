@@ -224,6 +224,32 @@ impl Tx {
     }
 }
 
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+pub struct TxTimestamp {
+    tx_hash: TxHash,
+    timestamp: u64,
+}
+
+impl TxTimestamp {
+    pub fn new(tx_hash: TxHash, timestamp: u64) -> Self {
+        Self { tx_hash, timestamp }
+    }
+}
+
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+pub struct TxSequence {
+    tx_hash: TxHash,
+    seq_number: u64,
+}
+
+impl TxSequence {
+    pub fn new(tx_hash: TxHash, seq_number: u64) -> Self {
+        Self { tx_hash, seq_number }
+    }
+}
+
 pub type Address = alloy_primitives::Address;
 
 #[derive(

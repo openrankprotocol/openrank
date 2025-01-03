@@ -1,20 +1,19 @@
-use alloy_rlp::encode;
-use sha3::{Digest, Keccak256};
-
-use super::DbItem;
 use crate::{
+    db::DbItem,
     tx::{
         compute::{Result, ResultReference},
-        Tx,
+        Tx, TxSequence, TxTimestamp,
     },
     tx_event::TxEvent,
 };
+use alloy_rlp::encode;
+use sha3::{Digest, Keccak256};
 
 impl DbItem for TxEvent {
     fn get_key(&self) -> Vec<u8> {
         let mut hasher = Keccak256::new();
-        hasher.update(self.block_number.to_be_bytes());
-        hasher.update(encode(&self.proof));
+        hasher.update(self.block_number().to_be_bytes());
+        hasher.update(encode(&self.proof()));
         let result = hasher.finalize();
         result.to_vec()
     }
@@ -67,6 +66,34 @@ impl DbItem for Tx {
 
     fn get_prefix(&self) -> String {
         self.body().prefix().to_string()
+    }
+}
+
+impl DbItem for TxSequence {
+    fn get_key(&self) -> Vec<u8> {
+        self.seq_number().to_be_bytes().to_vec()
+    }
+
+    fn get_cf() -> String {
+        "tx_sequence".to_string()
+    }
+
+    fn get_prefix(&self) -> String {
+        String::new()
+    }
+}
+
+impl DbItem for TxTimestamp {
+    fn get_key(&self) -> Vec<u8> {
+        self.tx_hash().to_bytes()
+    }
+
+    fn get_cf() -> String {
+        "tx_timestamp".to_string()
+    }
+
+    fn get_prefix(&self) -> String {
+        String::new()
     }
 }
 

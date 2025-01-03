@@ -42,15 +42,17 @@ impl Scores {
     Debug, Clone, PartialEq, Default, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
 )]
 #[getset(get = "pub")]
+#[rlp(trailing)]
 pub struct Request {
     domain_id: DomainHash,
     block_height: u32,
     compute_id: Hash,
+    seq_number: Option<u64>,
 }
 
 impl Request {
     pub fn new(domain_id: DomainHash, block_height: u32, compute_id: Hash) -> Self {
-        Self { domain_id, block_height, compute_id }
+        Self { domain_id, block_height, compute_id, seq_number: None }
     }
 }
 
@@ -61,14 +63,15 @@ impl Request {
 pub struct Assignment {
     request_tx_hash: TxHash,
     assigned_compute_node: Address,
-    assigned_verifier_node: Address,
+    assigned_verifier_nodes: Vec<Address>,
 }
 
 impl Assignment {
     pub fn new(
-        request_tx_hash: TxHash, assigned_compute_node: Address, assigned_verifier_node: Address,
+        request_tx_hash: TxHash, assigned_compute_node: Address,
+        assigned_verifier_nodes: Vec<Address>,
     ) -> Self {
-        Self { request_tx_hash, assigned_compute_node, assigned_verifier_node }
+        Self { request_tx_hash, assigned_compute_node, assigned_verifier_nodes }
     }
 }
 
