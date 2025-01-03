@@ -69,8 +69,10 @@ impl From<runner::Error> for Error {
 /// The whitelist for the Verifier.
 struct Whitelist {
     /// The list of addresses that are allowed to be block builders.
+    #[serde(alias = "block_builders")]
     block_builder: Vec<Address>,
     /// The list of addresses that are allowed to be computers.
+    #[serde(alias = "computers")]
     computer: Vec<Address>,
 }
 
@@ -142,12 +144,10 @@ impl Node {
                     Topic::NamespaceTrustUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let tx::Body::TrustUpdate(trust_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == trust_update.trust_id());
                             let domain = domains
@@ -192,11 +192,10 @@ impl Node {
                             assert!(self.config.whitelist.block_builder.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let computer_address = address_from_sk(&self.secret_key);
-                            assert_eq!(
-                                computer_address,
-                                *compute_assignment.assigned_verifier_node()
-                            );
+                            let verifier_address = address_from_sk(&self.secret_key);
+                            for verifier_node in compute_assignment.assigned_verifier_nodes() {
+                                assert_eq!(verifier_address, *verifier_node);
+                            }
                             assert!(self
                                 .config
                                 .whitelist

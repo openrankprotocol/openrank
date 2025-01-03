@@ -58,8 +58,10 @@ impl Display for Error {
 /// The whitelist for the Block Builder.
 struct Whitelist {
     /// The list of addresses that are allowed to be computers.
+    #[serde(alias = "computers")]
     computer: Vec<Address>,
     /// The list of addresses that are allowed to be verifiers.
+    #[serde(alias = "verifiers")]
     verifier: Vec<Address>,
     /// The list of addresses that are allowed to broadcast transactions.
     users: Vec<Address>,
@@ -138,12 +140,10 @@ impl Node {
                     Topic::NamespaceTrustUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let tx::Body::TrustUpdate(_) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                         } else {
                             return Err(Error::InvalidTxKind);
@@ -152,12 +152,10 @@ impl Node {
                     Topic::NamespaceSeedUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let tx::Body::SeedUpdate(_) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                         } else {
                             return Err(Error::InvalidTxKind);
@@ -177,9 +175,9 @@ impl Node {
 
                             let assignment_topic = Topic::DomainAssignent(*domain_id);
                             let computer = self.config.whitelist.computer[0];
-                            let verifier = self.config.whitelist.verifier[0];
+                            let verifiers = self.config.whitelist.verifier.clone();
                             let compute_assignment =
-                                compute::Assignment::new(tx.hash(), computer, verifier);
+                                compute::Assignment::new(tx.hash(), computer, verifiers);
                             let mut tx =
                                 Tx::default_with(tx::Body::ComputeAssignment(compute_assignment));
                             tx.sign(&self.secret_key).map_err(Error::Signature)?;
