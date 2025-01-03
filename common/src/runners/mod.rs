@@ -21,7 +21,8 @@ pub struct BaseRunner {
     pub(crate) indices: HashMap<DomainHash, HashMap<String, u64>>,
     pub(crate) local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
     pub(crate) seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
-    pub(crate) lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
+    pub(crate) lt_sub_trees:
+        HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     pub(crate) lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
     pub(crate) st_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
 }
@@ -98,7 +99,7 @@ impl Display for Error {
                     domain
                 )
             },
-            
+
             Self::LocalTrustMasterTreeNotFound(domain) => {
                 write!(
                     f,
