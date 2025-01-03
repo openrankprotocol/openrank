@@ -21,9 +21,9 @@ impl InclusionProof {
 #[getset(get = "pub")]
 pub struct TxEvent {
     /// Block height of the DA layer, where the tx was included.
-    pub block_number: u64,
+    block_number: u64,
     /// Proof of inclusion in the DA block.
-    pub proof: InclusionProof,
+    proof: InclusionProof,
     /// Data of the transaction.
     data: Vec<u8>,
 }

@@ -3248,6 +3248,7 @@ dependencies = [
  "getset",
  "hex",
  "jsonrpsee",
+ "k256",
  "libp2p",
  "openrank-common",
  "rand",

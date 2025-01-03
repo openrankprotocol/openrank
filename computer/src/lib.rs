@@ -65,7 +65,9 @@ impl From<runner::Error> for Error {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 struct Whitelist {
+    #[serde(alias = "block_builders")]
     block_builder: Vec<Address>,
+    #[serde(alias = "verifiers")]
     verifier: Vec<Address>,
 }
 
@@ -109,12 +111,10 @@ impl Node {
                     Topic::NamespaceTrustUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::TrustUpdate(trust_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == trust_update.trust_id());
                             let domain = domains
@@ -131,12 +131,10 @@ impl Node {
                     Topic::NamespaceSeedUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::SeedUpdate(seed_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == seed_update.seed_id());
                             let domain = domains
@@ -165,11 +163,9 @@ impl Node {
                                 &computer_address,
                                 compute_assignment.assigned_compute_node()
                             );
-                            assert!(self
-                                .config
-                                .whitelist
-                                .verifier
-                                .contains(compute_assignment.assigned_verifier_node()));
+                            for verfier_node in compute_assignment.assigned_verifier_nodes() {
+                                assert!(self.config.whitelist.verifier.contains(verfier_node));
+                            }
 
                             let domain = domains
                                 .iter()

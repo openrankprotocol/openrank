@@ -9,6 +9,8 @@ mod items;
 
 pub use rocksdb::ErrorKind as RocksDBErrorKind;
 
+pub const CHECKPOINTS_CF: &str = "checkpoints";
+
 #[derive(Debug)]
 /// Errors that can arise while using database.
 pub enum Error {
@@ -20,6 +22,7 @@ pub enum Error {
     CfNotFound,
     /// Error when entry is not found.
     NotFound,
+    /// Config parsing error.
     Config(String),
 }
 
@@ -106,6 +109,23 @@ impl Db {
     /// Refreshes secondary database connection, by catching up with primary database.
     pub fn refresh(&self) -> Result<(), Error> {
         self.connection.try_catch_up_with_primary().map_err(Error::RocksDB)
+    }
+
+    /// Puts checkpoint into database.
+    pub fn put_checkpoint<I: DbItem + Serialize>(&self, item: I) -> Result<(), Error> {
+        let cf = self.connection.cf_handle(CHECKPOINTS_CF).ok_or(Error::CfNotFound)?;
+        let key = I::get_cf();
+        let value = to_vec(&item).map_err(Error::Serde)?;
+        self.connection.put_cf(&cf, key, value).map_err(Error::RocksDB)
+    }
+
+    /// Gets checkpoint from database.
+    pub fn get_checkpoint<I: DbItem + DeserializeOwned>(&self) -> Result<I, Error> {
+        let cf = self.connection.cf_handle(CHECKPOINTS_CF).ok_or(Error::CfNotFound)?;
+        let item_res = self.connection.get_cf(&cf, I::get_cf()).map_err(Error::RocksDB)?;
+        let item = item_res.ok_or(Error::NotFound)?;
+        let value = serde_json::from_slice(&item).map_err(Error::Serde)?;
+        Ok(value)
     }
 
     /// Puts value into database.
