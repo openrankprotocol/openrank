@@ -16,7 +16,7 @@ pub mod verification_runner;
 
 #[derive(Getters)]
 #[getset(get = "pub")]
-pub struct BaseRunner {
+pub(crate) struct BaseRunner {
     pub(crate) count: HashMap<DomainHash, u64>,
     pub(crate) indices: HashMap<DomainHash, HashMap<String, u64>>,
     pub(crate) local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
