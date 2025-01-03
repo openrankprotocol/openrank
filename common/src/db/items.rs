@@ -13,7 +13,7 @@ impl DbItem for TxEvent {
     fn get_key(&self) -> Vec<u8> {
         let mut hasher = Keccak256::new();
         hasher.update(self.block_number().to_be_bytes());
-        hasher.update(encode(&self.proof()));
+        hasher.update(encode(self.proof()));
         let result = hasher.finalize();
         result.to_vec()
     }
