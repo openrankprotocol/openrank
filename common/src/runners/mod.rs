@@ -1,8 +1,8 @@
 use crate::{
-    merkle::{self, incremental::DenseIncrementalMerkleTree},
+    merkle::{self, hash_leaf, incremental::DenseIncrementalMerkleTree},
     misc::OutboundLocalTrust,
     topics::{Domain, DomainHash},
-    tx::trust::OwnedNamespace,
+    tx::trust::{OwnedNamespace, TrustEntry},
 };
 use getset::Getters;
 use sha3::Keccak256;
@@ -64,6 +64,74 @@ impl BaseRunner {
             st_master_tree,
         }
     }
+
+    pub fn update_trust(
+        &mut self, domain: Domain, trust_entries: Vec<TrustEntry>,
+    ) -> Result<(), Error> {
+        let domain_indices = self
+            .indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
+        let count = self
+            .count
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::CountNotFound(domain.to_hash()))?;
+        let lt_sub_trees = self
+            .lt_sub_trees
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()))?;
+        let lt_master_tree = self
+            .lt_master_tree
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
+        let lt = self
+            .local_trust
+            .get_mut(&domain.trust_namespace())
+            .ok_or::<Error>(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+        let default_sub_tree = DenseIncrementalMerkleTree::<Keccak256>::new(32);
+        for entry in trust_entries {
+            let from_index = if let Some(i) = domain_indices.get(entry.from()) {
+                *i
+            } else {
+                let curr_count = *count;
+                domain_indices.insert(entry.from().clone(), curr_count);
+                *count += 1;
+                curr_count
+            };
+            let to_index = if let Some(i) = domain_indices.get(entry.to()) {
+                *i
+            } else {
+                let curr_count = *count;
+                domain_indices.insert(entry.to().clone(), curr_count);
+                *count += 1;
+                curr_count
+            };
+
+            let from_map = lt.entry(from_index).or_insert(OutboundLocalTrust::new());
+            let is_zero = entry.value() == &0.0;
+            let exists = from_map.contains_key(&to_index);
+            if is_zero && exists {
+                from_map.remove(&to_index);
+            } else if !is_zero {
+                from_map.insert(to_index, *entry.value());
+            }
+
+            lt_sub_trees.entry(from_index).or_insert_with(|| default_sub_tree.clone());
+            let sub_tree = lt_sub_trees
+                .get_mut(&from_index)
+                .ok_or(Error::LocalTrustSubTreesNotFoundWithIndex(from_index))?;
+
+            let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
+            sub_tree.insert_leaf(to_index, leaf);
+
+            let sub_tree_root = sub_tree.root().map_err(Error::Merkle)?;
+
+            let leaf = hash_leaf::<Keccak256>(sub_tree_root.inner().to_vec());
+            lt_master_tree.insert_leaf(from_index, leaf);
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -72,6 +140,7 @@ pub enum Error {
     CountNotFound(DomainHash),
 
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
+    LocalTrustSubTreesNotFoundWithIndex(u64),
 
     LocalTrustMasterTreeNotFound(DomainHash),
     SeedTrustMasterTreeNotFound(DomainHash),
@@ -92,12 +161,16 @@ impl Display for Error {
                 write!(f, "indices not found for domain: {:?}", domain)
             },
             Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
+
             Self::LocalTrustSubTreesNotFoundWithDomain(domain) => {
                 write!(
                     f,
                     "local_trust_sub_trees not found for domain: {:?}",
                     domain
                 )
+            },
+            Self::LocalTrustSubTreesNotFoundWithIndex(index) => {
+                write!(f, "local_trust_sub_trees not found for index: {}", index)
             },
 
             Self::LocalTrustMasterTreeNotFound(domain) => {
