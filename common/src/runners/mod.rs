@@ -2,7 +2,7 @@ use crate::{
     merkle::{self, hash_leaf, incremental::DenseIncrementalMerkleTree},
     misc::OutboundLocalTrust,
     topics::{Domain, DomainHash},
-    tx::trust::{OwnedNamespace, TrustEntry},
+    tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
 };
 use getset::Getters;
 use sha3::Keccak256;
@@ -76,10 +76,9 @@ impl BaseRunner {
             .count
             .get_mut(&domain.to_hash())
             .ok_or::<Error>(Error::CountNotFound(domain.to_hash()))?;
-        let lt_sub_trees = self
-            .lt_sub_trees
-            .get_mut(&domain.to_hash())
-            .ok_or::<Error>(Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()))?;
+        let lt_sub_trees = self.lt_sub_trees.get_mut(&domain.to_hash()).ok_or::<Error>(
+            Error::LocalTrustSubTreesNotFoundWithDomain(domain.to_hash()),
+        )?;
         let lt_master_tree = self
             .lt_master_tree
             .get_mut(&domain.to_hash())
@@ -128,6 +127,49 @@ impl BaseRunner {
 
             let leaf = hash_leaf::<Keccak256>(sub_tree_root.inner().to_vec());
             lt_master_tree.insert_leaf(from_index, leaf);
+        }
+
+        Ok(())
+    }
+
+    pub fn update_seed(
+        &mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
+    ) -> Result<(), Error> {
+        let domain_indices = self
+            .indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
+        let count = self
+            .count
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::CountNotFound(domain.to_hash()))?;
+        let st_master_tree = self
+            .st_master_tree
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::SeedTrustMasterTreeNotFound(domain.to_hash()))?;
+        let seed = self
+            .seed_trust
+            .get_mut(&domain.seed_namespace())
+            .ok_or::<Error>(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+        for entry in seed_entries {
+            let index = if let Some(i) = domain_indices.get(entry.id()) {
+                *i
+            } else {
+                let curr_count = *count;
+                domain_indices.insert(entry.id().clone(), curr_count);
+                *count += 1;
+                curr_count
+            };
+            let is_zero = entry.value() == &0.0;
+            let exists = seed.contains_key(&index);
+            if is_zero && exists {
+                seed.remove(&index);
+            } else if !is_zero {
+                seed.insert(index, *entry.value());
+            }
+
+            let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
+            st_master_tree.insert_leaf(index, leaf);
         }
 
         Ok(())

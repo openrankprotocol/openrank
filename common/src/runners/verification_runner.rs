@@ -64,48 +64,7 @@ impl VerificationRunner {
     pub fn update_seed(
         &mut self, domain: Domain, seed_entries: Vec<ScoreEntry>,
     ) -> Result<(), Error> {
-        let domain_indices = self
-            .base
-            .indices
-            .get_mut(&domain.to_hash())
-            .ok_or::<Error>(BaseError::IndicesNotFound(domain.to_hash()).into())?;
-        let count = self
-            .base
-            .count
-            .get_mut(&domain.to_hash())
-            .ok_or::<Error>(BaseError::CountNotFound(domain.to_hash()).into())?;
-        let st_master_tree = self
-            .base
-            .st_master_tree
-            .get_mut(&domain.to_hash())
-            .ok_or::<Error>(BaseError::SeedTrustMasterTreeNotFound(domain.to_hash()).into())?;
-        let seed = self
-            .base
-            .seed_trust
-            .get_mut(&domain.seed_namespace())
-            .ok_or::<Error>(BaseError::SeedTrustNotFound(domain.seed_namespace()).into())?;
-        for entry in seed_entries {
-            let index = if let Some(i) = domain_indices.get(entry.id()) {
-                *i
-            } else {
-                let curr_count = *count;
-                domain_indices.insert(entry.id().clone(), curr_count);
-                *count += 1;
-                curr_count
-            };
-            let is_zero = entry.value() == &0.0;
-            let exists = seed.contains_key(&index);
-            if is_zero && exists {
-                seed.remove(&index);
-            } else if !is_zero {
-                seed.insert(index, *entry.value());
-            }
-
-            let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
-            st_master_tree.insert_leaf(index, leaf);
-        }
-
-        Ok(())
+        self.base.update_seed(domain, seed_entries).map_err(Error::Base)
     }
 
     /// Check if the score tx hashes of the given commitment exists in the `compute_scores` of certain domain
