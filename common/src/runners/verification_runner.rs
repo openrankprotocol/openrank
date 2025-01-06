@@ -260,16 +260,8 @@ impl VerificationRunner {
     pub fn get_root_hashes(
         &self, domain: Domain, assignment_id: TxHash,
     ) -> Result<(Hash, Hash), Error> {
-        let lt_tree = self
-            .base
-            .lt_master_tree
-            .get(&domain.to_hash())
-            .ok_or::<Error>(BaseError::LocalTrustMasterTreeNotFound(domain.to_hash()).into())?;
-        let st_tree = self
-            .base
-            .st_master_tree
-            .get(&domain.to_hash())
-            .ok_or::<Error>(BaseError::SeedTrustMasterTreeNotFound(domain.to_hash()).into())?;
+        let tree_roots = self.base.get_base_root_hashes(&domain)?;
+
         let compute_tree_map = self
             .compute_tree
             .get(&domain.to_hash())
@@ -277,10 +269,8 @@ impl VerificationRunner {
         let compute_tree = compute_tree_map
             .get(&assignment_id)
             .ok_or(Error::ComputeTreeNotFoundWithTxHash(assignment_id.clone()))?;
-        let lt_tree_root = lt_tree.root().map_err(Error::Merkle)?;
-        let st_tree_root = st_tree.root().map_err(Error::Merkle)?;
-        let tree_roots = hash_two::<Keccak256>(lt_tree_root, st_tree_root);
         let ct_tree_root = compute_tree.root().map_err(Error::Merkle)?;
+
         Ok((tree_roots, ct_tree_root))
     }
 }

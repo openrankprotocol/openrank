@@ -1,5 +1,5 @@
 use crate::{
-    merkle::{self, hash_leaf, incremental::DenseIncrementalMerkleTree},
+    merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
     misc::OutboundLocalTrust,
     topics::{Domain, DomainHash},
     tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
@@ -173,6 +173,21 @@ impl BaseRunner {
         }
 
         Ok(())
+    }
+
+    pub fn get_base_root_hashes(&self, domain: &Domain) -> Result<Hash, Error> {
+        let lt_tree = self
+            .lt_master_tree
+            .get(&domain.to_hash())
+            .ok_or::<Error>(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
+        let st_tree = self
+            .st_master_tree
+            .get(&domain.to_hash())
+            .ok_or::<Error>(Error::SeedTrustMasterTreeNotFound(domain.to_hash()))?;
+        let lt_tree_root = lt_tree.root().map_err(Error::Merkle)?;
+        let st_tree_root = st_tree.root().map_err(Error::Merkle)?;
+        let tree_roots = hash_two::<Keccak256>(lt_tree_root, st_tree_root);
+        Ok(tree_roots)
     }
 }
 

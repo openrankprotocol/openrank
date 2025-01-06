@@ -120,24 +120,14 @@ impl ComputeRunner {
 
     /// Get the local trust root hash and compute tree root hash for certain domain.
     pub fn get_root_hashes(&self, domain: Domain) -> Result<(Hash, Hash), Error> {
-        let lt_tree = self
-            .base
-            .lt_master_tree
-            .get(&domain.to_hash())
-            .ok_or::<Error>(BaseError::LocalTrustMasterTreeNotFound(domain.to_hash()).into())?;
-        let st_tree = self
-            .base
-            .st_master_tree
-            .get(&domain.to_hash())
-            .ok_or::<Error>(BaseError::SeedTrustMasterTreeNotFound(domain.to_hash()).into())?;
+        let tree_roots = self.base.get_base_root_hashes(&domain)?;
+
         let compute_tree = self
             .compute_tree
             .get(&domain.to_hash())
             .ok_or(Error::ComputeTreeNotFound(domain.to_hash()))?;
-        let lt_tree_root = lt_tree.root().map_err(Error::Merkle)?;
-        let st_tree_root = st_tree.root().map_err(Error::Merkle)?;
-        let tree_roots = hash_two::<Keccak256>(lt_tree_root, st_tree_root);
         let ct_tree_root = compute_tree.root().map_err(Error::Merkle)?;
+
         Ok((tree_roots, ct_tree_root))
     }
 }
