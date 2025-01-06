@@ -1,10 +1,6 @@
 use crate::{
     algos::et::positive_run,
-    merkle::{
-        self, fixed::DenseMerkleTree, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree,
-        Hash,
-    },
-    misc::OutboundLocalTrust,
+    merkle::{self, fixed::DenseMerkleTree, hash_leaf, Hash},
     topics::{Domain, DomainHash},
     tx::{
         compute,
