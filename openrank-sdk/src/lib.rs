@@ -2,7 +2,10 @@ use alloy_rlp::encode;
 use csv::StringRecord;
 use getset::Getters;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
-use k256::{ecdsa::{Error as EcdsaError, SigningKey}, schnorr::CryptoRngCore};
+use k256::{
+    ecdsa::{Error as EcdsaError, SigningKey},
+    schnorr::CryptoRngCore,
+};
 use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
@@ -134,7 +137,9 @@ impl OpenRankSDK {
         Self { secret_key, config }
     }
 
-    pub async fn trust_update(&self, trust_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError> {
+    pub async fn trust_update(
+        &self, trust_entries: &[TrustEntry],
+    ) -> Result<Vec<TxEvent>, SdkError> {
         // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
@@ -155,7 +160,6 @@ impl OpenRankSDK {
             results.push(result);
         }
         Ok(results)
-
     }
 
     pub async fn seed_update(&self, seed_entries: &[ScoreEntry]) -> Result<Vec<TxEvent>, SdkError> {
@@ -208,7 +212,6 @@ impl OpenRankSDK {
     pub async fn get_results(
         &self, compute_request_tx_hash: TxHash, allow_incomplete: bool, allow_failed: bool,
     ) -> Result<ComputeResult, SdkError> {
-
         // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
@@ -340,7 +343,7 @@ impl OpenRankSDK {
         }
 
         let votes = verification_results.iter().map(|x| *x.verification_result()).collect();
-        Ok(ComputeResult {votes, scores: score_entries})
+        Ok(ComputeResult { votes, scores: score_entries })
     }
 
     pub async fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
@@ -447,7 +450,20 @@ impl OpenRankSDK {
     pub fn check_score_integrity(
         votes: Vec<bool>, computed_scores: Vec<ScoreEntry>, correct_scores: Vec<ScoreEntry>,
     ) -> Result<bool, SdkError> {
-        todo!()
+        let mut computed_scores_map = HashMap::new();
+        for score in computed_scores {
+            computed_scores_map.insert(score.id().clone(), *score.value());
+        }
+
+        let mut correct_scores_map = HashMap::new();
+        for score in correct_scores {
+            correct_scores_map.insert(score.id().clone(), *score.value());
+        }
+
+        let is_converged = is_converged_org(&computed_scores_map, &correct_scores_map);
+        let votes = votes.iter().fold(true, |acc, vote| acc & vote);
+
+        Ok(is_converged & votes)
     }
 }
 
@@ -508,7 +524,9 @@ pub async fn update_seed(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Sends a `ComputeRequest` transaction to the Sequencer.
-pub async fn compute_request(sk: SigningKey, config_path: &str) -> Result<ComputeRequestResult, SdkError> {
+pub async fn compute_request(
+    sk: SigningKey, config_path: &str,
+) -> Result<ComputeRequestResult, SdkError> {
     // Read config
     let config = read_config(config_path)?;
 
@@ -533,13 +551,7 @@ pub async fn get_results(
 
     // Create SDK & get results
     let sdk = OpenRankSDK::new(sk, config);
-    let result = sdk
-        .get_results(
-            compute_request_tx_hash,
-            allow_incomplete,
-            allow_failed,
-        )
-        .await?;
+    let result = sdk.get_results(compute_request_tx_hash, allow_incomplete, allow_failed).await?;
 
     Ok((result.votes, result.scores))
 }
@@ -564,7 +576,9 @@ pub async fn get_compute_result(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
-pub async fn get_compute_result_txs(sk: SigningKey, arg: String, config_path: &str) -> Result<Vec<Tx>, SdkError> {
+pub async fn get_compute_result_txs(
+    sk: SigningKey, arg: String, config_path: &str,
+) -> Result<Vec<Tx>, SdkError> {
     // Read config
     let config = read_config(config_path)?;
 
@@ -587,7 +601,7 @@ pub async fn get_tx(sk: SigningKey, arg: String, config_path: &str) -> Result<Tx
     // Parse arg, to get the prefix and TX hash
     let arg_clone = arg.clone();
     let (prefix, tx_hash) = arg.split_once(':').ok_or(SdkError::ArgParseError(arg_clone))?;
-   
+
     // Create SDK & get results
     let sdk = OpenRankSDK::new(sk, config);
     let result = sdk.get_tx(prefix, tx_hash).await?;
@@ -609,20 +623,7 @@ pub fn check_score_integrity(
         test_vector.push(score_entry);
     }
 
-    let mut test_map = HashMap::new();
-    for score in test_vector {
-        test_map.insert(score.id().clone(), *score.value());
-    }
-
-    let mut score_map = HashMap::new();
-    for score in scores {
-        score_map.insert(score.id().clone(), *score.value());
-    }
-
-    let is_converged = is_converged_org(&test_map, &score_map);
-    let votes = votes.iter().fold(true, |acc, vote| acc & vote);
-
-    Ok(is_converged & votes)
+    OpenRankSDK::check_score_integrity(votes, scores, test_vector)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
