@@ -181,8 +181,28 @@ impl OpenRankSDK {
         Ok(results)
     }
 
-    pub fn compute_request(&self) -> Result<ComputeRequestResult, SdkError> {
-        todo!()
+    pub async fn compute_request(&self) -> Result<ComputeRequestResult, SdkError> {
+        // Creates a new client
+        let client = HttpClient::builder()
+            .build(self.config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        let rng = &mut thread_rng();
+        let domain_id = self.config.domain.to_hash();
+        let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
+        let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
+            domain_id, 0, hash,
+        )));
+        tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
+        let tx_hash = tx.hash();
+
+        let tx_event: TxEvent = client
+            .request("sequencer_compute_request", vec![hex::encode(encode(tx))])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
+        Ok(compute_result)
     }
 
     pub fn get_results(
@@ -279,29 +299,15 @@ pub async fn update_seed(
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Sends a `ComputeRequest` transaction to the Sequencer.
-pub async fn compute_request(sk: SigningKey, path: &str) -> Result<ComputeRequestResult, SdkError> {
-    let config = read_config(path)?;
-    // Creates a new client
-    let client = HttpClient::builder()
-        .build(config.sequencer.endpoint.as_str())
-        .map_err(SdkError::JsonRpcClientError)?;
+pub async fn compute_request(sk: SigningKey, config_path: &str) -> Result<ComputeRequestResult, SdkError> {
+    // Read config
+    let config = read_config(config_path)?;
 
-    let rng = &mut thread_rng();
-    let domain_id = config.domain.to_hash();
-    let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
-    let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
-        domain_id, 0, hash,
-    )));
-    tx.sign(&sk).map_err(SdkError::EcdsaError)?;
-    let tx_hash = tx.hash();
+    // Create SDK & send compute request
+    let sdk = OpenRankSDK::new(sk, config);
+    let result = sdk.compute_request().await?;
 
-    let tx_event: TxEvent = client
-        .request("sequencer_compute_request", vec![hex::encode(encode(tx))])
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-
-    let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
-    Ok(compute_result)
+    Ok(result)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
