@@ -322,7 +322,15 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetSeedUpdates { from, size, config_path, output_path } => {
-            match get_seed_updates(&config_path, from, size).await {
+            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
+            let secret_key = match get_secret_key() {
+                Ok(secret_key) => secret_key,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
+            match get_seed_updates(secret_key, &config_path, from, size).await {
                 Ok(res) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, res) {
