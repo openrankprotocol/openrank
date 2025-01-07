@@ -226,7 +226,15 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetComputeResult { seq_number, config_path, output_path } => {
-            match get_compute_result(seq_number, &config_path).await {
+            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
+            let secret_key = match get_secret_key() {
+                Ok(secret_key) => secret_key,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
+            match get_compute_result(secret_key, seq_number, &config_path).await {
                 Ok(result) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, result) {

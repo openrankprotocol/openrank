@@ -343,8 +343,16 @@ impl OpenRankSDK {
         Ok(ComputeResult {votes, scores: score_entries})
     }
 
-    pub fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
-        todo!()
+    pub async fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
+        // Creates a new client
+        let client = HttpClient::builder()
+            .build(self.config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+        let result: compute::Result = client
+            .request("sequencer_get_compute_result", vec![seq_number])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        Ok(result)
     }
 
     pub fn get_compute_result_txs(&self, seq_number: u64) -> Result<Vec<Tx>, SdkError> {
@@ -470,18 +478,18 @@ pub async fn get_results(
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
 pub async fn get_compute_result(
-    arg: String, config_path: &str,
+    sk: SigningKey, arg: String, config_path: &str,
 ) -> Result<compute::Result, SdkError> {
+    // Read config
     let config = read_config(config_path)?;
-    // Creates a new client
-    let client = HttpClient::builder()
-        .build(config.sequencer.endpoint.as_str())
-        .map_err(SdkError::JsonRpcClientError)?;
+
+    // Decoding the sequence number
     let seq_number = arg.parse::<u64>().map_err(SdkError::ParseIntError)?;
-    let result: compute::Result = client
-        .request("sequencer_get_compute_result", vec![seq_number])
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
+
+    // Create SDK & get results
+    let sdk = OpenRankSDK::new(sk, config);
+    let result = sdk.get_compute_result(seq_number).await?;
+
     Ok(result)
 }
 
