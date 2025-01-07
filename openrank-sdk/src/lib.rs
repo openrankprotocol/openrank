@@ -399,10 +399,26 @@ impl OpenRankSDK {
         Ok(tx)
     }
 
-    pub fn get_trust_updates(
-        &self, from: Option<&str>, size: Option<usize>,
+    pub async fn get_trust_updates(
+        &self, from: Option<String>, size: Option<usize>,
     ) -> Result<Vec<TrustUpdate>, SdkError> {
-        todo!()
+        let from = if let Some(data) = from {
+            let tx_hash_bytes = hex::decode(data).map_err(SdkError::HexError)?;
+            let trust_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
+            Some(trust_update_tx_hash)
+        } else {
+            None
+        };
+        // Creates a new client
+        let client = HttpClient::builder()
+            .build(self.config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+        let results_query = GetTrustUpdateQuery::new(from, size);
+        let trust_updates: Vec<TrustUpdate> = client
+            .request("sequencer_get_trust_updates", vec![results_query])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        Ok(trust_updates)
     }
 
     pub fn get_seed_updates(
@@ -595,27 +611,16 @@ pub fn check_score_integrity(
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the `TrustUpdate`s.
 pub async fn get_trust_updates(
-    config_path: &str, from: Option<String>, size: Option<usize>,
+    sk: SigningKey, config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<TrustUpdate>, SdkError> {
+    // Read config
     let config = read_config(config_path)?;
-    // Creates a new client
-    let client = HttpClient::builder()
-        .build(config.sequencer.endpoint.as_str())
-        .map_err(SdkError::JsonRpcClientError)?;
-    // Calls the Sequencer to get the TrustUpdate given a TX hash.
-    let from = if let Some(data) = from {
-        let tx_hash_bytes = hex::decode(data).map_err(SdkError::HexError)?;
-        let trust_update_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-        Some(trust_update_tx_hash)
-    } else {
-        None
-    };
-    let results_query = GetTrustUpdateQuery::new(from, size);
-    let trust_updates: Vec<TrustUpdate> = client
-        .request("sequencer_get_trust_updates", vec![results_query])
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-    Ok(trust_updates)
+
+    // Create SDK & get results
+    let sdk = OpenRankSDK::new(sk, config);
+    let result = sdk.get_trust_updates(from, size).await?;
+
+    Ok(result)
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
