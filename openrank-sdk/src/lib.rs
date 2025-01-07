@@ -137,10 +137,11 @@ impl OpenRankSDK {
         Self { secret_key, config }
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Sends the list of `TrustEntry` to the Sequencer.
     pub async fn trust_update(
         &self, trust_entries: &[TrustEntry],
     ) -> Result<Vec<TxEvent>, SdkError> {
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -162,8 +163,9 @@ impl OpenRankSDK {
         Ok(results)
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Sends the list of `ScoreEntry` to the Sequencer.
     pub async fn seed_update(&self, seed_entries: &[ScoreEntry]) -> Result<Vec<TxEvent>, SdkError> {
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -185,8 +187,9 @@ impl OpenRankSDK {
         Ok(results)
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Sends a `ComputeRequest` transaction to the Sequencer.
     pub async fn compute_request(&self) -> Result<ComputeRequestResult, SdkError> {
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -209,13 +212,15 @@ impl OpenRankSDK {
         Ok(compute_result)
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
     pub async fn get_results(
         &self, compute_request_tx_hash: TxHash, allow_incomplete: bool, allow_failed: bool,
     ) -> Result<ComputeResult, SdkError> {
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
+        
         // Checking if ComputeRequest exists, if not, it should return an error
         let compute_request_key = (consts::COMPUTE_REQUEST, compute_request_tx_hash.clone());
         let _: Tx = client
@@ -346,8 +351,9 @@ impl OpenRankSDK {
         Ok(ComputeResult { votes, scores: score_entries })
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
     pub async fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -358,8 +364,9 @@ impl OpenRankSDK {
         Ok(result)
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
     pub async fn get_compute_result_txs(&self, seq_number: u64) -> Result<Vec<Tx>, SdkError> {
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -388,8 +395,9 @@ impl OpenRankSDK {
         Ok(txs_res)
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get the TX given a TX hash.
     pub async fn get_tx(&self, prefix: &str, tx_hash: &str) -> Result<Tx, SdkError> {
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -402,6 +410,8 @@ impl OpenRankSDK {
         Ok(tx)
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get the `TrustUpdate`s.
     pub async fn get_trust_updates(
         &self, from: Option<String>, size: Option<usize>,
     ) -> Result<Vec<TrustUpdate>, SdkError> {
@@ -412,7 +422,6 @@ impl OpenRankSDK {
         } else {
             None
         };
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -424,6 +433,8 @@ impl OpenRankSDK {
         Ok(trust_updates)
     }
 
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get the `SeedUpdate`s.
     pub async fn get_seed_updates(
         &self, from: Option<String>, size: Option<usize>,
     ) -> Result<Vec<SeedUpdate>, SdkError> {
@@ -435,7 +446,6 @@ impl OpenRankSDK {
             None
         };
 
-        // Creates a new client
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -468,8 +478,7 @@ impl OpenRankSDK {
 }
 
 /// 1. Reads a CSV file and get a list of `TrustEntry`.
-/// 2. Creates a new `Client`, which can be used to call the Sequencer.
-/// 3. Sends the list of `TrustEntry` to the Sequencer.
+/// 2. Call the `OpenRankSDK::trust_update` func
 pub async fn update_trust(
     sk: SigningKey, path: &str, config_path: &str,
 ) -> Result<Vec<TxEvent>, SdkError> {
@@ -496,8 +505,7 @@ pub async fn update_trust(
 }
 
 /// 1. Reads a CSV file and get a list of `ScoreEntry`.
-/// 2. Creates a new `Client`, which can be used to call the Sequencer.
-/// 3. Sends the list of `ScoreEntry` to the Sequencer.
+/// 2. Call the `OpenRankSDK::seed_update` func
 pub async fn update_seed(
     sk: SigningKey, path: &str, config_path: &str,
 ) -> Result<Vec<TxEvent>, SdkError> {
@@ -522,8 +530,7 @@ pub async fn update_seed(
     Ok(results)
 }
 
-/// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Sends a `ComputeRequest` transaction to the Sequencer.
+/// Call the `OpenRankSDK::compute_request` func
 pub async fn compute_request(
     sk: SigningKey, config_path: &str,
 ) -> Result<ComputeRequestResult, SdkError> {
@@ -537,8 +544,7 @@ pub async fn compute_request(
     Ok(result)
 }
 
-/// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
+/// Parse the `arg` & call the `OpenRankSDK::get_results` func
 pub async fn get_results(
     sk: SigningKey, arg: String, config_path: &str, allow_incomplete: bool, allow_failed: bool,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), SdkError> {
@@ -556,8 +562,7 @@ pub async fn get_results(
     Ok((result.votes, result.scores))
 }
 
-/// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
+/// Parse the `arg` & call the `OpenRankSDK::get_compute_result` func
 pub async fn get_compute_result(
     sk: SigningKey, arg: String, config_path: &str,
 ) -> Result<compute::Result, SdkError> {
@@ -574,8 +579,7 @@ pub async fn get_compute_result(
     Ok(result)
 }
 
-/// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
+/// Parse the `arg` & call the `OpenRankSDK::get_compute_result_txs` func
 pub async fn get_compute_result_txs(
     sk: SigningKey, arg: String, config_path: &str,
 ) -> Result<Vec<Tx>, SdkError> {
@@ -592,8 +596,7 @@ pub async fn get_compute_result_txs(
     Ok(result)
 }
 
-/// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get the TX given a TX hash.
+/// Parse the `arg` & call the `OpenRankSDK::get_tx` func
 pub async fn get_tx(sk: SigningKey, arg: String, config_path: &str) -> Result<Tx, SdkError> {
     // Read config
     let config = read_config(config_path)?;
@@ -626,8 +629,7 @@ pub fn check_score_integrity(
     OpenRankSDK::check_score_integrity(votes, scores, test_vector)
 }
 
-/// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get the `TrustUpdate`s.
+/// Call the `OpenRankSDK::get_trust_updates` func
 pub async fn get_trust_updates(
     sk: SigningKey, config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<TrustUpdate>, SdkError> {
@@ -641,8 +643,7 @@ pub async fn get_trust_updates(
     Ok(result)
 }
 
-/// 1. Creates a new `Client`, which can be used to call the Sequencer.
-/// 2. Calls the Sequencer to get the `SeedUpdate`s.
+/// Call the `OpenRankSDK::get_seed_updates` func
 pub async fn get_seed_updates(
     sk: SigningKey, config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<SeedUpdate>, SdkError> {
