@@ -149,7 +149,16 @@ async fn main() -> ExitCode {
             allow_incomplete,
             allow_failed,
         } => {
+            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
+            let secret_key = match get_secret_key() {
+                Ok(secret_key) => secret_key,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
             let res = get_results(
+                secret_key,
                 request_id,
                 config_path.as_str(),
                 allow_incomplete,
@@ -190,7 +199,15 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
-            match get_results(request_id, config_path.as_str(), false, false).await {
+            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
+            let secret_key = match get_secret_key() {
+                Ok(secret_key) => secret_key,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
+            match get_results(secret_key, request_id, config_path.as_str(), false, false).await {
                 Ok((votes, results)) => {
                     let res = match check_score_integrity(votes, results, &test_vector) {
                         Ok(res) => res,

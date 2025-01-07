@@ -2,7 +2,7 @@ use alloy_rlp::encode;
 use csv::StringRecord;
 use getset::Getters;
 use jsonrpsee::{core::client::ClientT, http_client::HttpClient};
-use k256::{ecdsa::Error as EcdsaError, ecdsa::SigningKey, schnorr::CryptoRngCore};
+use k256::{ecdsa::{Error as EcdsaError, SigningKey}, schnorr::CryptoRngCore};
 use openrank_common::{
     address_from_sk,
     algos::et::is_converged_org,
@@ -205,10 +205,142 @@ impl OpenRankSDK {
         Ok(compute_result)
     }
 
-    pub fn get_results(
-        &self, tx_hash: &str, allow_incomplete: bool, allow_failed: bool,
+    pub async fn get_results(
+        &self, compute_request_tx_hash: TxHash, allow_incomplete: bool, allow_failed: bool,
     ) -> Result<ComputeResult, SdkError> {
-        todo!()
+
+        // Creates a new client
+        let client = HttpClient::builder()
+            .build(self.config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+        // Checking if ComputeRequest exists, if not, it should return an error
+        let compute_request_key = (consts::COMPUTE_REQUEST, compute_request_tx_hash.clone());
+        let _: Tx = client
+            .request("sequencer_get_tx", compute_request_key)
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        // If ComputeRequest exists, we can proceed with fetching results
+        let res: Result<u64, SdkError> = client
+            .request(
+                "sequencer_get_compute_result_seq_number",
+                vec![compute_request_tx_hash.clone()],
+            )
+            .await
+            .map_err(SdkError::JsonRpcClientError);
+        let seq_number = match res {
+            Ok(res) => Ok(res),
+            Err(e) => match e {
+                SdkError::JsonRpcClientError(jsonrpsee::core::ClientError::Call(call_e)) => {
+                    if call_e.code() == NOT_FOUND_CODE {
+                        Err(SdkError::ComputeJobInProgress)
+                    } else {
+                        Err(SdkError::JsonRpcClientError(
+                            jsonrpsee::core::ClientError::Call(call_e),
+                        ))
+                    }
+                },
+                e => Err(e),
+            },
+        }?;
+
+        let result: compute::Result = client
+            .request("sequencer_get_compute_result", vec![seq_number])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        let commitment_tx_key = (
+            consts::COMPUTE_COMMITMENT,
+            result.compute_commitment_tx_hash().clone(),
+        );
+        let commitment_tx: Tx = client
+            .request("sequencer_get_tx", commitment_tx_key)
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        let commitment = match commitment_tx.body() {
+            tx::Body::ComputeCommitment(commitment) => Ok(commitment),
+            _ => Err(SdkError::InvalidTxKind),
+        }?;
+        let mut scores_tx_keys = Vec::new();
+        for scores_tx_hash in commitment.scores_tx_hashes() {
+            scores_tx_keys.push((consts::COMPUTE_SCORES, scores_tx_hash));
+        }
+        let scores_txs: Vec<Tx> = client
+            .request("sequencer_get_txs", vec![scores_tx_keys])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        let mut score_entries = Vec::new();
+        for scores_tx in &scores_txs {
+            let scores = match scores_tx.body() {
+                tx::Body::ComputeScores(scores) => Ok(scores),
+                _ => Err(SdkError::InvalidTxKind),
+            }?;
+            score_entries.extend(scores.entries().clone());
+        }
+
+        score_entries.sort_by(|a, b| match a.value().partial_cmp(b.value()) {
+            Some(ordering) => ordering,
+            None => {
+                if a.value().is_nan() && b.value().is_nan() {
+                    Ordering::Equal
+                } else if a.value().is_nan() {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                }
+            },
+        });
+        score_entries.reverse();
+
+        let assignment_key = (consts::COMPUTE_ASSIGNMENT, commitment.assignment_tx_hash());
+        let assignment_tx: Tx = client
+            .request("sequencer_get_tx", assignment_key)
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        let _assignment = match assignment_tx.body() {
+            tx::Body::ComputeAssignment(assignment) => Ok(assignment),
+            _ => Err(SdkError::InvalidTxKind),
+        }?;
+
+        // let num_assigned_verifiers = assignment.assigned_verifier_node().len();
+        let num_assigned_verifiers = 1;
+        let verification_tx_hashes = result.compute_verification_tx_hashes();
+        if (verification_tx_hashes.len() < num_assigned_verifiers) & !allow_incomplete {
+            return Err(SdkError::IncompleteResult(
+                num_assigned_verifiers,
+                verification_tx_hashes.len(),
+            ));
+        }
+
+        let mut verification_tx_keys = Vec::new();
+        for verification_tx_hash in verification_tx_hashes {
+            verification_tx_keys.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
+        }
+        let verification_txs: Vec<Tx> = client
+            .request("sequencer_get_txs", vec![verification_tx_keys])
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        let mut verification_results = Vec::new();
+        for verification_tx in &verification_txs {
+            let res = match verification_tx.body() {
+                tx::Body::ComputeVerification(res) => Ok(res),
+                _ => Err(SdkError::InvalidTxKind),
+            }?;
+            verification_results.push(res.clone());
+        }
+
+        let (verification_result, count_positive) =
+            is_verification_passed(verification_results.clone());
+        if !verification_result & !allow_failed {
+            return Err(SdkError::ComputeJobFailed(
+                count_positive,
+                verification_tx_hashes.len(),
+            ));
+        }
+
+        let votes = verification_results.iter().map(|x| *x.verification_result()).collect();
+        Ok(ComputeResult {votes, scores: score_entries})
     }
 
     pub fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
@@ -313,143 +445,26 @@ pub async fn compute_request(sk: SigningKey, config_path: &str) -> Result<Comput
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the EigenTrust scores(`ScoreEntry`s).
 pub async fn get_results(
-    arg: String, config_path: &str, allow_incomplete: bool, allow_failed: bool,
+    sk: SigningKey, arg: String, config_path: &str, allow_incomplete: bool, allow_failed: bool,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), SdkError> {
+    // Read config
     let config = read_config(config_path)?;
-    // Creates a new client
-    let client = HttpClient::builder()
-        .build(config.sequencer.endpoint.as_str())
-        .map_err(SdkError::JsonRpcClientError)?;
+
+    // Decoding the ComputeRequest TX hash
     let tx_hash_bytes = hex::decode(arg).map_err(SdkError::HexError)?;
     let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    // Checking if ComputeRequest exists, if not, it should return an error
-    let compute_request_key = (consts::COMPUTE_REQUEST, compute_request_tx_hash.clone());
-    let _: Tx = client
-        .request("sequencer_get_tx", compute_request_key)
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
 
-    // If ComputeRequest exists, we can proceed with fetching results
-    let res: Result<u64, SdkError> = client
-        .request(
-            "sequencer_get_compute_result_seq_number",
-            vec![compute_request_tx_hash.clone()],
+    // Create SDK & get results
+    let sdk = OpenRankSDK::new(sk, config);
+    let result = sdk
+        .get_results(
+            compute_request_tx_hash,
+            allow_incomplete,
+            allow_failed,
         )
-        .await
-        .map_err(SdkError::JsonRpcClientError);
-    let seq_number = match res {
-        Ok(res) => Ok(res),
-        Err(e) => match e {
-            SdkError::JsonRpcClientError(jsonrpsee::core::ClientError::Call(call_e)) => {
-                if call_e.code() == NOT_FOUND_CODE {
-                    Err(SdkError::ComputeJobInProgress)
-                } else {
-                    Err(SdkError::JsonRpcClientError(
-                        jsonrpsee::core::ClientError::Call(call_e),
-                    ))
-                }
-            },
-            e => Err(e),
-        },
-    }?;
+        .await?;
 
-    let result: compute::Result = client
-        .request("sequencer_get_compute_result", vec![seq_number])
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-
-    let commitment_tx_key = (
-        consts::COMPUTE_COMMITMENT,
-        result.compute_commitment_tx_hash().clone(),
-    );
-    let commitment_tx: Tx = client
-        .request("sequencer_get_tx", commitment_tx_key)
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-    let commitment = match commitment_tx.body() {
-        tx::Body::ComputeCommitment(commitment) => Ok(commitment),
-        _ => Err(SdkError::InvalidTxKind),
-    }?;
-    let mut scores_tx_keys = Vec::new();
-    for scores_tx_hash in commitment.scores_tx_hashes() {
-        scores_tx_keys.push((consts::COMPUTE_SCORES, scores_tx_hash));
-    }
-    let scores_txs: Vec<Tx> = client
-        .request("sequencer_get_txs", vec![scores_tx_keys])
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-    let mut score_entries = Vec::new();
-    for scores_tx in &scores_txs {
-        let scores = match scores_tx.body() {
-            tx::Body::ComputeScores(scores) => Ok(scores),
-            _ => Err(SdkError::InvalidTxKind),
-        }?;
-        score_entries.extend(scores.entries().clone());
-    }
-
-    score_entries.sort_by(|a, b| match a.value().partial_cmp(b.value()) {
-        Some(ordering) => ordering,
-        None => {
-            if a.value().is_nan() && b.value().is_nan() {
-                Ordering::Equal
-            } else if a.value().is_nan() {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            }
-        },
-    });
-    score_entries.reverse();
-
-    let assignment_key = (consts::COMPUTE_ASSIGNMENT, commitment.assignment_tx_hash());
-    let assignment_tx: Tx = client
-        .request("sequencer_get_tx", assignment_key)
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-    let _assignment = match assignment_tx.body() {
-        tx::Body::ComputeAssignment(assignment) => Ok(assignment),
-        _ => Err(SdkError::InvalidTxKind),
-    }?;
-
-    // let num_assigned_verifiers = assignment.assigned_verifier_node().len();
-    let num_assigned_verifiers = 1;
-    let verification_tx_hashes = result.compute_verification_tx_hashes();
-    if (verification_tx_hashes.len() < num_assigned_verifiers) & !allow_incomplete {
-        return Err(SdkError::IncompleteResult(
-            num_assigned_verifiers,
-            verification_tx_hashes.len(),
-        ));
-    }
-
-    let mut verification_tx_keys = Vec::new();
-    for verification_tx_hash in verification_tx_hashes {
-        verification_tx_keys.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
-    }
-    let verification_txs: Vec<Tx> = client
-        .request("sequencer_get_txs", vec![verification_tx_keys])
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-
-    let mut verification_results = Vec::new();
-    for verification_tx in &verification_txs {
-        let res = match verification_tx.body() {
-            tx::Body::ComputeVerification(res) => Ok(res),
-            _ => Err(SdkError::InvalidTxKind),
-        }?;
-        verification_results.push(res.clone());
-    }
-
-    let (verification_result, count_positive) =
-        is_verification_passed(verification_results.clone());
-    if !verification_result & !allow_failed {
-        return Err(SdkError::ComputeJobFailed(
-            count_positive,
-            verification_tx_hashes.len(),
-        ));
-    }
-
-    let votes = verification_results.iter().map(|x| *x.verification_result()).collect();
-    Ok((votes, score_entries))
+    Ok((result.votes, result.scores))
 }
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
