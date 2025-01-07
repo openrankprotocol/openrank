@@ -83,7 +83,7 @@ pub struct ComputeRequestResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
-struct ComputeResults {
+struct ComputeResult {
     votes: Vec<bool>,
     scores: Vec<ScoreEntry>,
 }
@@ -126,30 +126,62 @@ pub enum SdkError {
 
 struct OpenRankSDK {
     secret_key: SigningKey,
-    config: Config
+    config: Config,
 }
 
 impl OpenRankSDK {
     pub fn new(secret_key: SigningKey, config: Config) -> Self {
         Self { secret_key, config }
     }
+
+    pub fn trust_update(&self, trust_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError> {
+        todo!()
+    }
+
+    pub fn seed_update(&self, seed_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError> {
+        todo!()
+    }
+
+    pub fn compute_request(&self) -> Result<ComputeRequestResult, SdkError> {
+        todo!()
+    }
+
+    pub fn get_results(
+        &self, tx_hash: &str, allow_incomplete: bool, allow_failed: bool,
+    ) -> Result<ComputeResult, SdkError> {
+        todo!()
+    }
+
+    pub fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
+        todo!()
+    }
+
+    pub fn get_compute_result_txs(&self, seq_number: u64) -> Result<Vec<Tx>, SdkError> {
+        todo!()
+    }
+
+    pub fn get_tx(&self, prefix: &str, tx_hash: &str) -> Result<Tx, SdkError> {
+        todo!()
+    }
+
+    pub fn get_trust_updates(
+        &self, from: Option<&str>, size: Option<usize>,
+    ) -> Result<Vec<TrustUpdate>, SdkError> {
+        todo!()
+    }
+
+    pub fn get_seed_updates(
+        &self, from: Option<&str>, size: Option<usize>,
+    ) -> Result<Vec<SeedUpdate>, SdkError> {
+        todo!()
+    }
+
+    pub fn check_score_integrity(
+        votes: Vec<bool>, computed_scores: Vec<ScoreEntry>, correct_scores: Vec<ScoreEntry>,
+    ) -> Result<bool, SdkError> {
+        todo!()
+    }
 }
-
-// impl OpenRankSDK {
-//     fn trust_update(&self, trust_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError>;
-//     fn seed_update(&self, seed_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError>;
-//     fn compute_request(&self) -> Result<ComputeRequestResult, SdkError>;
-//     fn get_results(&self, tx_hash: &str, allow_incomplete: bool, allow_failed: bool) -> Result<ComputeResult, SdkError>;
-//     fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError>;
-//     fn get_compute_result_txs(&self, seq_number: u64) -> Result<Vec<Tx>, SdkError>;
-//     fn get_tx(&self, prefix: &str, tx_hash: &str) -> Result<Tx, SdkError>;
-//     fn get_trust_updates(&self, from: Option<&str>, size: Option<usize> ) -> Result<Vec<TrustUpdate>, SdkError>;
-//     fn get_seed_updates(&self, from: Option<&str>, size: Option<usize> ) -> Result<Vec<SeedUpdate>, SdkError>;
-//     fn check_score_integrity(
-//         votes: Vec<bool>, computed_scores: Vec<ScoreEntry>, correct_scores: Vec<ScoreEntry>,
-//     ) -> Result<bool, SdkError>;
-// } 
-
 
 /// 1. Reads a CSV file and get a list of `TrustEntry`.
 /// 2. Creates a new `Client`, which can be used to call the Sequencer.
