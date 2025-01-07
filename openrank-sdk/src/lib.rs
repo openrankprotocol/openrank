@@ -385,8 +385,18 @@ impl OpenRankSDK {
         Ok(txs_res)
     }
 
-    pub fn get_tx(&self, prefix: &str, tx_hash: &str) -> Result<Tx, SdkError> {
-        todo!()
+    pub async fn get_tx(&self, prefix: &str, tx_hash: &str) -> Result<Tx, SdkError> {
+        // Creates a new client
+        let client = HttpClient::builder()
+            .build(self.config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+        let tx_hash_bytes = hex::decode(tx_hash).map_err(SdkError::HexError)?;
+        let tx_hash = TxHash::from_bytes(tx_hash_bytes);
+        let tx: Tx = client
+            .request("sequencer_get_tx", (prefix.to_string(), tx_hash))
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        Ok(tx)
     }
 
     pub fn get_trust_updates(
@@ -537,21 +547,19 @@ pub async fn get_compute_result_txs(sk: SigningKey, arg: String, config_path: &s
 
 /// 1. Creates a new `Client`, which can be used to call the Sequencer.
 /// 2. Calls the Sequencer to get the TX given a TX hash.
-pub async fn get_tx(arg: String, config_path: &str) -> Result<Tx, SdkError> {
+pub async fn get_tx(sk: SigningKey, arg: String, config_path: &str) -> Result<Tx, SdkError> {
+    // Read config
     let config = read_config(config_path)?;
-    // Creates a new client
-    let client = HttpClient::builder()
-        .build(config.sequencer.endpoint.as_str())
-        .map_err(SdkError::JsonRpcClientError)?;
+
+    // Parse arg, to get the prefix and TX hash
     let arg_clone = arg.clone();
     let (prefix, tx_hash) = arg.split_once(':').ok_or(SdkError::ArgParseError(arg_clone))?;
-    let tx_hash_bytes = hex::decode(tx_hash).map_err(SdkError::HexError)?;
-    let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-    let tx: Tx = client
-        .request("sequencer_get_tx", (prefix.to_string(), tx_hash))
-        .await
-        .map_err(SdkError::JsonRpcClientError)?;
-    Ok(tx)
+   
+    // Create SDK & get results
+    let sdk = OpenRankSDK::new(sk, config);
+    let result = sdk.get_tx(prefix, tx_hash).await?;
+
+    Ok(result)
 }
 
 /// Checks the score integrity against the ones stored in `path`.
