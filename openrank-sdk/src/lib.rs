@@ -158,8 +158,27 @@ impl OpenRankSDK {
 
     }
 
-    pub fn seed_update(&self, seed_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError> {
-        todo!()
+    pub async fn seed_update(&self, seed_entries: &[ScoreEntry]) -> Result<Vec<TxEvent>, SdkError> {
+        // Creates a new client
+        let client = HttpClient::builder()
+            .build(self.config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        let mut results = Vec::new();
+        for chunk in seed_entries.chunks(SEED_CHUNK_SIZE) {
+            let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
+                self.config.domain.seed_namespace(),
+                chunk.to_vec(),
+            )));
+            tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
+
+            let tx_event: TxEvent = client
+                .request("sequencer_seed_update", vec![hex::encode(encode(tx))])
+                .await
+                .map_err(SdkError::JsonRpcClientError)?;
+            results.push(tx_event);
+        }
+        Ok(results)
     }
 
     pub fn compute_request(&self) -> Result<ComputeRequestResult, SdkError> {
@@ -237,6 +256,7 @@ pub async fn update_trust(
 pub async fn update_seed(
     sk: SigningKey, path: &str, config_path: &str,
 ) -> Result<Vec<TxEvent>, SdkError> {
+    // Read CSV, to get a list of `ScoreEntry`
     let f = File::open(path).map_err(SdkError::IoError)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
@@ -247,26 +267,13 @@ pub async fn update_seed(
         entries.push(score_entry);
     }
 
+    // Read config
     let config = read_config(config_path)?;
-    // Creates a new client
-    let client = HttpClient::builder()
-        .build(config.sequencer.endpoint.as_str())
-        .map_err(SdkError::JsonRpcClientError)?;
 
-    let mut results = Vec::new();
-    for chunk in entries.chunks(SEED_CHUNK_SIZE) {
-        let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
-            config.domain.seed_namespace(),
-            chunk.to_vec(),
-        )));
-        tx.sign(&sk).map_err(SdkError::EcdsaError)?;
+    // Create SDK & send seed updates
+    let sdk = OpenRankSDK::new(sk, config);
+    let results = sdk.seed_update(&entries).await?;
 
-        let tx_event: TxEvent = client
-            .request("sequencer_seed_update", vec![hex::encode(encode(tx))])
-            .await
-            .map_err(SdkError::JsonRpcClientError)?;
-        results.push(tx_event);
-    }
     Ok(results)
 }
 
