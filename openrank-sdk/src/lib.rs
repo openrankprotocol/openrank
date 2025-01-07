@@ -134,8 +134,28 @@ impl OpenRankSDK {
         Self { secret_key, config }
     }
 
-    pub fn trust_update(&self, trust_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError> {
-        todo!()
+    pub async fn trust_update(&self, trust_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError> {
+        // Creates a new client
+        let client = HttpClient::builder()
+            .build(self.config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        let mut results = Vec::new();
+        for chunk in trust_entries.chunks(TRUST_CHUNK_SIZE) {
+            let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
+                self.config.domain.trust_namespace(),
+                chunk.to_vec(),
+            )));
+            tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
+
+            let result: TxEvent = client
+                .request("sequencer_trust_update", vec![hex::encode(encode(tx))])
+                .await
+                .map_err(SdkError::JsonRpcClientError)?;
+            results.push(result);
+        }
+        Ok(results)
+
     }
 
     pub fn seed_update(&self, seed_entries: &[TrustEntry]) -> Result<Vec<TxEvent>, SdkError> {
@@ -189,6 +209,7 @@ impl OpenRankSDK {
 pub async fn update_trust(
     sk: SigningKey, path: &str, config_path: &str,
 ) -> Result<Vec<TxEvent>, SdkError> {
+    // Read CSV, to get a list of `TrustEntry`
     let f = File::open(path).map_err(SdkError::IoError)?;
     let mut rdr = csv::Reader::from_reader(f);
     let mut entries = Vec::new();
@@ -200,26 +221,13 @@ pub async fn update_trust(
         entries.push(trust_entry);
     }
 
+    // Read config
     let config = read_config(config_path)?;
-    // Creates a new client
-    let client = HttpClient::builder()
-        .build(config.sequencer.endpoint.as_str())
-        .map_err(SdkError::JsonRpcClientError)?;
 
-    let mut results = Vec::new();
-    for chunk in entries.chunks(TRUST_CHUNK_SIZE) {
-        let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
-            config.domain.trust_namespace(),
-            chunk.to_vec(),
-        )));
-        tx.sign(&sk).map_err(SdkError::EcdsaError)?;
+    // Create SDK & send trust updates
+    let sdk = OpenRankSDK::new(sk, config);
+    let results = sdk.trust_update(&entries).await?;
 
-        let result: TxEvent = client
-            .request("sequencer_trust_update", vec![hex::encode(encode(tx))])
-            .await
-            .map_err(SdkError::JsonRpcClientError)?;
-        results.push(result);
-    }
     Ok(results)
 }
 
