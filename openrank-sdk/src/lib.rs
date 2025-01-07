@@ -220,7 +220,7 @@ impl OpenRankSDK {
         let client = HttpClient::builder()
             .build(self.config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
-        
+
         // Checking if ComputeRequest exists, if not, it should return an error
         let compute_request_key = (consts::COMPUTE_REQUEST, compute_request_tx_hash.clone());
         let _: Tx = client
