@@ -4,10 +4,7 @@ use rand::thread_rng;
 use std::process::ExitCode;
 
 use csv::StringRecord;
-use k256::{
-    ecdsa::SigningKey,
-    schnorr::CryptoRngCore,
-};
+use k256::{ecdsa::SigningKey, schnorr::CryptoRngCore};
 use openrank_common::{
     address_from_sk,
     tx::{
@@ -18,11 +15,8 @@ use openrank_common::{
     tx_event::TxEvent,
 };
 use serde::Serialize;
-use std::{
-    fs::File,
-    io::Write,
-};
 use std::io::BufWriter;
+use std::{fs::File, io::Write};
 
 use openrank_sdk::*;
 
@@ -566,7 +560,6 @@ async fn get_seed_updates(
 
     Ok(result)
 }
-
 
 /// Utility function for writing json to a file.
 fn write_json_to_file<T: Serialize>(path: &str, data: T) -> Result<(), SdkError> {
