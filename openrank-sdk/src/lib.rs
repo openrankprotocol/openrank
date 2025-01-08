@@ -130,11 +130,15 @@ pub enum SdkError {
 pub struct OpenRankSDK {
     secret_key: SigningKey,
     config: Config,
+    client: HttpClient,
 }
 
 impl OpenRankSDK {
-    pub fn new(secret_key: SigningKey, config: Config) -> Self {
-        Self { secret_key, config }
+    pub fn new(secret_key: SigningKey, config: Config) -> Result<Self, SdkError> {
+        let client = HttpClient::builder()
+            .build(config.sequencer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+        Ok(Self { secret_key, config, client })
     }
 
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
@@ -142,10 +146,6 @@ impl OpenRankSDK {
     pub async fn trust_update(
         &self, trust_entries: &[TrustEntry],
     ) -> Result<Vec<TxEvent>, SdkError> {
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
-
         let mut results = Vec::new();
         for chunk in trust_entries.chunks(TRUST_CHUNK_SIZE) {
             let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
@@ -154,7 +154,7 @@ impl OpenRankSDK {
             )));
             tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
 
-            let result: TxEvent = client
+            let result: TxEvent = self.client
                 .request("sequencer_trust_update", vec![hex::encode(encode(tx))])
                 .await
                 .map_err(SdkError::JsonRpcClientError)?;
@@ -166,10 +166,6 @@ impl OpenRankSDK {
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
     /// 2. Sends the list of `ScoreEntry` to the Sequencer.
     pub async fn seed_update(&self, seed_entries: &[ScoreEntry]) -> Result<Vec<TxEvent>, SdkError> {
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
-
         let mut results = Vec::new();
         for chunk in seed_entries.chunks(SEED_CHUNK_SIZE) {
             let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
@@ -178,7 +174,7 @@ impl OpenRankSDK {
             )));
             tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
 
-            let tx_event: TxEvent = client
+            let tx_event: TxEvent = self.client
                 .request("sequencer_seed_update", vec![hex::encode(encode(tx))])
                 .await
                 .map_err(SdkError::JsonRpcClientError)?;
@@ -190,10 +186,6 @@ impl OpenRankSDK {
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
     /// 2. Sends a `ComputeRequest` transaction to the Sequencer.
     pub async fn compute_request(&self) -> Result<ComputeRequestResult, SdkError> {
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
-
         let rng = &mut thread_rng();
         let domain_id = self.config.domain.to_hash();
         let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
@@ -203,7 +195,7 @@ impl OpenRankSDK {
         tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
         let tx_hash = tx.hash();
 
-        let tx_event: TxEvent = client
+        let tx_event: TxEvent = self.client
             .request("sequencer_compute_request", vec![hex::encode(encode(tx))])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -217,19 +209,15 @@ impl OpenRankSDK {
     pub async fn get_results(
         &self, compute_request_tx_hash: TxHash, allow_incomplete: bool, allow_failed: bool,
     ) -> Result<ComputeResult, SdkError> {
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
-
         // Checking if ComputeRequest exists, if not, it should return an error
         let compute_request_key = (consts::COMPUTE_REQUEST, compute_request_tx_hash.clone());
-        let _: Tx = client
+        let _: Tx = self.client
             .request("sequencer_get_tx", compute_request_key)
             .await
             .map_err(SdkError::JsonRpcClientError)?;
 
         // If ComputeRequest exists, we can proceed with fetching results
-        let res: Result<u64, SdkError> = client
+        let res: Result<u64, SdkError> = self.client
             .request(
                 "sequencer_get_compute_result_seq_number",
                 vec![compute_request_tx_hash.clone()],
@@ -252,7 +240,7 @@ impl OpenRankSDK {
             },
         }?;
 
-        let result: compute::Result = client
+        let result: compute::Result = self.client
             .request("sequencer_get_compute_result", vec![seq_number])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -261,7 +249,7 @@ impl OpenRankSDK {
             consts::COMPUTE_COMMITMENT,
             result.compute_commitment_tx_hash().clone(),
         );
-        let commitment_tx: Tx = client
+        let commitment_tx: Tx = self.client
             .request("sequencer_get_tx", commitment_tx_key)
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -273,7 +261,7 @@ impl OpenRankSDK {
         for scores_tx_hash in commitment.scores_tx_hashes() {
             scores_tx_keys.push((consts::COMPUTE_SCORES, scores_tx_hash));
         }
-        let scores_txs: Vec<Tx> = client
+        let scores_txs: Vec<Tx> = self.client
             .request("sequencer_get_txs", vec![scores_tx_keys])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -301,7 +289,7 @@ impl OpenRankSDK {
         score_entries.reverse();
 
         let assignment_key = (consts::COMPUTE_ASSIGNMENT, commitment.assignment_tx_hash());
-        let assignment_tx: Tx = client
+        let assignment_tx: Tx = self.client
             .request("sequencer_get_tx", assignment_key)
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -324,7 +312,7 @@ impl OpenRankSDK {
         for verification_tx_hash in verification_tx_hashes {
             verification_tx_keys.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
         }
-        let verification_txs: Vec<Tx> = client
+        let verification_txs: Vec<Tx> = self.client
             .request("sequencer_get_txs", vec![verification_tx_keys])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -354,10 +342,7 @@ impl OpenRankSDK {
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
     /// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
     pub async fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
-        let result: compute::Result = client
+        let result: compute::Result = self.client
             .request("sequencer_get_compute_result", vec![seq_number])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -367,10 +352,8 @@ impl OpenRankSDK {
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
     /// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
     pub async fn get_compute_result_txs(&self, seq_number: u64) -> Result<Vec<Tx>, SdkError> {
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
-        let result: compute::Result = client
+
+        let result: compute::Result = self.client
             .request("sequencer_get_compute_result", vec![seq_number])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -388,7 +371,7 @@ impl OpenRankSDK {
             txs_arg.push((consts::COMPUTE_VERIFICATION, verification_tx_hash.clone()));
         }
 
-        let txs_res = client
+        let txs_res = self.client
             .request("sequencer_get_txs", vec![txs_arg])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -398,12 +381,10 @@ impl OpenRankSDK {
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
     /// 2. Calls the Sequencer to get the TX given a TX hash.
     pub async fn get_tx(&self, prefix: &str, tx_hash: &str) -> Result<Tx, SdkError> {
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
+
         let tx_hash_bytes = hex::decode(tx_hash).map_err(SdkError::HexError)?;
         let tx_hash = TxHash::from_bytes(tx_hash_bytes);
-        let tx: Tx = client
+        let tx: Tx = self.client
             .request("sequencer_get_tx", (prefix.to_string(), tx_hash))
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -422,11 +403,9 @@ impl OpenRankSDK {
         } else {
             None
         };
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
+
         let results_query = GetTrustUpdateQuery::new(from, size);
-        let trust_updates: Vec<TrustUpdate> = client
+        let trust_updates: Vec<TrustUpdate> = self.client
             .request("sequencer_get_trust_updates", vec![results_query])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -446,11 +425,9 @@ impl OpenRankSDK {
             None
         };
 
-        let client = HttpClient::builder()
-            .build(self.config.sequencer.endpoint.as_str())
-            .map_err(SdkError::JsonRpcClientError)?;
+
         let results_query = GetSeedUpdateQuery::new(from, size);
-        let seed_updates: Vec<SeedUpdate> = client
+        let seed_updates: Vec<SeedUpdate> = self.client
             .request("sequencer_get_seed_updates", vec![results_query])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
