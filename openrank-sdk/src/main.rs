@@ -163,16 +163,7 @@ async fn main() -> ExitCode {
             allow_incomplete,
             allow_failed,
         } => {
-            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
-            let secret_key = match get_secret_key() {
-                Ok(secret_key) => secret_key,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return ExitCode::FAILURE;
-                },
-            };
             let res = get_results(
-                secret_key,
                 request_id,
                 config_path.as_str(),
                 allow_incomplete,
@@ -213,15 +204,7 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetResultsAndCheckIntegrity { request_id, config_path, test_vector } => {
-            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
-            let secret_key = match get_secret_key() {
-                Ok(secret_key) => secret_key,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return ExitCode::FAILURE;
-                },
-            };
-            match get_results(secret_key, request_id, config_path.as_str(), false, false).await {
+            match get_results(request_id, config_path.as_str(), false, false).await {
                 Ok((votes, results)) => {
                     let res = match check_score_integrity(votes, results, &test_vector) {
                         Ok(res) => res,
@@ -240,15 +223,7 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetComputeResult { seq_number, config_path, output_path } => {
-            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
-            let secret_key = match get_secret_key() {
-                Ok(secret_key) => secret_key,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return ExitCode::FAILURE;
-                },
-            };
-            match get_compute_result(secret_key, seq_number, &config_path).await {
+            match get_compute_result(seq_number, &config_path).await {
                 Ok(result) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, result) {
@@ -264,15 +239,7 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetComputeResultTxs { seq_number, config_path, output_path } => {
-            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
-            let secret_key = match get_secret_key() {
-                Ok(secret_key) => secret_key,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return ExitCode::FAILURE;
-                },
-            };
-            match get_compute_result_txs(secret_key, seq_number, &config_path).await {
+            match get_compute_result_txs(seq_number, &config_path).await {
                 Ok(txs) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, txs) {
@@ -288,15 +255,7 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetTx { tx_id, config_path, output_path } => {
-            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
-            let secret_key = match get_secret_key() {
-                Ok(secret_key) => secret_key,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return ExitCode::FAILURE;
-                },
-            };
-            match get_tx(secret_key, tx_id, &config_path).await {
+            match get_tx(tx_id, &config_path).await {
                 Ok(tx) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, tx) {
@@ -312,15 +271,7 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetTrustUpdates { from, size, config_path, output_path } => {
-            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
-            let secret_key = match get_secret_key() {
-                Ok(secret_key) => secret_key,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return ExitCode::FAILURE;
-                },
-            };
-            match get_trust_updates(secret_key, &config_path, from, size).await {
+            match get_trust_updates(&config_path, from, size).await {
                 Ok(res) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, res) {
@@ -336,15 +287,7 @@ async fn main() -> ExitCode {
             }
         },
         Method::GetSeedUpdates { from, size, config_path, output_path } => {
-            // TODO: do we really need this extra "get_secret_key" call? Atm, it is just for "OpenRankSDK::new".
-            let secret_key = match get_secret_key() {
-                Ok(secret_key) => secret_key,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return ExitCode::FAILURE;
-                },
-            };
-            match get_seed_updates(secret_key, &config_path, from, size).await {
+            match get_seed_updates(&config_path, from, size).await {
                 Ok(res) => {
                     if let Some(output_path) = output_path {
                         if let Err(e) = write_json_to_file(&output_path, res) {
@@ -402,7 +345,7 @@ async fn update_trust(
     let config = read_config(config_path)?;
 
     // Create SDK & send trust updates
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(Some(sk), config)?;
     let results = sdk.trust_update(&entries).await?;
 
     Ok(results)
@@ -428,7 +371,7 @@ async fn update_seed(
     let config = read_config(config_path)?;
 
     // Create SDK & send seed updates
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(Some(sk), config)?;
     let results = sdk.seed_update(&entries).await?;
 
     Ok(results)
@@ -442,7 +385,7 @@ async fn compute_request(
     let config = read_config(config_path)?;
 
     // Create SDK & send compute request
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(Some(sk), config)?;
     let result = sdk.compute_request().await?;
 
     Ok(result)
@@ -450,7 +393,7 @@ async fn compute_request(
 
 /// Parse the `arg` & call the `OpenRankSDK::get_results` func
 async fn get_results(
-    sk: SigningKey, arg: String, config_path: &str, allow_incomplete: bool, allow_failed: bool,
+    arg: String, config_path: &str, allow_incomplete: bool, allow_failed: bool,
 ) -> Result<(Vec<bool>, Vec<ScoreEntry>), SdkError> {
     // Read config
     let config = read_config(config_path)?;
@@ -460,7 +403,7 @@ async fn get_results(
     let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(None, config)?;
     let result = sdk.get_results(compute_request_tx_hash, allow_incomplete, allow_failed).await?;
 
     Ok((result.votes, result.scores))
@@ -468,7 +411,7 @@ async fn get_results(
 
 /// Parse the `arg` & call the `OpenRankSDK::get_compute_result` func
 async fn get_compute_result(
-    sk: SigningKey, arg: String, config_path: &str,
+    arg: String, config_path: &str,
 ) -> Result<compute::Result, SdkError> {
     // Read config
     let config = read_config(config_path)?;
@@ -477,7 +420,7 @@ async fn get_compute_result(
     let seq_number = arg.parse::<u64>().map_err(SdkError::ParseIntError)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(None, config)?;
     let result = sdk.get_compute_result(seq_number).await?;
 
     Ok(result)
@@ -485,7 +428,7 @@ async fn get_compute_result(
 
 /// Parse the `arg` & call the `OpenRankSDK::get_compute_result_txs` func
 async fn get_compute_result_txs(
-    sk: SigningKey, arg: String, config_path: &str,
+    arg: String, config_path: &str,
 ) -> Result<Vec<Tx>, SdkError> {
     // Read config
     let config = read_config(config_path)?;
@@ -494,14 +437,14 @@ async fn get_compute_result_txs(
     let seq_number = arg.parse::<u64>().map_err(SdkError::ParseIntError)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(None, config)?;
     let result = sdk.get_compute_result_txs(seq_number).await?;
 
     Ok(result)
 }
 
 /// Parse the `arg` & call the `OpenRankSDK::get_tx` func
-async fn get_tx(sk: SigningKey, arg: String, config_path: &str) -> Result<Tx, SdkError> {
+async fn get_tx(arg: String, config_path: &str) -> Result<Tx, SdkError> {
     // Read config
     let config = read_config(config_path)?;
 
@@ -510,7 +453,7 @@ async fn get_tx(sk: SigningKey, arg: String, config_path: &str) -> Result<Tx, Sd
     let (prefix, tx_hash) = arg.split_once(':').ok_or(SdkError::ArgParseError(arg_clone))?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(None, config)?;
     let result = sdk.get_tx(prefix, tx_hash).await?;
 
     Ok(result)
@@ -535,13 +478,13 @@ pub fn check_score_integrity(
 
 /// Call the `OpenRankSDK::get_trust_updates` func
 async fn get_trust_updates(
-    sk: SigningKey, config_path: &str, from: Option<String>, size: Option<usize>,
+    config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<TrustUpdate>, SdkError> {
     // Read config
     let config = read_config(config_path)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(None, config)?;
     let result = sdk.get_trust_updates(from, size).await?;
 
     Ok(result)
@@ -549,13 +492,13 @@ async fn get_trust_updates(
 
 /// Call the `OpenRankSDK::get_seed_updates` func
 async fn get_seed_updates(
-    sk: SigningKey, config_path: &str, from: Option<String>, size: Option<usize>,
+    config_path: &str, from: Option<String>, size: Option<usize>,
 ) -> Result<Vec<SeedUpdate>, SdkError> {
     // Read config
     let config = read_config(config_path)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(sk, config)?;
+    let sdk = OpenRankSDK::new(None, config)?;
     let result = sdk.get_seed_updates(from, size).await?;
 
     Ok(result)
