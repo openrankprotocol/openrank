@@ -345,7 +345,7 @@ async fn update_trust(
     let config = read_config(config_path)?;
 
     // Create SDK & send trust updates
-    let sdk = OpenRankSDK::new(Some(sk), config)?;
+    let sdk = OpenRankSDK::new(config, Some(sk))?;
     let results = sdk.trust_update(&entries).await?;
 
     Ok(results)
@@ -371,7 +371,7 @@ async fn update_seed(
     let config = read_config(config_path)?;
 
     // Create SDK & send seed updates
-    let sdk = OpenRankSDK::new(Some(sk), config)?;
+    let sdk = OpenRankSDK::new(config, Some(sk))?;
     let results = sdk.seed_update(&entries).await?;
 
     Ok(results)
@@ -385,7 +385,7 @@ async fn compute_request(
     let config = read_config(config_path)?;
 
     // Create SDK & send compute request
-    let sdk = OpenRankSDK::new(Some(sk), config)?;
+    let sdk = OpenRankSDK::new(config, Some(sk))?;
     let result = sdk.compute_request().await?;
 
     Ok(result)
@@ -403,16 +403,14 @@ async fn get_results(
     let compute_request_tx_hash = TxHash::from_bytes(tx_hash_bytes);
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(None, config)?;
+    let sdk = OpenRankSDK::new(config, None)?;
     let result = sdk.get_results(compute_request_tx_hash, allow_incomplete, allow_failed).await?;
 
     Ok((result.votes, result.scores))
 }
 
 /// Parse the `arg` & call the `OpenRankSDK::get_compute_result` func
-async fn get_compute_result(
-    arg: String, config_path: &str,
-) -> Result<compute::Result, SdkError> {
+async fn get_compute_result(arg: String, config_path: &str) -> Result<compute::Result, SdkError> {
     // Read config
     let config = read_config(config_path)?;
 
@@ -420,16 +418,14 @@ async fn get_compute_result(
     let seq_number = arg.parse::<u64>().map_err(SdkError::ParseIntError)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(None, config)?;
+    let sdk = OpenRankSDK::new(config, None)?;
     let result = sdk.get_compute_result(seq_number).await?;
 
     Ok(result)
 }
 
 /// Parse the `arg` & call the `OpenRankSDK::get_compute_result_txs` func
-async fn get_compute_result_txs(
-    arg: String, config_path: &str,
-) -> Result<Vec<Tx>, SdkError> {
+async fn get_compute_result_txs(arg: String, config_path: &str) -> Result<Vec<Tx>, SdkError> {
     // Read config
     let config = read_config(config_path)?;
 
@@ -437,7 +433,7 @@ async fn get_compute_result_txs(
     let seq_number = arg.parse::<u64>().map_err(SdkError::ParseIntError)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(None, config)?;
+    let sdk = OpenRankSDK::new(config, None)?;
     let result = sdk.get_compute_result_txs(seq_number).await?;
 
     Ok(result)
@@ -453,7 +449,7 @@ async fn get_tx(arg: String, config_path: &str) -> Result<Tx, SdkError> {
     let (prefix, tx_hash) = arg.split_once(':').ok_or(SdkError::ArgParseError(arg_clone))?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(None, config)?;
+    let sdk = OpenRankSDK::new(config, None)?;
     let result = sdk.get_tx(prefix, tx_hash).await?;
 
     Ok(result)
@@ -484,7 +480,7 @@ async fn get_trust_updates(
     let config = read_config(config_path)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(None, config)?;
+    let sdk = OpenRankSDK::new(config, None)?;
     let result = sdk.get_trust_updates(from, size).await?;
 
     Ok(result)
@@ -498,7 +494,7 @@ async fn get_seed_updates(
     let config = read_config(config_path)?;
 
     // Create SDK & get results
-    let sdk = OpenRankSDK::new(None, config)?;
+    let sdk = OpenRankSDK::new(config, None)?;
     let result = sdk.get_seed_updates(from, size).await?;
 
     Ok(result)

@@ -123,7 +123,7 @@ pub struct OpenRankSDK {
 }
 
 impl OpenRankSDK {
-    pub fn new(secret_key: Option<SigningKey>, config: Config) -> Result<Self, SdkError> {
+    pub fn new(config: Config, secret_key: Option<SigningKey>) -> Result<Self, SdkError> {
         let client = HttpClient::builder()
             .build(config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
