@@ -112,16 +112,18 @@ pub enum SdkError {
     ComputeJobFailed(usize, usize),
     #[error("Compute job still in progress.")]
     ComputeJobInProgress,
+    #[error("Signing key unavailable")]
+    SigningKeyUnavailable,
 }
 
 pub struct OpenRankSDK {
-    secret_key: SigningKey,
+    secret_key: Option<SigningKey>,
     config: Config,
     client: HttpClient,
 }
 
 impl OpenRankSDK {
-    pub fn new(secret_key: SigningKey, config: Config) -> Result<Self, SdkError> {
+    pub fn new(secret_key: Option<SigningKey>, config: Config) -> Result<Self, SdkError> {
         let client = HttpClient::builder()
             .build(config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
@@ -133,13 +135,14 @@ impl OpenRankSDK {
     pub async fn trust_update(
         &self, trust_entries: &[TrustEntry],
     ) -> Result<Vec<TxEvent>, SdkError> {
+        let sk = self.secret_key.as_ref().ok_or(SdkError::SigningKeyUnavailable)?;
         let mut results = Vec::new();
         for chunk in trust_entries.chunks(TRUST_CHUNK_SIZE) {
             let mut tx = Tx::default_with(Body::TrustUpdate(TrustUpdate::new(
                 self.config.domain.trust_namespace(),
                 chunk.to_vec(),
             )));
-            tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
+            tx.sign(sk).map_err(SdkError::EcdsaError)?;
 
             let result: TxEvent = self
                 .client
@@ -154,13 +157,14 @@ impl OpenRankSDK {
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
     /// 2. Sends the list of `ScoreEntry` to the Sequencer.
     pub async fn seed_update(&self, seed_entries: &[ScoreEntry]) -> Result<Vec<TxEvent>, SdkError> {
+        let sk = self.secret_key.as_ref().ok_or(SdkError::SigningKeyUnavailable)?;
         let mut results = Vec::new();
         for chunk in seed_entries.chunks(SEED_CHUNK_SIZE) {
             let mut tx = Tx::default_with(Body::SeedUpdate(SeedUpdate::new(
                 self.config.domain.seed_namespace(),
                 chunk.to_vec(),
             )));
-            tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
+            tx.sign(sk).map_err(SdkError::EcdsaError)?;
 
             let tx_event: TxEvent = self
                 .client
@@ -175,13 +179,14 @@ impl OpenRankSDK {
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
     /// 2. Sends a `ComputeRequest` transaction to the Sequencer.
     pub async fn compute_request(&self) -> Result<ComputeRequestResult, SdkError> {
+        let sk = self.secret_key.as_ref().ok_or(SdkError::SigningKeyUnavailable)?;
         let rng = &mut thread_rng();
         let domain_id = self.config.domain.to_hash();
         let hash = hash_leaf::<Keccak256>(rng.gen::<[u8; 32]>().to_vec());
         let mut tx = Tx::default_with(Body::ComputeRequest(compute::Request::new(
             domain_id, 0, hash,
         )));
-        tx.sign(&self.secret_key).map_err(SdkError::EcdsaError)?;
+        tx.sign(sk).map_err(SdkError::EcdsaError)?;
         let tx_hash = tx.hash();
 
         let tx_event: TxEvent = self
