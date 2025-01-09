@@ -72,15 +72,12 @@ impl Sequencer {
         assert!(tx.sequence_number().is_none());
         let tx_hash = tx.hash();
 
-        match tx.body_mut() {
-            Body::ComputeRequest(request) => {
-                assert!(request.seq_number().is_none());
-                let request_sequence = RequestSequence::new(tx_hash, self.request_sequence_number);
-                self.db.put(request_sequence).map_err(Error::Db)?;
-                request.set_seq_number(self.request_sequence_number);
-                self.request_sequence_number += 1;
-            },
-            _ => {},
+        if let Body::ComputeRequest(request) = tx.body_mut() {
+            assert!(request.seq_number().is_none());
+            let request_sequence = RequestSequence::new(tx_hash, self.request_sequence_number);
+            self.db.put(request_sequence).map_err(Error::Db)?;
+            request.set_seq_number(self.request_sequence_number);
+            self.request_sequence_number += 1;
         }
 
         let now = SystemTime::now();
