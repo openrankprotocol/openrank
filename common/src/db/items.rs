@@ -1,7 +1,7 @@
 use crate::{
     db::DbItem,
     tx::{
-        compute::{Result, ResultReference},
+        compute::{RequestSequence, ResultReference},
         Tx, TxSequence, TxTimestamp,
     },
     tx_event::TxEvent,
@@ -24,20 +24,6 @@ impl DbItem for TxEvent {
 
     fn get_prefix(&self) -> String {
         "tx_event".to_string()
-    }
-}
-
-impl DbItem for Result {
-    fn get_key(&self) -> Vec<u8> {
-        self.get_seq_number().to_be_bytes().to_vec()
-    }
-
-    fn get_cf() -> String {
-        "metadata".to_string()
-    }
-
-    fn get_prefix(&self) -> String {
-        "result".to_string()
     }
 }
 
@@ -90,6 +76,20 @@ impl DbItem for TxTimestamp {
 
     fn get_cf() -> String {
         "tx_timestamp".to_string()
+    }
+
+    fn get_prefix(&self) -> String {
+        String::new()
+    }
+}
+
+impl DbItem for RequestSequence {
+    fn get_key(&self) -> Vec<u8> {
+        self.seq_number().to_be_bytes().to_vec()
+    }
+
+    fn get_cf() -> String {
+        "request_sequence".to_string()
     }
 
     fn get_prefix(&self) -> String {

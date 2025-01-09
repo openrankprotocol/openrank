@@ -422,8 +422,7 @@ impl Node {
             .chain(&topics_trust_update)
             .chain(&topics_seed_update)
             .chain(&topics_scores)
-            .chain(&topics_commitment)
-            .chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]);
+            .chain(&topics_commitment);
         for topic in iter_chain.clone() {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());

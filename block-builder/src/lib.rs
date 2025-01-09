@@ -1,8 +1,8 @@
-use alloy_rlp::Decodable;
-use coordinator::JobCoordinator;
+use alloy_rlp::{encode, Decodable};
 use dotenv::dotenv;
 use futures::StreamExt;
 use getset::Getters;
+use jsonrpsee::{server::Server, RpcModule};
 use k256::ecdsa;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
@@ -15,14 +15,26 @@ use openrank_common::{
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
+use sequencer::{
+    rpc::{RpcServer, SequencerServer},
+    seq::Sequencer,
+};
 use serde::{Deserialize, Serialize};
-use std::error::Error as StdError;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-use tokio::select;
+use std::{error::Error as StdError, sync::Arc};
+use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
+    time::Duration,
+};
+use tokio::{
+    select,
+    sync::mpsc::{self, Receiver},
+};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-mod coordinator;
+mod sequencer;
+
+const DB_REFRESH_INTERVAL: u64 = 10; // seconds
 
 #[derive(Debug)]
 /// Errors that can arise while using the block builder node.
@@ -77,6 +89,7 @@ struct Config {
     whitelist: Whitelist,
     database: db::Config,
     p2p: net::Config,
+    rpc: net::RpcConfig,
 }
 
 /// The Block Builder node. It contains the Swarm, the Config, the DB, the SecretKey, and the ComputeRunner.
@@ -85,9 +98,12 @@ struct Config {
 pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
-    db: Db,
+    primary_db: Arc<Db>,
+    secondary_db: Arc<Db>,
     secret_key: SigningKey,
-    coordinator: JobCoordinator,
+    receiver: Receiver<(Vec<u8>, Topic)>,
+    sequencer: Sequencer,
+    rpc: RpcModule<SequencerServer>,
 }
 
 impl Node {
@@ -107,17 +123,22 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-block-builder")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(
-            &config.database,
-            &[&Tx::get_cf(), &compute::Result::get_cf(), &compute::ResultReference::get_cf()],
-        )?;
+        let primary_db = Db::new(&config.database, &[&Tx::get_cf()])?;
+        let primary_db = Arc::new(primary_db);
+        let secondary_db = Db::new_secondary(&config.database, &[&Tx::get_cf()])?;
+        let secondary_db = Arc::new(secondary_db);
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        let coordinator = JobCoordinator::new();
+        let (sender, receiver) = mpsc::channel(100);
+        let seq_server =
+            SequencerServer::new(sender, config.whitelist.users.clone(), secondary_db.clone());
+        let rpc = seq_server.into_rpc();
 
-        Ok(Self { swarm, config, db, secret_key, coordinator })
+        let sequencer = Sequencer::new(primary_db.clone())?;
+
+        Ok(Self { swarm, config, primary_db, secondary_db, secret_key, rpc, receiver, sequencer })
     }
 
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
@@ -144,7 +165,7 @@ impl Node {
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let tx::Body::TrustUpdate(_) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -156,7 +177,7 @@ impl Node {
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let tx::Body::SeedUpdate(_) = tx.body() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -170,7 +191,7 @@ impl Node {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.users.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
                             assert_eq!(compute_request.domain_id(), domain_id);
 
                             let assignment_topic = Topic::DomainAssignent(*domain_id);
@@ -184,7 +205,7 @@ impl Node {
                             broadcast_event(&mut self.swarm, tx.clone(), assignment_topic)
                                 .map_err(|e| Error::P2P(e.to_string()))?;
                             // After broadcasting ComputeAssignment, save to db
-                            self.db.put(tx).map_err(Error::Db)?;
+                            self.primary_db.put(tx).map_err(Error::Db)?;
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -198,14 +219,14 @@ impl Node {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 consts::COMPUTE_ASSIGNMENT,
                                 commitment.assignment_tx_hash().clone(),
                             );
                             let assignment_tx: Tx =
-                                self.db.get(assignment_tx_key).map_err(Error::Db)?;
+                                self.primary_db.get(assignment_tx_key).map_err(Error::Db)?;
                             let assignment_body = match assignment_tx.body() {
                                 tx::Body::ComputeAssignment(assignment_body) => assignment_body,
                                 _ => return Err(Error::InvalidTxKind),
@@ -214,21 +235,23 @@ impl Node {
                                 consts::COMPUTE_REQUEST,
                                 assignment_body.request_tx_hash().clone(),
                             );
-                            let request: Tx = self.db.get(request_tx_key).map_err(Error::Db)?;
+                            let request: Tx =
+                                self.primary_db.get(request_tx_key).map_err(Error::Db)?;
                             if let Err(db::Error::NotFound) =
-                                self.db.get::<compute::ResultReference>(
+                                self.primary_db.get::<compute::ResultReference>(
                                     assignment_body.request_tx_hash().to_bytes(),
                                 )
                             {
-                                let mut result =
+                                let result =
                                     compute::Result::new(tx.hash(), Vec::new(), request.hash());
-                                self.coordinator.add_job_result(&mut result);
-                                self.db.put(result.clone()).map_err(Error::Db)?;
+                                let tx = Tx::default_with(tx::Body::ComputeResult(result));
+                                self.primary_db.put(tx.clone()).map_err(Error::Db)?;
                                 let reference = compute::ResultReference::new(
                                     assignment_body.request_tx_hash().clone(),
-                                    result.seq_number().unwrap(),
+                                    tx.hash(),
                                 );
-                                self.db.put(reference).map_err(Error::Db)?;
+                                self.primary_db.put(tx).map_err(Error::Db)?;
+                                self.primary_db.put(reference).map_err(Error::Db)?;
                             }
                         } else {
                             return Err(Error::InvalidTxKind);
@@ -243,7 +266,7 @@ impl Node {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.computer.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -257,29 +280,35 @@ impl Node {
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.verifier.contains(&address));
                             // Add Tx to db
-                            self.db.put(tx.clone()).map_err(Error::Db)?;
+                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
 
                             let assignment_tx_key = Tx::construct_full_key(
                                 consts::COMPUTE_ASSIGNMENT,
                                 compute_verification.assignment_tx_hash().clone(),
                             );
                             let assignment_tx: Tx =
-                                self.db.get(assignment_tx_key).map_err(Error::Db)?;
+                                self.primary_db.get(assignment_tx_key).map_err(Error::Db)?;
                             let assignment_body = match assignment_tx.body() {
                                 tx::Body::ComputeAssignment(assignment_body) => assignment_body,
                                 _ => return Err(Error::InvalidTxKind),
                             };
                             let result_reference: compute::ResultReference = self
-                                .db
+                                .primary_db
                                 .get(assignment_body.request_tx_hash().to_bytes())
                                 .map_err(Error::Db)?;
-                            let compute_result_key =
-                                compute::Result::construct_full_key(*result_reference.seq_number());
-                            let mut result: compute::Result =
-                                self.db.get(compute_result_key).map_err(Error::Db)?;
+                            let compute_result_key = Tx::construct_full_key(
+                                consts::COMPUTE_RESULT,
+                                result_reference.compute_result_tx_hash().clone(),
+                            );
+                            let result_tx: Tx =
+                                self.primary_db.get(compute_result_key).map_err(Error::Db)?;
+                            let mut result = match result_tx.body() {
+                                tx::Body::ComputeResult(result_body) => result_body.clone(),
+                                _ => return Err(Error::InvalidTxKind),
+                            };
                             result.append_verification_tx_hash(tx.hash());
-                            self.coordinator.add_job_result(&mut result);
-                            self.db.put(result).map_err(Error::Db)?;
+                            let result_tx = Tx::default_with(tx::Body::ComputeResult(result));
+                            self.primary_db.put(result_tx).map_err(Error::Db)?;
                         } else {
                             return Err(Error::InvalidTxKind);
                         }
@@ -292,22 +321,17 @@ impl Node {
         Ok(())
     }
 
-    /// Node recovery method. Used for loading results from the DB into the memory, for future indexing.
-    pub fn node_recovery(&mut self) -> Result<(), Error> {
-        let job_results: Vec<compute::Result> =
-            self.db.get_range_from_start(consts::COMPUTE_RESULT, None, None).map_err(Error::Db)?;
-        for mut job_result in job_results {
-            self.coordinator.add_job_result(&mut job_result);
-        }
-        Ok(())
-    }
-
     /// Runs the node:
     /// - Listens on all interfaces, on OS-assigned ephemeral ports.
     /// - Subscribes to all the topics.
     /// - Handles gossipsub events.
     /// - Handles mDNS events.
     pub async fn run(&mut self) -> Result<(), Box<dyn StdError>> {
+        net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
+        let server = Server::builder().build(self.config.rpc().address()).await?;
+        let handle = server.start(self.rpc.clone());
+        tokio::spawn(handle.stopped());
+
         net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
 
         let topics_trust_updates: Vec<Topic> = self
@@ -371,9 +395,62 @@ impl Node {
             self.swarm.behaviour_mut().gossipsub_subscribe(&topic)?;
         }
 
+        // spawn a task to refresh the DB every 10 seconds
+        let db_handler = self.secondary_db.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(DB_REFRESH_INTERVAL));
+            loop {
+                interval.tick().await;
+                match db_handler.refresh() {
+                    Ok(_) => {
+                        info!("DB refreshed");
+                    },
+                    Err(e) => {
+                        error!("DB refresh error: {e:?}");
+                    },
+                }
+            }
+        });
+
         // Kick it off
         loop {
             select! {
+                sibling = self.receiver.recv() => {
+                    if let Some((data, topic)) = sibling {
+                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                        let tx_event_res = TxEvent::decode(&mut data.as_ref());
+                        let tx_event = match tx_event_res {
+                            Ok(tx_event) => tx_event,
+                            Err(e) => {
+                                error!("TxEvent decoding error: {e:?}");
+                                continue;
+                            }
+                        };
+                        let tx_res = Tx::decode(&mut tx_event.data().as_ref());
+                        let tx = match tx_res {
+                            Ok(tx) => tx,
+                            Err(e) => {
+                                error!("Tx decoding error: {e:?}");
+                                continue;
+                            }
+                        };
+                        let seq_tx_res = self.sequencer.sequence_tx(tx);
+                        let seq_tx = match seq_tx_res {
+                            Ok(seq_tx) => seq_tx,
+                            Err(e) => {
+                                error!("Tx sequencing error: {e:?}");
+                                continue;
+                            }
+                        };
+                        let new_tx_event = TxEvent::default_with_data(encode(seq_tx));
+                        info!("PUBLISH: {:?}", topic.clone());
+                        if let Err(e) =
+                           self.swarm.behaviour_mut().gossipsub_publish(topic_wrapper, encode(new_tx_event))
+                        {
+                           error!("Publish error: {e:?}");
+                        }
+                    }
+                }
                 event = self.swarm.select_next_some() => match event {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {

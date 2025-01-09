@@ -294,8 +294,7 @@ impl Node {
         let iter_chain = topics_assignment
             .iter()
             .chain(topics_trust_update.iter())
-            .chain(topics_seed_update.iter())
-            .chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]);
+            .chain(topics_seed_update.iter());
         for topic in iter_chain.clone() {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());

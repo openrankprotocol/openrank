@@ -54,6 +54,25 @@ impl Request {
     pub fn new(domain_id: DomainHash, block_height: u32, compute_id: Hash) -> Self {
         Self { domain_id, block_height, compute_id, seq_number: None }
     }
+
+    pub fn set_seq_number(&mut self, seq_number: u64) {
+        self.seq_number = Some(seq_number)
+    }
+}
+
+#[derive(
+    Debug, Clone, PartialEq, Default, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
+)]
+#[getset(get = "pub")]
+pub struct RequestSequence {
+    compute_request_tx_hash: TxHash,
+    seq_number: u64,
+}
+
+impl RequestSequence {
+    pub fn new(compute_request_tx_hash: TxHash, seq_number: u64) -> Self {
+        Self { compute_request_tx_hash, seq_number }
+    }
 }
 
 #[derive(
@@ -95,7 +114,7 @@ impl Default for Verification {
 }
 
 /// Combination of several tx hashes representing the result of a compute run by `Computer`.
-#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
+#[derive(Debug, Clone, PartialEq, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
 #[rlp(trailing)]
 #[getset(get = "pub")]
 pub struct Result {
@@ -105,10 +124,6 @@ pub struct Result {
     compute_verification_tx_hashes: Vec<TxHash>,
     /// Hash of the original ComputeRequest TX.
     compute_request_tx_hash: TxHash,
-    /// Sequence number assigned by the block builder.
-    seq_number: Option<u64>,
-    /// Timestamp assigned by the block builder.
-    timestamp: Option<u64>,
 }
 
 impl Result {
@@ -120,33 +135,7 @@ impl Result {
             compute_commitment_tx_hash,
             compute_verification_tx_hashes,
             compute_request_tx_hash,
-            seq_number: None,
-            timestamp: None,
         }
-    }
-
-    /// Constructs the full key for the given tx hash.
-    pub fn construct_full_key(seq_number: u64) -> Vec<u8> {
-        let mut prefix = "result".to_string().as_bytes().to_vec();
-        prefix.extend(seq_number.to_be_bytes());
-        prefix
-    }
-
-    /// Set sequence number
-    pub fn set_seq_number(&mut self, seq_number: u64) {
-        assert!(self.seq_number().is_none());
-        self.seq_number = Some(seq_number);
-    }
-
-    /// Get sequence number
-    pub fn get_seq_number(&self) -> u64 {
-        self.seq_number.unwrap()
-    }
-
-    /// Set timestamp
-    pub fn set_timestamp(&mut self, timestamp: u64) {
-        assert!(self.timestamp().is_none());
-        self.timestamp = Some(timestamp);
     }
 
     /// Append verification tx hash
@@ -155,18 +144,18 @@ impl Result {
     }
 }
 
-/// Object connecting the sequence number with the original compute request
+/// Object connecting the compute result with the original compute request
 #[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 pub struct ResultReference {
-    /// Hash of the original job run request transaction.
+    /// Hash of the original compute request transaction.
     compute_request_tx_hash: TxHash,
-    /// Sequence number assigned by the block builder.
-    seq_number: u64,
+    /// Hash of the result transaction
+    compute_result_tx_hash: TxHash,
 }
 
 impl ResultReference {
-    pub fn new(compute_request_tx_hash: TxHash, seq_number: u64) -> Self {
-        Self { compute_request_tx_hash, seq_number }
+    pub fn new(compute_request_tx_hash: TxHash, compute_result_tx_hash: TxHash) -> Self {
+        Self { compute_request_tx_hash, compute_result_tx_hash }
     }
 }
