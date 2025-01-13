@@ -2,7 +2,7 @@ use alloy_rlp::Decodable;
 use dotenv::dotenv;
 use futures::StreamExt;
 use getset::Getters;
-use jsonrpsee::RpcModule;
+use jsonrpsee::{server::Server, RpcModule};
 use k256::ecdsa::{self, SigningKey};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
@@ -80,6 +80,7 @@ struct Config {
     whitelist: Whitelist,
     database: db::Config,
     p2p: net::Config,
+    rpc: net::RpcConfig,
 }
 
 #[derive(Getters)]
@@ -318,6 +319,11 @@ impl Node {
         }
 
         net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
+
+        // spawn a rpc server
+        let server = Server::builder().build(self.config.rpc().address()).await?;
+        let handle = server.start(self.rpc.clone());
+        tokio::spawn(handle.stopped());
 
         // Kick it off
         loop {
