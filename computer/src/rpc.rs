@@ -1,5 +1,5 @@
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use getset::Getters;
 use jsonrpsee::core::async_trait;
@@ -50,11 +50,11 @@ pub trait Rpc {
 #[getset(get = "pub")]
 /// The Sequencer JsonRPC server. It contains the sender, the whitelisted users, and the database connection.
 pub struct ComputerServer {
-    runner: Arc<ComputeRunner>,
+    runner: Arc<Mutex<ComputeRunner>>,
 }
 
 impl ComputerServer {
-    pub fn new(runner: Arc<ComputeRunner>) -> Self {
+    pub fn new(runner: Arc<Mutex<ComputeRunner>>) -> Self {
         Self { runner }
     }
 }
@@ -63,7 +63,8 @@ impl ComputerServer {
 impl RpcServer for ComputerServer {
     /// Fetch TrustUpdate contents
     async fn get_lt_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
-        let lt_tree_root = self.runner.base().get_lt_tree_root(&domain).map_err(|e| {
+        let compute_runner = self.runner.lock().unwrap();
+        let lt_tree_root = compute_runner.base().get_lt_tree_root(&domain).map_err(|e| {
             error!("{}", e);
             to_error_object(ErrorCode::DomainNotFound, Some(e))
         })?;
@@ -72,7 +73,8 @@ impl RpcServer for ComputerServer {
 
     /// Fetch SeedUpdate contents
     async fn get_seed_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
-        let st_tree_root = self.runner.base().get_st_tree_root(&domain).map_err(|e| {
+        let compute_runner = self.runner.lock().unwrap();
+        let st_tree_root = compute_runner.base().get_st_tree_root(&domain).map_err(|e| {
             error!("{}", e);
             to_error_object(ErrorCode::DomainNotFound, Some(e))
         })?;

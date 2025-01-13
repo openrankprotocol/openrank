@@ -16,7 +16,7 @@ use openrank_common::{
 };
 use rpc::{RpcServer, ComputerServer};
 use serde::{Deserialize, Serialize};
-use std::{fmt::{Display, Formatter, Result as FmtResult}, sync::Arc};
+use std::{fmt::{Display, Formatter, Result as FmtResult}, sync::{Arc, Mutex}};
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -88,7 +88,7 @@ pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
-    compute_runner: Arc<ComputeRunner>,
+    compute_runner: Arc<Mutex<ComputeRunner>>,
     secret_key: SigningKey,
     rpc: RpcModule<ComputerServer>
 }
@@ -126,7 +126,8 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            self.compute_runner
+                            let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                            computer_runner_mut
                                 .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
                         } else {
@@ -148,7 +149,8 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            self.compute_runner
+                            let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                            computer_runner_mut
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
                         } else {
@@ -180,16 +182,15 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            self.compute_runner.compute(domain.clone()).map_err(Error::Runner)?;
-                            self.compute_runner
+                            let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                            computer_runner_mut.compute(domain.clone()).map_err(Error::Runner)?;
+                            computer_runner_mut
                                 .create_compute_tree(domain.clone())
                                 .map_err(Error::Runner)?;
-                            let compute_scores = self
-                                .compute_runner
+                            let compute_scores = computer_runner_mut
                                 .get_compute_scores(domain.clone())
                                 .map_err(Error::Runner)?;
-                            let (lt_root, compute_root) = self
-                                .compute_runner
+                            let (lt_root, compute_root) = computer_runner_mut
                                 .get_root_hashes(domain.clone())
                                 .map_err(Error::Runner)?;
 
@@ -263,14 +264,14 @@ impl Node {
 
         let compute_runner = ComputeRunner::new(&config.domains);
 
-        let compute_runner = Arc::new(compute_runner);
-        let computer_server = ComputerServer::new(compute_runner.clone());
+        let compute_runner_arc_mutex = Arc::new(Mutex::new(compute_runner));
+        let computer_server = ComputerServer::new(compute_runner_arc_mutex.clone());
         let rpc = computer_server.into_rpc();
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, db, compute_runner, secret_key, rpc })
+        Ok(Self { swarm, config, db, compute_runner: compute_runner_arc_mutex, secret_key, rpc })
     }
 
     /// Runs the node:
@@ -383,7 +384,8 @@ impl Node {
                         .iter()
                         .find(|x| x.trust_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                    self.compute_runner
+                    let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                    computer_runner_mut
                         .update_trust(domain.clone(), trust_update.entries().clone())
                         .map_err(Error::Runner)?;
                 },
@@ -395,7 +397,8 @@ impl Node {
                         .iter()
                         .find(|x| x.seed_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                    self.compute_runner
+                    let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                    computer_runner_mut
                         .update_seed(domain.clone(), seed_update.entries().clone())
                         .map_err(Error::Runner)?;
                 },
