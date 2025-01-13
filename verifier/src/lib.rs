@@ -115,7 +115,7 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-verifier")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, &[&Tx::get_cf()])?;
+        let db = Db::new(&config.database, [Tx::get_cf()])?;
         let verification_runner = VerificationRunner::new(&config.domains);
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;

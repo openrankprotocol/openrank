@@ -324,7 +324,7 @@ impl Node {
                     "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                     message.topic.as_str(),
                 );
-                self.handle_gossipsub_data(message.data.clone(), &topic)?;
+                self.handle_gossipsub_data(message.data.clone(), topic)?;
             }
         }
 

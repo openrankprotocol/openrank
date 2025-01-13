@@ -250,7 +250,7 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-computer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, &[&Tx::get_cf()])?;
+        let db = Db::new(&config.database, [Tx::get_cf()])?;
 
         let compute_runner = ComputeRunner::new(&config.domains);
 
