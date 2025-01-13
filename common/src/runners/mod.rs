@@ -16,7 +16,7 @@ pub mod verification_runner;
 
 #[derive(Getters)]
 #[getset(get = "pub")]
-pub(crate) struct BaseRunner {
+pub struct BaseRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
     local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
@@ -187,6 +187,22 @@ impl BaseRunner {
         let st_tree_root = st_tree.root().map_err(Error::Merkle)?;
         let tree_roots = hash_two::<Keccak256>(lt_tree_root, st_tree_root);
         Ok(tree_roots)
+    }
+
+    pub fn get_lt_tree_root(&self, domain: &Domain) -> Result<Hash, Error> {
+        let tree = self
+            .lt_master_tree
+            .get(&domain.to_hash())
+            .ok_or::<Error>(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
+        tree.root().map_err(Error::Merkle)
+    }
+
+    pub fn get_st_tree_root(&self, domain: &Domain) -> Result<Hash, Error> {
+        let tree = self
+            .st_master_tree
+            .get(&domain.to_hash())
+            .ok_or::<Error>(Error::SeedTrustMasterTreeNotFound(domain.to_hash()))?;
+        tree.root().map_err(Error::Merkle)
     }
 }
 

@@ -2,6 +2,7 @@ use alloy_rlp::Decodable;
 use dotenv::dotenv;
 use futures::StreamExt;
 use getset::Getters;
+use jsonrpsee::RpcModule;
 use k256::ecdsa::{self, SigningKey};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
@@ -13,13 +14,16 @@ use openrank_common::{
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
+use rpc::{RpcServer, ComputerServer};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::{fmt::{Display, Formatter, Result as FmtResult}, sync::Arc};
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 use openrank_common::runners::compute_runner::{self as runner, ComputeRunner};
+
+mod rpc;
 
 #[derive(Debug)]
 /// Errors that can arise while using the computer node.
@@ -84,8 +88,9 @@ pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
-    compute_runner: ComputeRunner,
+    compute_runner: Arc<ComputeRunner>,
     secret_key: SigningKey,
+    rpc: RpcModule<ComputerServer>
 }
 
 impl Node {
@@ -258,10 +263,14 @@ impl Node {
 
         let compute_runner = ComputeRunner::new(&config.domains);
 
+        let compute_runner = Arc::new(compute_runner);
+        let computer_server = ComputerServer::new(compute_runner.clone());
+        let rpc = computer_server.into_rpc();
+
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, db, compute_runner, secret_key })
+        Ok(Self { swarm, config, db, compute_runner, secret_key, rpc })
     }
 
     /// Runs the node:
