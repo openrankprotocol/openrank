@@ -75,7 +75,9 @@ pub struct Db {
 
 impl Db {
     /// Creates new database connection, given info of local file path and column families.
-    pub fn new(config: &Config, cfs: &[&str]) -> Result<Self, Error> {
+    pub fn new<I: IntoIterator<Item = N>, N: AsRef<str>>(
+        config: &Config, cfs: I,
+    ) -> Result<Self, Error> {
         let path = &config.directory;
         let mut opts = Options::default();
         opts.create_if_missing(true);
@@ -98,7 +100,9 @@ impl Db {
 
     /// Creates new secondary database connection, given info of primary and secondary file paths and column families.
     /// Secondary database is used for read-only queries, and should be explicitly refreshed.
-    pub fn new_secondary(config: &Config, cfs: &[&str]) -> Result<Self, Error> {
+    pub fn new_secondary<I: IntoIterator<Item = N>, N: AsRef<str>>(
+        config: &Config, cfs: I,
+    ) -> Result<Self, Error> {
         let primary_path = &config.directory;
         let secondary_path = config.get_secondary()?;
         let db = DB::open_cf_as_secondary(&Options::default(), primary_path, secondary_path, cfs)

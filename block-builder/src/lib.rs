@@ -1,4 +1,4 @@
-use alloy_rlp::{encode, Decodable};
+use alloy_rlp::Decodable;
 use dotenv::dotenv;
 use futures::StreamExt;
 use getset::Getters;
@@ -11,7 +11,11 @@ use openrank_common::{
     db::{self, Db, DbItem},
     net,
     topics::{Domain, Topic},
-    tx::{self, compute, consts, Address, Tx},
+    tx::{
+        self,
+        compute::{self, RequestSequence, ResultReference},
+        consts, Address, Tx, TxSequence, TxTimestamp,
+    },
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
@@ -123,9 +127,17 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-block-builder")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let primary_db = Db::new(&config.database, &[&Tx::get_cf()])?;
+
+        let cfs = vec![
+            Tx::get_cf(),
+            ResultReference::get_cf(),
+            RequestSequence::get_cf(),
+            TxSequence::get_cf(),
+            TxTimestamp::get_cf(),
+        ];
+        let primary_db = Db::new(&config.database, &cfs)?;
         let primary_db = Arc::new(primary_db);
-        let secondary_db = Db::new_secondary(&config.database, &[&Tx::get_cf()])?;
+        let secondary_db = Db::new_secondary(&config.database, cfs)?;
         let secondary_db = Arc::new(secondary_db);
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
@@ -139,6 +151,161 @@ impl Node {
         let sequencer = Sequencer::new(primary_db.clone())?;
 
         Ok(Self { swarm, config, primary_db, secondary_db, secret_key, rpc, receiver, sequencer })
+    }
+
+    fn handle_gossipsub_data(&mut self, data: Vec<u8>, topic: &Topic) -> Result<(), Error> {
+        match topic {
+            Topic::NamespaceTrustUpdate(namespace) => {
+                let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
+                let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                if let tx::Body::TrustUpdate(_) = tx.body() {
+                    tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
+                    self.primary_db.put(tx.clone()).map_err(Error::Db)?;
+                    broadcast_event(&mut self.swarm, tx.clone(), topic.clone())
+                        .map_err(|e| Error::P2P(e.to_string()))?;
+                } else {
+                    return Err(Error::InvalidTxKind);
+                }
+            },
+            Topic::NamespaceSeedUpdate(namespace) => {
+                let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
+                let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                if let tx::Body::SeedUpdate(_) = tx.body() {
+                    tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
+                    self.primary_db.put(tx.clone()).map_err(Error::Db)?;
+                    broadcast_event(&mut self.swarm, tx.clone(), topic.clone())
+                        .map_err(|e| Error::P2P(e.to_string()))?;
+                } else {
+                    return Err(Error::InvalidTxKind);
+                }
+            },
+            Topic::DomainRequest(domain_id) => {
+                let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
+                let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                if let tx::Body::ComputeRequest(compute_request) = tx.body() {
+                    let address = tx.verify().map_err(Error::Signature)?;
+                    assert!(self.config.whitelist.users.contains(&address));
+                    // Add Tx to db
+                    self.primary_db.put(tx.clone()).map_err(Error::Db)?;
+                    assert_eq!(compute_request.domain_id(), domain_id);
+
+                    let assignment_topic = Topic::DomainAssignent(*domain_id);
+                    let computer = self.config.whitelist.computer[0];
+                    let verifiers = self.config.whitelist.verifier.clone();
+                    let compute_assignment =
+                        compute::Assignment::new(tx.hash(), computer, verifiers);
+                    let mut tx = Tx::default_with(tx::Body::ComputeAssignment(compute_assignment));
+                    tx.sign(&self.secret_key).map_err(Error::Signature)?;
+                    broadcast_event(&mut self.swarm, tx.clone(), assignment_topic)
+                        .map_err(|e| Error::P2P(e.to_string()))?;
+                    // After broadcasting ComputeAssignment, save to db
+                    self.primary_db.put(tx).map_err(Error::Db)?;
+                } else {
+                    return Err(Error::InvalidTxKind);
+                }
+            },
+            Topic::DomainCommitment(_) => {
+                let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
+                let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                if let tx::Body::ComputeCommitment(commitment) = tx.body() {
+                    let address = tx.verify().map_err(Error::Signature)?;
+                    assert!(self.config.whitelist.computer.contains(&address));
+                    // Add Tx to db
+                    self.primary_db.put(tx.clone()).map_err(Error::Db)?;
+
+                    let assignment_tx_key = Tx::construct_full_key(
+                        consts::COMPUTE_ASSIGNMENT,
+                        commitment.assignment_tx_hash().clone(),
+                    );
+                    let assignment_tx: Tx =
+                        self.primary_db.get(assignment_tx_key).map_err(Error::Db)?;
+                    let assignment_body = match assignment_tx.body() {
+                        tx::Body::ComputeAssignment(assignment_body) => assignment_body,
+                        _ => return Err(Error::InvalidTxKind),
+                    };
+                    let request_tx_key = Tx::construct_full_key(
+                        consts::COMPUTE_REQUEST,
+                        assignment_body.request_tx_hash().clone(),
+                    );
+                    let request: Tx = self.primary_db.get(request_tx_key).map_err(Error::Db)?;
+                    if let Err(db::Error::NotFound) =
+                        self.primary_db.get::<compute::ResultReference>(
+                            assignment_body.request_tx_hash().to_bytes(),
+                        )
+                    {
+                        let result = compute::Result::new(tx.hash(), Vec::new(), request.hash());
+                        let tx = Tx::default_with(tx::Body::ComputeResult(result));
+                        self.primary_db.put(tx.clone()).map_err(Error::Db)?;
+                        let reference = compute::ResultReference::new(
+                            assignment_body.request_tx_hash().clone(),
+                            tx.hash(),
+                        );
+                        self.primary_db.put(tx).map_err(Error::Db)?;
+                        self.primary_db.put(reference).map_err(Error::Db)?;
+                    }
+                } else {
+                    return Err(Error::InvalidTxKind);
+                }
+            },
+            Topic::DomainScores(_) => {
+                let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
+                let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                if let tx::Body::ComputeScores(_) = tx.body() {
+                    let address = tx.verify().map_err(Error::Signature)?;
+                    assert!(self.config.whitelist.computer.contains(&address));
+                    // Add Tx to db
+                    self.primary_db.put(tx.clone()).map_err(Error::Db)?;
+                } else {
+                    return Err(Error::InvalidTxKind);
+                }
+            },
+            Topic::DomainVerification(_) => {
+                let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
+                let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
+                if let tx::Body::ComputeVerification(compute_verification) = tx.body() {
+                    let address = tx.verify().map_err(Error::Signature)?;
+                    assert!(self.config.whitelist.verifier.contains(&address));
+                    // Add Tx to db
+                    self.primary_db.put(tx.clone()).map_err(Error::Db)?;
+
+                    let assignment_tx_key = Tx::construct_full_key(
+                        consts::COMPUTE_ASSIGNMENT,
+                        compute_verification.assignment_tx_hash().clone(),
+                    );
+                    let assignment_tx: Tx =
+                        self.primary_db.get(assignment_tx_key).map_err(Error::Db)?;
+                    let assignment_body = match assignment_tx.body() {
+                        tx::Body::ComputeAssignment(assignment_body) => assignment_body,
+                        _ => return Err(Error::InvalidTxKind),
+                    };
+                    let mut result_reference: compute::ResultReference = self
+                        .primary_db
+                        .get(assignment_body.request_tx_hash().to_bytes())
+                        .map_err(Error::Db)?;
+                    let compute_result_key = Tx::construct_full_key(
+                        consts::COMPUTE_RESULT,
+                        result_reference.compute_result_tx_hash().clone(),
+                    );
+                    let result_tx: Tx =
+                        self.primary_db.get(compute_result_key).map_err(Error::Db)?;
+                    let mut result = match result_tx.body() {
+                        tx::Body::ComputeResult(result_body) => result_body.clone(),
+                        _ => return Err(Error::InvalidTxKind),
+                    };
+                    result.append_verification_tx_hash(tx.hash());
+                    let result_tx = Tx::default_with(tx::Body::ComputeResult(result));
+                    // Tx Hash is now updated
+                    result_reference.set_compute_result_tx_hash(result_tx.hash());
+                    self.primary_db.put(result_tx).map_err(Error::Db)?;
+                    self.primary_db.put(result_reference).map_err(Error::Db)?;
+                } else {
+                    return Err(Error::InvalidTxKind);
+                }
+            },
+            _ => {},
+        }
+
+        Ok(())
     }
 
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
@@ -157,164 +324,7 @@ impl Node {
                     "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                     message.topic.as_str(),
                 );
-                match topic {
-                    Topic::NamespaceTrustUpdate(namespace) => {
-                        let tx_event =
-                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let tx =
-                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::TrustUpdate(_) = tx.body() {
-                            tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
-                        }
-                    },
-                    Topic::NamespaceSeedUpdate(namespace) => {
-                        let tx_event =
-                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let tx =
-                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::SeedUpdate(_) = tx.body() {
-                            tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
-                        }
-                    },
-                    Topic::DomainRequest(domain_id) => {
-                        let tx_event =
-                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let tx =
-                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::ComputeRequest(compute_request) = tx.body() {
-                            let address = tx.verify().map_err(Error::Signature)?;
-                            assert!(self.config.whitelist.users.contains(&address));
-                            // Add Tx to db
-                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
-                            assert_eq!(compute_request.domain_id(), domain_id);
-
-                            let assignment_topic = Topic::DomainAssignent(*domain_id);
-                            let computer = self.config.whitelist.computer[0];
-                            let verifiers = self.config.whitelist.verifier.clone();
-                            let compute_assignment =
-                                compute::Assignment::new(tx.hash(), computer, verifiers);
-                            let mut tx =
-                                Tx::default_with(tx::Body::ComputeAssignment(compute_assignment));
-                            tx.sign(&self.secret_key).map_err(Error::Signature)?;
-                            broadcast_event(&mut self.swarm, tx.clone(), assignment_topic)
-                                .map_err(|e| Error::P2P(e.to_string()))?;
-                            // After broadcasting ComputeAssignment, save to db
-                            self.primary_db.put(tx).map_err(Error::Db)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
-                        }
-                    },
-                    Topic::DomainCommitment(_) => {
-                        let tx_event =
-                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let tx =
-                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::ComputeCommitment(commitment) = tx.body() {
-                            let address = tx.verify().map_err(Error::Signature)?;
-                            assert!(self.config.whitelist.computer.contains(&address));
-                            // Add Tx to db
-                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
-
-                            let assignment_tx_key = Tx::construct_full_key(
-                                consts::COMPUTE_ASSIGNMENT,
-                                commitment.assignment_tx_hash().clone(),
-                            );
-                            let assignment_tx: Tx =
-                                self.primary_db.get(assignment_tx_key).map_err(Error::Db)?;
-                            let assignment_body = match assignment_tx.body() {
-                                tx::Body::ComputeAssignment(assignment_body) => assignment_body,
-                                _ => return Err(Error::InvalidTxKind),
-                            };
-                            let request_tx_key = Tx::construct_full_key(
-                                consts::COMPUTE_REQUEST,
-                                assignment_body.request_tx_hash().clone(),
-                            );
-                            let request: Tx =
-                                self.primary_db.get(request_tx_key).map_err(Error::Db)?;
-                            if let Err(db::Error::NotFound) =
-                                self.primary_db.get::<compute::ResultReference>(
-                                    assignment_body.request_tx_hash().to_bytes(),
-                                )
-                            {
-                                let result =
-                                    compute::Result::new(tx.hash(), Vec::new(), request.hash());
-                                let tx = Tx::default_with(tx::Body::ComputeResult(result));
-                                self.primary_db.put(tx.clone()).map_err(Error::Db)?;
-                                let reference = compute::ResultReference::new(
-                                    assignment_body.request_tx_hash().clone(),
-                                    tx.hash(),
-                                );
-                                self.primary_db.put(tx).map_err(Error::Db)?;
-                                self.primary_db.put(reference).map_err(Error::Db)?;
-                            }
-                        } else {
-                            return Err(Error::InvalidTxKind);
-                        }
-                    },
-                    Topic::DomainScores(_) => {
-                        let tx_event =
-                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let tx =
-                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::ComputeScores(_) = tx.body() {
-                            let address = tx.verify().map_err(Error::Signature)?;
-                            assert!(self.config.whitelist.computer.contains(&address));
-                            // Add Tx to db
-                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
-                        }
-                    },
-                    Topic::DomainVerification(_) => {
-                        let tx_event =
-                            TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let tx =
-                            Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
-                        if let tx::Body::ComputeVerification(compute_verification) = tx.body() {
-                            let address = tx.verify().map_err(Error::Signature)?;
-                            assert!(self.config.whitelist.verifier.contains(&address));
-                            // Add Tx to db
-                            self.primary_db.put(tx.clone()).map_err(Error::Db)?;
-
-                            let assignment_tx_key = Tx::construct_full_key(
-                                consts::COMPUTE_ASSIGNMENT,
-                                compute_verification.assignment_tx_hash().clone(),
-                            );
-                            let assignment_tx: Tx =
-                                self.primary_db.get(assignment_tx_key).map_err(Error::Db)?;
-                            let assignment_body = match assignment_tx.body() {
-                                tx::Body::ComputeAssignment(assignment_body) => assignment_body,
-                                _ => return Err(Error::InvalidTxKind),
-                            };
-                            let result_reference: compute::ResultReference = self
-                                .primary_db
-                                .get(assignment_body.request_tx_hash().to_bytes())
-                                .map_err(Error::Db)?;
-                            let compute_result_key = Tx::construct_full_key(
-                                consts::COMPUTE_RESULT,
-                                result_reference.compute_result_tx_hash().clone(),
-                            );
-                            let result_tx: Tx =
-                                self.primary_db.get(compute_result_key).map_err(Error::Db)?;
-                            let mut result = match result_tx.body() {
-                                tx::Body::ComputeResult(result_body) => result_body.clone(),
-                                _ => return Err(Error::InvalidTxKind),
-                            };
-                            result.append_verification_tx_hash(tx.hash());
-                            let result_tx = Tx::default_with(tx::Body::ComputeResult(result));
-                            self.primary_db.put(result_tx).map_err(Error::Db)?;
-                        } else {
-                            return Err(Error::InvalidTxKind);
-                        }
-                    },
-                    _ => {},
-                }
+                self.handle_gossipsub_data(message.data.clone(), &topic)?;
             }
         }
 
@@ -332,30 +342,6 @@ impl Node {
         let handle = server.start(self.rpc.clone());
         tokio::spawn(handle.stopped());
 
-        net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
-
-        let topics_trust_updates: Vec<Topic> = self
-            .config
-            .domains
-            .clone()
-            .into_iter()
-            .map(|domain| Topic::NamespaceTrustUpdate(domain.trust_namespace()))
-            .collect();
-        let topics_seed_updates: Vec<Topic> = self
-            .config
-            .domains
-            .clone()
-            .into_iter()
-            .map(|domain| Topic::NamespaceSeedUpdate(domain.seed_namespace()))
-            .collect();
-        let topics_requests: Vec<Topic> = self
-            .config
-            .domains
-            .clone()
-            .into_iter()
-            .map(|x| x.to_hash())
-            .map(Topic::DomainRequest)
-            .collect();
         let topics_commitment: Vec<Topic> = self
             .config
             .domains
@@ -381,14 +367,7 @@ impl Node {
             .map(Topic::DomainVerification)
             .collect();
 
-        for topic in topics_verification
-            .iter()
-            .chain(&topics_commitment)
-            .chain(&topics_scores)
-            .chain(&topics_requests)
-            .chain(&topics_trust_updates)
-            .chain(&topics_seed_updates)
-        {
+        for topic in topics_verification.iter().chain(&topics_commitment).chain(&topics_scores) {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());
             // subscribes to our topic
@@ -417,7 +396,11 @@ impl Node {
             select! {
                 sibling = self.receiver.recv() => {
                     if let Some((data, topic)) = sibling {
-                        let topic_wrapper = gossipsub::IdentTopic::new(topic.clone());
+                        let res = self.handle_gossipsub_data(data.clone(), &topic);
+                        if let Err(e) = res {
+                            error!("{e:?}");
+                        }
+
                         let tx_event_res = TxEvent::decode(&mut data.as_ref());
                         let tx_event = match tx_event_res {
                             Ok(tx_event) => tx_event,
@@ -442,13 +425,7 @@ impl Node {
                                 continue;
                             }
                         };
-                        let new_tx_event = TxEvent::default_with_data(encode(seq_tx));
-                        info!("PUBLISH: {:?}", topic.clone());
-                        if let Err(e) =
-                           self.swarm.behaviour_mut().gossipsub_publish(topic_wrapper, encode(new_tx_event))
-                        {
-                           error!("Publish error: {e:?}");
-                        }
+                        info!("Tx sequenced: {}", seq_tx.hash().to_hex());
                     }
                 }
                 event = self.swarm.select_next_some() => match event {
@@ -465,7 +442,9 @@ impl Node {
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
-                        let iter_chain = topics_requests.iter().chain(&topics_commitment).chain(&topics_scores).chain(&topics_verification).chain(&topics_trust_updates).chain(&topics_seed_updates);
+                        let iter_chain = topics_commitment.iter()
+                            .chain(&topics_scores)
+                            .chain(&topics_verification);
                         let res = self.handle_gossipsub_events(event, iter_chain.collect());
                         if let Err(e) = res {
                             error!("{e:?}");

@@ -158,4 +158,8 @@ impl ResultReference {
     pub fn new(compute_request_tx_hash: TxHash, compute_result_tx_hash: TxHash) -> Self {
         Self { compute_request_tx_hash, compute_result_tx_hash }
     }
+
+    pub fn set_compute_result_tx_hash(&mut self, tx_hash: TxHash) {
+        self.compute_result_tx_hash = tx_hash;
+    }
 }
