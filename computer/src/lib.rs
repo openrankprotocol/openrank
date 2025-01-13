@@ -42,6 +42,8 @@ pub enum Error {
     Signature(ecdsa::Error),
     /// The invalid tx kind error.
     InvalidTxKind,
+    /// Cannot acquire lock of ComputeRunner
+    ComputeRunnerLockError(String),
 }
 
 impl std::error::Error for Error {}
@@ -56,6 +58,7 @@ impl Display for Error {
             Self::Runner(err) => write!(f, "internal error: {}", err),
             Self::Signature(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
+            Self::ComputeRunnerLockError(err) => write!(f, "ComputeRunnerLockError: {}", err),
         }
     }
 }
@@ -127,7 +130,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                            let mut computer_runner_mut = self.compute_runner.lock().map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
                             computer_runner_mut
                                 .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
@@ -150,7 +153,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                            let mut computer_runner_mut = self.compute_runner.lock().map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
                             computer_runner_mut
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
@@ -183,7 +186,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                            let mut computer_runner_mut = self.compute_runner.lock().map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
                             computer_runner_mut.compute(domain.clone()).map_err(Error::Runner)?;
                             computer_runner_mut
                                 .create_compute_tree(domain.clone())
@@ -390,7 +393,7 @@ impl Node {
                         .iter()
                         .find(|x| x.trust_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                    let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                    let mut computer_runner_mut = self.compute_runner.lock().map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
                     computer_runner_mut
                         .update_trust(domain.clone(), trust_update.entries().clone())
                         .map_err(Error::Runner)?;
@@ -403,7 +406,7 @@ impl Node {
                         .iter()
                         .find(|x| x.seed_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                    let mut computer_runner_mut = self.compute_runner.lock().unwrap();
+                    let mut computer_runner_mut = self.compute_runner.lock().map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
                     computer_runner_mut
                         .update_seed(domain.clone(), seed_update.entries().clone())
                         .map_err(Error::Runner)?;

@@ -12,12 +12,14 @@ use tracing::error;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorCode {
-    DomainNotFound = -32020,
+    GetStateFailed = -32020,
+    ComputeRunnerLockFailed = -32021,
 }
 impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
-            ErrorCode::DomainNotFound => "Domain not found",
+            ErrorCode::GetStateFailed => "Get lt/seed state failed",
+            ErrorCode::ComputeRunnerLockFailed => "ComputeRunner lock failed",
         };
         write!(f, "{}", message)
     }
@@ -63,20 +65,20 @@ impl ComputerServer {
 impl RpcServer for ComputerServer {
     /// Fetch TrustUpdate contents
     async fn get_lt_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
-        let compute_runner = self.runner.lock().unwrap();
+        let compute_runner = self.runner.lock().map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
         let lt_tree_root = compute_runner.base().get_lt_tree_root(&domain).map_err(|e| {
             error!("{}", e);
-            to_error_object(ErrorCode::DomainNotFound, Some(e))
+            to_error_object(ErrorCode::GetStateFailed, Some(e))
         })?;
         Ok(lt_tree_root)
     }
 
     /// Fetch SeedUpdate contents
     async fn get_seed_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
-        let compute_runner = self.runner.lock().unwrap();
+        let compute_runner = self.runner.lock().map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
         let st_tree_root = compute_runner.base().get_st_tree_root(&domain).map_err(|e| {
             error!("{}", e);
-            to_error_object(ErrorCode::DomainNotFound, Some(e))
+            to_error_object(ErrorCode::GetStateFailed, Some(e))
         })?;
         Ok(st_tree_root)
     }
