@@ -37,20 +37,15 @@ fn to_error_object<T: ToString>(code: ErrorCode, data: Option<T>) -> ErrorObject
 #[rpc(server, namespace = "computer")]
 pub trait Rpc {
     #[method(name = "get_lt_state")]
-    async fn get_lt_state(
-        &self, domain: Domain,
-    ) -> Result<Hash, ErrorObjectOwned>;
+    async fn get_lt_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned>;
 
     #[method(name = "get_seed_state")]
-    async fn get_seed_state(
-        &self, domain: Domain,
-    ) -> Result<Hash, ErrorObjectOwned>;
+    async fn get_seed_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned>;
 }
-
 
 #[derive(Getters)]
 #[getset(get = "pub")]
-/// The Sequencer JsonRPC server. It contains the sender, the whitelisted users, and the database connection.
+/// The Computer JsonRPC server. It contains the "ComputeRunner".
 pub struct ComputerServer {
     runner: Arc<Mutex<ComputeRunner>>,
 }
@@ -65,7 +60,10 @@ impl ComputerServer {
 impl RpcServer for ComputerServer {
     /// Fetch TrustUpdate contents
     async fn get_lt_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
-        let compute_runner = self.runner.lock().map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
+        let compute_runner = self
+            .runner
+            .lock()
+            .map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
         let lt_tree_root = compute_runner.base().get_lt_tree_root(&domain).map_err(|e| {
             error!("{}", e);
             to_error_object(ErrorCode::GetStateFailed, Some(e))
@@ -75,7 +73,10 @@ impl RpcServer for ComputerServer {
 
     /// Fetch SeedUpdate contents
     async fn get_seed_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
-        let compute_runner = self.runner.lock().map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
+        let compute_runner = self
+            .runner
+            .lock()
+            .map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
         let st_tree_root = compute_runner.base().get_st_tree_root(&domain).map_err(|e| {
             error!("{}", e);
             to_error_object(ErrorCode::GetStateFailed, Some(e))

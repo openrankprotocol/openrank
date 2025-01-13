@@ -17,8 +17,11 @@ use openrank_common::{
 };
 use rpc::{RpcServer, VerifierServer};
 use serde::{Deserialize, Serialize};
-use std::{error::Error as StdError, sync::{Arc, Mutex}};
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::{
+    error::Error as StdError,
+    sync::{Arc, Mutex},
+};
 use tokio::select;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -60,7 +63,9 @@ impl Display for Error {
             Self::Runner(err) => write!(f, "internal error: {}", err),
             Self::Signature(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
-            Self::VerificationRunnerLockError(err) => write!(f, "VerificationRunnerLockError: {}", err),
+            Self::VerificationRunnerLockError(err) => {
+                write!(f, "VerificationRunnerLockError: {}", err)
+            },
         }
     }
 }
@@ -123,7 +128,7 @@ impl Node {
         let config_loader = config::Loader::new("openrank-verifier")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
         let db = Db::new(&config.database, &[&Tx::get_cf()])?;
-        
+
         let verification_runner = VerificationRunner::new(&config.domains);
 
         let verification_runner_arc_mutex = Arc::new(Mutex::new(verification_runner));
@@ -133,7 +138,14 @@ impl Node {
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, db, verification_runner: verification_runner_arc_mutex, secret_key, rpc, })
+        Ok(Self {
+            swarm,
+            config,
+            db,
+            verification_runner: verification_runner_arc_mutex,
+            secret_key,
+            rpc,
+        })
     }
 
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
@@ -168,8 +180,10 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut verification_runner_mut = self.verification_runner.lock().unwrap();
-                                verification_runner_mut.update_trust(domain.clone(), trust_update.entries().clone())
+                            let mut verification_runner_mut =
+                                self.verification_runner.lock().unwrap();
+                            verification_runner_mut
+                                .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
                         } else {
                             return Err(Error::InvalidTxKind);
@@ -189,7 +203,10 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut verification_runner_mut = self.verification_runner.lock().map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            let mut verification_runner_mut = self
+                                .verification_runner
+                                .lock()
+                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
                             verification_runner_mut
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
@@ -222,8 +239,11 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            let mut verification_runner_mut = self.verification_runner.lock().map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
-                                verification_runner_mut
+                            let mut verification_runner_mut = self
+                                .verification_runner
+                                .lock()
+                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            verification_runner_mut
                                 .update_assigment(domain.clone(), tx.hash())
                                 .map_err(Error::Runner)?;
                             let res = verification_runner_mut
@@ -261,7 +281,10 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            let mut verification_runner_mut = self.verification_runner.lock().map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            let mut verification_runner_mut = self
+                                .verification_runner
+                                .lock()
+                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
                             verification_runner_mut
                                 .update_scores(domain.clone(), tx.hash(), compute_scores.clone())
                                 .map_err(Error::Runner)?;
@@ -300,7 +323,10 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound(domain_id.to_hex()))?;
-                            let mut verification_runner_mut = self.verification_runner.lock().map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            let mut verification_runner_mut = self
+                                .verification_runner
+                                .lock()
+                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
                             verification_runner_mut.update_commitment(compute_commitment.clone());
                             let res = verification_runner_mut
                                 .check_finished_assignments(domain.clone())
@@ -353,7 +379,10 @@ impl Node {
         txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
 
         // update verification runner
-        let mut verification_runner_mut = self.verification_runner.lock().map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+        let mut verification_runner_mut = self
+            .verification_runner
+            .lock()
+            .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
         for tx in txs {
             match tx.body() {
                 tx::Body::TrustUpdate(trust_update) => {
