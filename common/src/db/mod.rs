@@ -137,6 +137,9 @@ impl Db {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
         let key = item.get_full_key();
         let value = to_vec(&item).map_err(Error::Serde)?;
+        // Save the checkpoint
+        self.put_checkpoint(item)?;
+        // Save item to DB
         self.connection.put_cf(&cf, key, value).map_err(Error::RocksDB)
     }
 
