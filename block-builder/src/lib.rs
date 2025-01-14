@@ -14,7 +14,7 @@ use openrank_common::{
     tx::{
         self,
         compute::{self, RequestSequence, ResultReference},
-        consts, Address, Tx, TxSequence, TxTimestamp,
+        consts, Address, Tx, TxSequence,
     },
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
@@ -133,7 +133,6 @@ impl Node {
             ResultReference::get_cf(),
             RequestSequence::get_cf(),
             TxSequence::get_cf(),
-            TxTimestamp::get_cf(),
         ];
         let primary_db = Db::new(&config.database, &cfs)?;
         let primary_db = Arc::new(primary_db);

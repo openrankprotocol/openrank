@@ -2,7 +2,7 @@ use openrank_common::{
     db::{self, Db},
     tx::{
         compute::{self, RequestSequence},
-        Body, Tx, TxSequence, TxTimestamp,
+        Body, Tx, TxSequence,
     },
 };
 use std::{
@@ -82,10 +82,8 @@ impl Sequencer {
 
         let now = SystemTime::now();
         let timestamp = now.duration_since(SystemTime::UNIX_EPOCH).map_err(Error::SystemTime)?;
-        let tx_sequence = TxSequence::new(tx.hash(), self.tx_sequence_number);
-        let tx_timestamp = TxTimestamp::new(tx.hash(), timestamp.as_secs());
+        let tx_sequence = TxSequence::new(tx.hash(), self.tx_sequence_number, timestamp.as_secs());
         self.db.put(tx_sequence).map_err(Error::Db)?;
-        self.db.put(tx_timestamp).map_err(Error::Db)?;
 
         tx.set_sequence_number(self.tx_sequence_number);
         self.tx_sequence_number += 1;

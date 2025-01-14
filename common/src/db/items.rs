@@ -2,7 +2,7 @@ use crate::{
     db::DbItem,
     tx::{
         compute::{RequestSequence, ResultReference},
-        Tx, TxSequence, TxTimestamp,
+        Tx, TxSequence,
     },
     tx_event::TxEvent,
 };
@@ -62,20 +62,6 @@ impl DbItem for TxSequence {
 
     fn get_cf() -> String {
         "tx_sequence".to_string()
-    }
-
-    fn get_prefix(&self) -> String {
-        String::new()
-    }
-}
-
-impl DbItem for TxTimestamp {
-    fn get_key(&self) -> Vec<u8> {
-        self.tx_hash().to_bytes()
-    }
-
-    fn get_cf() -> String {
-        "tx_timestamp".to_string()
     }
 
     fn get_prefix(&self) -> String {

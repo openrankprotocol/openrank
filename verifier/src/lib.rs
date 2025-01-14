@@ -193,9 +193,9 @@ impl Node {
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             let verifier_address = address_from_sk(&self.secret_key);
-                            for verifier_node in compute_assignment.assigned_verifier_nodes() {
-                                assert_eq!(verifier_address, *verifier_node);
-                            }
+                            assert!(compute_assignment
+                                .assigned_verifier_nodes()
+                                .contains(&verifier_address));
                             assert!(self
                                 .config
                                 .whitelist
