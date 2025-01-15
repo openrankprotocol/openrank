@@ -5,7 +5,7 @@ use getset::Getters;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
-use openrank_common::merkle::Hash;
+use openrank_common::misc::OutboundLocalTrust;
 use openrank_common::runners::compute_runner::ComputeRunner;
 use openrank_common::topics::Domain;
 use tracing::error;
@@ -37,10 +37,14 @@ fn to_error_object<T: ToString>(code: ErrorCode, data: Option<T>) -> ErrorObject
 #[rpc(server, namespace = "computer")]
 pub trait Rpc {
     #[method(name = "get_lt_state")]
-    async fn get_lt_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned>;
+    async fn get_lt_state(
+        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
+    ) -> Result<Vec<OutboundLocalTrust>, ErrorObjectOwned>;
 
     #[method(name = "get_seed_state")]
-    async fn get_seed_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned>;
+    async fn get_seed_state(
+        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
+    ) -> Result<Vec<f32>, ErrorObjectOwned>;
 }
 
 #[derive(Getters)]
@@ -59,28 +63,32 @@ impl ComputerServer {
 #[async_trait]
 impl RpcServer for ComputerServer {
     /// Fetch TrustUpdate contents
-    async fn get_lt_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
+    async fn get_lt_state(
+        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
+    ) -> Result<Vec<OutboundLocalTrust>, ErrorObjectOwned> {
         let compute_runner = self
             .runner
             .lock()
             .map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
-        let lt_tree_root = compute_runner.base().get_lt_tree_root(&domain).map_err(|e| {
+        let lt_state = compute_runner.base().get_lt_state(&domain, from, size).map_err(|e| {
             error!("{}", e);
             to_error_object(ErrorCode::GetStateFailed, Some(e))
         })?;
-        Ok(lt_tree_root)
+        Ok(lt_state)
     }
 
     /// Fetch SeedUpdate contents
-    async fn get_seed_state(&self, domain: Domain) -> Result<Hash, ErrorObjectOwned> {
+    async fn get_seed_state(
+        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
+    ) -> Result<Vec<f32>, ErrorObjectOwned> {
         let compute_runner = self
             .runner
             .lock()
             .map_err(|e| to_error_object(ErrorCode::ComputeRunnerLockFailed, Some(e)))?;
-        let st_tree_root = compute_runner.base().get_st_tree_root(&domain).map_err(|e| {
+        let st_state = compute_runner.base().get_st_state(&domain, from, size).map_err(|e| {
             error!("{}", e);
             to_error_object(ErrorCode::GetStateFailed, Some(e))
         })?;
-        Ok(st_tree_root)
+        Ok(st_state)
     }
 }

@@ -189,20 +189,46 @@ impl BaseRunner {
         Ok(tree_roots)
     }
 
-    pub fn get_lt_tree_root(&self, domain: &Domain) -> Result<Hash, Error> {
-        let tree = self
-            .lt_master_tree
-            .get(&domain.to_hash())
-            .ok_or::<Error>(Error::LocalTrustMasterTreeNotFound(domain.to_hash()))?;
-        tree.root().map_err(Error::Merkle)
+    pub fn get_lt_state(
+        &self, domain: &Domain, from: Option<u64>, size: Option<usize>,
+    ) -> Result<Vec<OutboundLocalTrust>, Error> {
+        let lt = self
+            .local_trust
+            .get(&domain.trust_namespace())
+            .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+        let from = from.unwrap_or_default();
+        let size = size.unwrap_or(lt.len());
+        let end = (from + size as u64).max(lt.len() as u64);
+        let mut result = vec![];
+        for i in from..end {
+            if !lt.contains_key(&i) {
+                continue;
+            }
+            let outbound = lt.get(&i).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+            result.push(outbound.clone());
+        }
+        Ok(result)
     }
 
-    pub fn get_st_tree_root(&self, domain: &Domain) -> Result<Hash, Error> {
-        let tree = self
-            .st_master_tree
-            .get(&domain.to_hash())
-            .ok_or::<Error>(Error::SeedTrustMasterTreeNotFound(domain.to_hash()))?;
-        tree.root().map_err(Error::Merkle)
+    pub fn get_st_state(
+        &self, domain: &Domain, from: Option<u64>, size: Option<usize>,
+    ) -> Result<Vec<f32>, Error> {
+        let st = self
+            .seed_trust
+            .get(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+        let from = from.unwrap_or_default();
+        let size = size.unwrap_or(st.len());
+        let end = (from + size as u64).max(st.len() as u64);
+        let mut result = vec![];
+        for i in from..end {
+            if !st.contains_key(&i) {
+                continue;
+            }
+            let seed = st.get(&i).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+            result.push(*seed);
+        }
+        Ok(result)
     }
 }
 
