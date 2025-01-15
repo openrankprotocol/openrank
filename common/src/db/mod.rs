@@ -196,7 +196,7 @@ impl Db {
 
 #[cfg(test)]
 mod test {
-    use crate::db::{Config, Db, DbItem};
+    use crate::db::{Config, Db, DbItem, CHECKPOINTS_CF};
     use crate::tx::{compute, consts, Body, Tx};
 
     fn config_for_dir(directory: &str) -> Config {
@@ -205,7 +205,11 @@ mod test {
 
     #[test]
     fn test_put_get() {
-        let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(
+            &config_for_dir("test-pg-storage"),
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
+        )
+        .unwrap();
         let tx = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         db.put(tx.clone()).unwrap();
         let key = Tx::construct_full_key(consts::COMPUTE_REQUEST, tx.hash());
@@ -215,7 +219,11 @@ mod test {
 
     #[test]
     fn test_get_range_from_start() {
-        let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(
+            &config_for_dir("test-rfs-storage"),
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
+        )
+        .unwrap();
         let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
         let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
@@ -236,7 +244,11 @@ mod test {
 
     #[test]
     fn test_put_get_multi() {
-        let db = Db::new(&config_for_dir("test-pgm-storage"), &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(
+            &config_for_dir("test-pgm-storage"),
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
+        )
+        .unwrap();
         let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
         let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
