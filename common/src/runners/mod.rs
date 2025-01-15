@@ -198,7 +198,7 @@ impl BaseRunner {
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
         let from = from.unwrap_or_default();
         let size = size.unwrap_or(lt.len());
-        let end = (from + size as u64).max(lt.len() as u64);
+        let end = (from + size as u64).min(lt.len() as u64);
         let mut result = vec![];
         for i in from..end {
             if !lt.contains_key(&i) {
@@ -219,7 +219,7 @@ impl BaseRunner {
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
         let from = from.unwrap_or_default();
         let size = size.unwrap_or(st.len());
-        let end = (from + size as u64).max(st.len() as u64);
+        let end = (from + size as u64).min(st.len() as u64);
         let mut result = vec![];
         for i in from..end {
             if !st.contains_key(&i) {
