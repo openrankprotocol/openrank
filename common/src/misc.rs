@@ -109,6 +109,38 @@ impl SeedTrustStateResponse {
     }
 }
 
+pub fn compute_localtrust_peer_range(
+    lt_peers_cnt: u64,
+    page_size: Option<usize>, 
+    next_token: Option<String>,
+) -> Result<(u64, u64, u64, u64), BaseRunnerError> {
+    let page_size = page_size.unwrap_or(1000);
+    let (from_peer_start, to_peer_start) = match next_token {
+        Some(token) => {
+            let decoded_bytes = BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
+            let id_bytes = TryInto::<[u8; 16]>::try_into(decoded_bytes).map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 16 bytes: {:?}", e)))?;
+            let first_bytes = id_bytes[0..8].try_into().map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e)))?;
+            let second_bytes = id_bytes[8..].try_into().map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e)))?;
+            (u64::from_be_bytes(first_bytes), u64::from_be_bytes(second_bytes))
+        },
+        None => (0, 0)
+    };
+    let to_peer_end = to_peer_start + page_size as u64;
+    let from_peer_end = from_peer_start + to_peer_end / lt_peers_cnt;
+    let to_peer_end = to_peer_end % lt_peers_cnt;
+    Ok((from_peer_start, from_peer_end, to_peer_start, to_peer_end))
+}
+
+pub fn create_localtrust_next_token(lt_peers_cnt: u64, from_peer_id: u64, to_peer_id: u64) -> Option<String> {
+    if from_peer_id == lt_peers_cnt {
+        None
+    } else {
+        let id_bytes = [from_peer_id.to_be_bytes(), to_peer_id.to_be_bytes()].concat();
+        let next_token = BASE64_STANDARD.encode(id_bytes);
+        Some(next_token)
+    }
+}
+
 pub fn compute_seedtrust_peer_range(
     st_peers_cnt: usize,
     page_size: Option<usize>, 

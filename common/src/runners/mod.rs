@@ -1,6 +1,6 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
-    misc::{compute_seedtrust_peer_range, create_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust, SeedTrustStateResponse},
+    misc::{compute_localtrust_peer_range, compute_seedtrust_peer_range, create_localtrust_next_token, create_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust, SeedTrustStateResponse},
     topics::{Domain, DomainHash},
     tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
 };
@@ -192,25 +192,64 @@ impl BaseRunner {
     pub fn get_lt_state(
         &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
     ) -> Result<LocalTrustStateResponse, Error> {
-        let page_size = page_size.unwrap_or(1000);
-        let from_peer_id = 0;
-        let to_peer_start_id = 0;
-        let to_peer_end_id = to_peer_start_id + page_size as u64;
-
         let lt = self
             .local_trust
             .get(&domain.trust_namespace())
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
-        let lt_row =
-            lt.get(&from_peer_id).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
-        let mut result = vec![];
-        for to_peer_id in to_peer_start_id..to_peer_end_id {
-            let lt_entry_value = lt_row
-                .get(&to_peer_id)
-                .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
-            result.push((from_peer_id, to_peer_id, lt_entry_value));
+
+        let lt_peers_cnt = lt.len() as u64;
+        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
+            compute_localtrust_peer_range(lt_peers_cnt, page_size, next_token)?;
+        if from_peer_start >= lt_peers_cnt {
+            return Ok(LocalTrustStateResponse::new(vec![], None));
         }
-        Ok(LocalTrustStateResponse::new(result, None))
+        
+        let mut result = vec![];
+        if from_peer_start == from_peer_end {
+            let lt_row =
+                lt.get(&from_peer_start).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+            for to_peer_id in to_peer_start..to_peer_end {
+                let lt_entry_value = lt_row
+                    .get(&to_peer_id)
+                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                result.push((from_peer_start, to_peer_id, lt_entry_value));
+            }
+        } else {
+            let lt_row =
+                lt.get(&from_peer_start).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+            for to_peer_id in to_peer_start..lt_peers_cnt {
+                let lt_entry_value = lt_row
+                    .get(&to_peer_id)
+                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                result.push((from_peer_start, to_peer_id, lt_entry_value));
+            }
+         
+            for from_peer_id in from_peer_start + 1..from_peer_end {
+                let lt_row =
+                    lt.get(&from_peer_id).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                for to_peer_id in 0..lt_peers_cnt {
+                    let lt_entry_value = lt_row
+                        .get(&to_peer_id)
+                        .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                    result.push((from_peer_id, to_peer_id, lt_entry_value));
+                }    
+            }
+            
+            if from_peer_end != lt_peers_cnt {
+                let lt_row =
+                    lt.get(&from_peer_end).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                for to_peer_id in 0..to_peer_end {
+                    let lt_entry_value = lt_row
+                        .get(&to_peer_id)
+                        .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                    result.push((from_peer_end, to_peer_id, lt_entry_value));
+                }
+            }
+        }
+
+        let next_token = create_localtrust_next_token(lt_peers_cnt, from_peer_end, to_peer_end);
+
+        Ok(LocalTrustStateResponse::new(result, next_token))
     }
 
     pub fn get_st_state(
