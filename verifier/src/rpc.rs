@@ -5,7 +5,6 @@ use getset::Getters;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
-use openrank_common::misc::OutboundLocalTrust;
 use openrank_common::runners::verification_runner::VerificationRunner;
 use openrank_common::topics::Domain;
 use tracing::error;
@@ -38,12 +37,12 @@ fn to_error_object<T: ToString>(code: ErrorCode, data: Option<T>) -> ErrorObject
 pub trait Rpc {
     #[method(name = "get_lt_state")]
     async fn get_lt_state(
-        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
-    ) -> Result<Vec<OutboundLocalTrust>, ErrorObjectOwned>;
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
+    ) -> Result<Vec<(u64, u64, f32)>, ErrorObjectOwned>;
 
     #[method(name = "get_seed_state")]
     async fn get_seed_state(
-        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
     ) -> Result<Vec<f32>, ErrorObjectOwned>;
 }
 
@@ -64,14 +63,16 @@ impl VerifierServer {
 impl RpcServer for VerifierServer {
     /// Fetch TrustUpdate contents
     async fn get_lt_state(
-        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
-    ) -> Result<Vec<OutboundLocalTrust>, ErrorObjectOwned> {
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
+    ) -> Result<Vec<(u64, u64, f32)>, ErrorObjectOwned> {
         let verification_runner = self
             .runner
             .lock()
             .map_err(|e| to_error_object(ErrorCode::VerificationRunnerLockFailed, Some(e)))?;
-        let lt_state =
-            verification_runner.base().get_lt_state(&domain, from, size).map_err(|e| {
+        let lt_state = verification_runner
+            .base()
+            .get_lt_state(&domain, page_size, next_token)
+            .map_err(|e| {
                 error!("{}", e);
                 to_error_object(ErrorCode::GetStateFailed, Some(e))
             })?;
@@ -80,14 +81,16 @@ impl RpcServer for VerifierServer {
 
     /// Fetch SeedUpdate contents
     async fn get_seed_state(
-        &self, domain: Domain, from: Option<u64>, size: Option<usize>,
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
     ) -> Result<Vec<f32>, ErrorObjectOwned> {
         let verification_runner = self
             .runner
             .lock()
             .map_err(|e| to_error_object(ErrorCode::VerificationRunnerLockFailed, Some(e)))?;
-        let st_state =
-            verification_runner.base().get_st_state(&domain, from, size).map_err(|e| {
+        let st_state = verification_runner
+            .base()
+            .get_st_state(&domain, page_size, next_token)
+            .map_err(|e| {
                 error!("{}", e);
                 to_error_object(ErrorCode::GetStateFailed, Some(e))
             })?;

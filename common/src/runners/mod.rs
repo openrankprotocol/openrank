@@ -190,42 +190,44 @@ impl BaseRunner {
     }
 
     pub fn get_lt_state(
-        &self, domain: &Domain, from: Option<u64>, size: Option<usize>,
-    ) -> Result<Vec<OutboundLocalTrust>, Error> {
+        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<usize>,
+    ) -> Result<Vec<(u64, u64, f32)>, Error> {
+        let page_size = page_size.unwrap_or(1000);
+        let from_peer_id = 0;
+        let to_peer_start_id = 0;
+        let to_peer_end_id = to_peer_start_id + page_size as u64;
+
         let lt = self
             .local_trust
             .get(&domain.trust_namespace())
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
-        let from = from.unwrap_or_default();
-        let size = size.unwrap_or(lt.len());
-        let end = (from + size as u64).min(lt.len() as u64);
+        let lt_row =
+            lt.get(&from_peer_id).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
         let mut result = vec![];
-        for i in from..end {
-            if !lt.contains_key(&i) {
-                continue;
-            }
-            let outbound = lt.get(&i).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
-            result.push(outbound.clone());
+        for to_peer_id in to_peer_start_id..to_peer_end_id {
+            let lt_entry_value = lt_row
+                .get(&to_peer_id)
+                .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+            result.push((from_peer_id, to_peer_id, lt_entry_value));
         }
         Ok(result)
     }
 
     pub fn get_st_state(
-        &self, domain: &Domain, from: Option<u64>, size: Option<usize>,
+        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<usize>,
     ) -> Result<Vec<f32>, Error> {
+        let page_size = page_size.unwrap_or(1000);
+        let to_peer_start_id = 0;
+        let to_peer_end_id = to_peer_start_id + page_size as u64;
+
         let st = self
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
-        let from = from.unwrap_or_default();
-        let size = size.unwrap_or(st.len());
-        let end = (from + size as u64).min(st.len() as u64);
         let mut result = vec![];
-        for i in from..end {
-            if !st.contains_key(&i) {
-                continue;
-            }
-            let seed = st.get(&i).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+        for to_peer_id in to_peer_start_id..to_peer_end_id {
+            let seed =
+                st.get(&to_peer_id).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
             result.push(*seed);
         }
         Ok(result)
