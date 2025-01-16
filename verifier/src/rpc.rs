@@ -5,6 +5,7 @@ use getset::Getters;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
+use openrank_common::misc::{LocalTrustStateResponse, SeedTrustStateResponse};
 use openrank_common::runners::verification_runner::VerificationRunner;
 use openrank_common::topics::Domain;
 use tracing::error;
@@ -37,13 +38,13 @@ fn to_error_object<T: ToString>(code: ErrorCode, data: Option<T>) -> ErrorObject
 pub trait Rpc {
     #[method(name = "get_lt_state")]
     async fn get_lt_state(
-        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
-    ) -> Result<Vec<(u64, u64, f32)>, ErrorObjectOwned>;
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<LocalTrustStateResponse, ErrorObjectOwned>;
 
     #[method(name = "get_seed_state")]
     async fn get_seed_state(
-        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
-    ) -> Result<Vec<f32>, ErrorObjectOwned>;
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<SeedTrustStateResponse, ErrorObjectOwned>;
 }
 
 #[derive(Getters)]
@@ -63,8 +64,8 @@ impl VerifierServer {
 impl RpcServer for VerifierServer {
     /// Fetch TrustUpdate contents
     async fn get_lt_state(
-        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
-    ) -> Result<Vec<(u64, u64, f32)>, ErrorObjectOwned> {
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<LocalTrustStateResponse, ErrorObjectOwned> {
         let verification_runner = self
             .runner
             .lock()
@@ -81,8 +82,8 @@ impl RpcServer for VerifierServer {
 
     /// Fetch SeedUpdate contents
     async fn get_seed_state(
-        &self, domain: Domain, page_size: Option<usize>, next_token: Option<usize>,
-    ) -> Result<Vec<f32>, ErrorObjectOwned> {
+        &self, domain: Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<SeedTrustStateResponse, ErrorObjectOwned> {
         let verification_runner = self
             .runner
             .lock()

@@ -1,6 +1,6 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
-    misc::OutboundLocalTrust,
+    misc::{LocalTrustStateResponse, OutboundLocalTrust, SeedTrustStateResponse},
     topics::{Domain, DomainHash},
     tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
 };
@@ -190,8 +190,8 @@ impl BaseRunner {
     }
 
     pub fn get_lt_state(
-        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<usize>,
-    ) -> Result<Vec<(u64, u64, f32)>, Error> {
+        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<LocalTrustStateResponse, Error> {
         let page_size = page_size.unwrap_or(1000);
         let from_peer_id = 0;
         let to_peer_start_id = 0;
@@ -210,12 +210,12 @@ impl BaseRunner {
                 .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
             result.push((from_peer_id, to_peer_id, lt_entry_value));
         }
-        Ok(result)
+        Ok(LocalTrustStateResponse::new(result, None))
     }
 
     pub fn get_st_state(
-        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<usize>,
-    ) -> Result<Vec<f32>, Error> {
+        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<SeedTrustStateResponse, Error> {
         let page_size = page_size.unwrap_or(1000);
         let to_peer_start_id = 0;
         let to_peer_end_id = to_peer_start_id + page_size as u64;
@@ -228,9 +228,9 @@ impl BaseRunner {
         for to_peer_id in to_peer_start_id..to_peer_end_id {
             let seed =
                 st.get(&to_peer_id).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
-            result.push(*seed);
+            result.push((to_peer_id, *seed));
         }
-        Ok(result)
+        Ok(SeedTrustStateResponse::new(result, None))
     }
 }
 

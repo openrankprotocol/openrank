@@ -79,3 +79,29 @@ impl OutboundLocalTrust {
         self.outbound_trust_scores.insert(peer_id, value);
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+pub struct LocalTrustStateResponse {
+    result: Vec<(u64, u64, f32)>,
+    next_token: Option<String>,
+}
+
+impl LocalTrustStateResponse {
+    pub fn new(result: Vec<(u64, u64, f32)>, next_token: Option<String>) -> Self {
+        Self { result, next_token }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+pub struct SeedTrustStateResponse {
+    result: Vec<(u64, f32)>,
+    next_token: Option<String>,
+}
+
+impl SeedTrustStateResponse {
+    pub fn new(result: Vec<(u64, f32)>, next_token: Option<String>) -> Self {
+        Self { result, next_token }
+    }
+}
