@@ -1,6 +1,6 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
-    misc::{LocalTrustStateResponse, OutboundLocalTrust, SeedTrustStateResponse},
+    misc::{compute_seedtrust_peer_range, create_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust, SeedTrustStateResponse},
     topics::{Domain, DomainHash},
     tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
 };
@@ -216,21 +216,24 @@ impl BaseRunner {
     pub fn get_st_state(
         &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
     ) -> Result<SeedTrustStateResponse, Error> {
-        let page_size = page_size.unwrap_or(1000);
-        let to_peer_start_id = 0;
-        let to_peer_end_id = to_peer_start_id + page_size as u64;
-
         let st = self
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+
+        let st_peers_cnt = st.len();
+        let (start_peer, end_peer) = compute_seedtrust_peer_range(st_peers_cnt, page_size, next_token)?;
+
         let mut result = vec![];
-        for to_peer_id in to_peer_start_id..to_peer_end_id {
+        for peer_id in start_peer..end_peer {
             let seed =
-                st.get(&to_peer_id).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
-            result.push((to_peer_id, *seed));
+                st.get(&peer_id).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+            result.push((peer_id, *seed));
         }
-        Ok(SeedTrustStateResponse::new(result, None))
+
+        let next_token = create_seedtrust_next_token(st_peers_cnt, end_peer);
+
+        Ok(SeedTrustStateResponse::new(result, next_token))
     }
 }
 
@@ -252,6 +255,9 @@ pub enum Error {
     DomainIndexNotFound(String),
 
     Merkle(merkle::Error),
+
+    Base64Decode(base64::DecodeError),
+    Misc(String),
 }
 
 impl Display for Error {
@@ -297,6 +303,8 @@ impl Display for Error {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
             Self::Merkle(err) => err.fmt(f),
+            Self::Base64Decode(err) => err.fmt(f),
+            Self::Misc(msg) => write!(f, "misc error: {}", msg),
         }
     }
 }

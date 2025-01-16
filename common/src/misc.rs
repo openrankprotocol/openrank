@@ -1,6 +1,9 @@
+use base64::prelude::*;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use crate::runners::Error as BaseRunnerError;
 
 /// Local trust object.
 ///
@@ -103,5 +106,34 @@ pub struct SeedTrustStateResponse {
 impl SeedTrustStateResponse {
     pub fn new(result: Vec<(u64, f32)>, next_token: Option<String>) -> Self {
         Self { result, next_token }
+    }
+}
+
+pub fn compute_seedtrust_peer_range(
+    st_peers_cnt: usize,
+    page_size: Option<usize>, 
+    next_token: Option<String>,
+) -> Result<(u64, u64), BaseRunnerError> {
+    let page_size = page_size.unwrap_or(1000);
+    let start_peer = match next_token {
+        Some(token) => {
+            let decoded_bytes = BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
+            let id_bytes = TryInto::<[u8; 8]>::try_into(decoded_bytes).map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e)))?;
+            u64::from_be_bytes(id_bytes)
+        },
+        None => 0
+    };
+    let end_peer = start_peer + page_size as u64;
+    let end_peer = std::cmp::min(end_peer, st_peers_cnt as u64);
+    Ok((start_peer, end_peer))
+}
+
+pub fn create_seedtrust_next_token(st_peers_cnt: usize, next_peer_id: u64) -> Option<String> {
+    if 0 < next_peer_id && next_peer_id < st_peers_cnt as u64 {
+        let id_bytes = next_peer_id.to_be_bytes();
+        let next_token = BASE64_STANDARD.encode(id_bytes);
+        Some(next_token)
+    } else {
+        None
     }
 }

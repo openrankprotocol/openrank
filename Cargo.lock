@@ -3176,6 +3176,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "alloy-rlp-derive",
+ "base64 0.22.1",
  "directories",
  "getset",
  "hex",
