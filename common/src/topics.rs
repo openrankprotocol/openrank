@@ -1,10 +1,13 @@
-use crate::tx::{consts, trust::OwnedNamespace, Address};
+use crate::{
+    format_hex,
+    tx::{consts, trust::OwnedNamespace, Address},
+};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use getset::Getters;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt::Display,
+    fmt::{Display, Formatter, Result as FmtResult},
     hash::{DefaultHasher, Hasher},
 };
 
@@ -48,6 +51,12 @@ impl FromHex for DomainHash {
 impl From<[u8; 8]> for DomainHash {
     fn from(value: [u8; 8]) -> Self {
         Self(value)
+    }
+}
+
+impl Display for DomainHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", format_hex(self.to_hex()))
     }
 }
 

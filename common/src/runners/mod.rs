@@ -10,6 +10,7 @@ use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
 };
+use tracing::info;
 
 pub mod compute_runner;
 pub mod verification_runner;
@@ -127,6 +128,12 @@ impl BaseRunner {
             let leaf = hash_leaf::<Keccak256>(sub_tree_root.inner().to_vec());
             lt_master_tree.insert_leaf(from_index, leaf);
         }
+        let lt_root = lt_master_tree.root().map_err(Error::Merkle)?;
+        info!(
+            "LT update completed for domain: {}. New merkle root: {}",
+            domain.to_hash(),
+            lt_root,
+        );
 
         Ok(())
     }
@@ -170,6 +177,12 @@ impl BaseRunner {
             let leaf = hash_leaf::<Keccak256>(entry.value().to_be_bytes().to_vec());
             st_master_tree.insert_leaf(index, leaf);
         }
+        let st_root = st_master_tree.root().map_err(Error::Merkle)?;
+        info!(
+            "ST update completed for domain: {}. New merkle root: {}",
+            domain.to_hash(),
+            st_root,
+        );
 
         Ok(())
     }

@@ -139,6 +139,17 @@ pub fn address_from_sk(sk: &SigningKey) -> Address {
     Address::from_slice(&address_bytes)
 }
 
+pub fn format_hex(hex: String) -> String {
+    if hex.len() < 8 {
+        return format!("0x{}", hex);
+    }
+
+    let first_part = hex.get(..4).unwrap();
+    let second_part = hex.get((hex.len() - 4)..).unwrap();
+
+    format!("0x{}...{}", first_part, second_part)
+}
+
 #[cfg(test)]
 mod test {
     use crate::*;

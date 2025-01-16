@@ -1,5 +1,5 @@
-use crate::address_from_sk;
 use crate::merkle::hash_leaf;
+use crate::{address_from_sk, format_hex};
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use getset::Getters;
@@ -9,6 +9,7 @@ use k256::ecdsa::{
 };
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
+use std::fmt::{Display, Formatter};
 use std::io::Read;
 use trust::{SeedUpdate, TrustUpdate};
 
@@ -263,6 +264,12 @@ impl TxHash {
 
     pub fn inner(&self) -> &[u8; 32] {
         &self.0
+    }
+}
+
+impl Display for TxHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", format_hex(self.clone().to_hex()))
     }
 }
 

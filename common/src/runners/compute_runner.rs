@@ -13,6 +13,7 @@ use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
 };
+use tracing::info;
 
 use super::{BaseRunner, Error as BaseError};
 
@@ -52,6 +53,7 @@ impl ComputeRunner {
 
     /// Compute the EigenTrust scores for certain domain.
     pub fn compute(&mut self, domain: Domain) -> Result<(), Error> {
+        info!("Running the compute for domain: {}", domain.to_hash());
         let lt = self
             .base
             .local_trust
@@ -74,6 +76,7 @@ impl ComputeRunner {
 
     /// Create the compute tree for certain domain.
     pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), Error> {
+        info!("Creating the compute tree for domain: {}", domain.to_hash());
         let scores = self
             .compute_results
             .get(&domain.to_hash())
@@ -82,6 +85,10 @@ impl ComputeRunner {
             scores.iter().map(|(_, x)| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec())).collect();
         let compute_tree =
             DenseMerkleTree::<Keccak256>::new(score_hashes).map_err(Error::Merkle)?;
+        info!(
+            "Compute Tree root hash: {}",
+            compute_tree.root().map_err(Error::Merkle)?
+        );
         self.compute_tree.insert(domain.to_hash(), compute_tree);
         Ok(())
     }
