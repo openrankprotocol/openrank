@@ -137,6 +137,9 @@ impl Db {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
         let key = item.get_full_key();
         let value = to_vec(&item).map_err(Error::Serde)?;
+        // Save the checkpoint
+        self.put_checkpoint(item)?;
+        // Save item to DB
         self.connection.put_cf(&cf, key, value).map_err(Error::RocksDB)
     }
 
@@ -204,7 +207,7 @@ mod test {
     fn test_put_get() {
         let db = Db::new(
             &config_for_dir("test-pg-storage"),
-            &[&Tx::get_cf(), CHECKPOINTS_CF],
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
         )
         .unwrap();
         let tx = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
@@ -218,7 +221,7 @@ mod test {
     fn test_get_range_from_start() {
         let db = Db::new(
             &config_for_dir("test-rfs-storage"),
-            &[&Tx::get_cf(), CHECKPOINTS_CF],
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
         )
         .unwrap();
         let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
@@ -243,7 +246,7 @@ mod test {
     fn test_put_get_multi() {
         let db = Db::new(
             &config_for_dir("test-pgm-storage"),
-            &[&Tx::get_cf(), CHECKPOINTS_CF],
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
         )
         .unwrap();
         let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
