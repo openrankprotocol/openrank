@@ -203,7 +203,7 @@ impl BaseRunner {
         if from_peer_start >= lt_peers_cnt {
             return Ok(LocalTrustStateResponse::new(vec![], None));
         }
-        
+
         let mut result = vec![];
         if from_peer_start == from_peer_end {
             let lt_row =
@@ -260,7 +260,7 @@ impl BaseRunner {
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
 
-        let st_peers_cnt = st.len();
+        let st_peers_cnt = st.len() as u64;
         let (start_peer, end_peer) = compute_seedtrust_peer_range(st_peers_cnt, page_size, next_token)?;
 
         let mut result = vec![];

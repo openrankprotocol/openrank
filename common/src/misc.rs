@@ -139,6 +139,7 @@ pub fn compute_localtrust_peer_range(
     next_token: Option<String>,
 ) -> Result<(u64, u64, u64, u64), BaseRunnerError> {
     let page_size = page_size.unwrap_or(1000);
+
     let (from_peer_start, to_peer_start) = match next_token {
         Some(token) => {
             let decoded_bytes = BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
@@ -149,9 +150,14 @@ pub fn compute_localtrust_peer_range(
         },
         None => (0, 0)
     };
+    let from_peer_start = std::cmp::min(from_peer_start, lt_peers_cnt);
+    let to_peer_start = std::cmp::min(to_peer_start, lt_peers_cnt);
+    
     let to_peer_end = to_peer_start + page_size as u64;
     let from_peer_end = from_peer_start + to_peer_end / lt_peers_cnt;
+    let from_peer_end = std::cmp::min(from_peer_end, lt_peers_cnt);
     let to_peer_end = to_peer_end % lt_peers_cnt;
+    
     Ok((from_peer_start, from_peer_end, to_peer_start, to_peer_end))
 }
 
@@ -175,6 +181,8 @@ pub fn compute_localtrust_peer_range(
 /// `from_peer_id` is in range; otherwise, `None`.
 pub fn create_localtrust_next_token(lt_peers_cnt: u64, from_peer_id: u64, to_peer_id: u64) -> Option<String> {
     if from_peer_id == lt_peers_cnt {
+        None
+    } else if from_peer_id == 0 && to_peer_id == 0 {
         None
     } else {
         let id_bytes = [from_peer_id.to_be_bytes(), to_peer_id.to_be_bytes()].concat();
@@ -208,11 +216,12 @@ pub fn create_localtrust_next_token(lt_peers_cnt: u64, from_peer_id: u64, to_pee
 /// A `Result` containing a tuple with the start and end indices of the peer 
 /// range, or a `BaseRunnerError` if decoding the `next_token` fails.
 pub fn compute_seedtrust_peer_range(
-    st_peers_cnt: usize,
+    st_peers_cnt: u64,
     page_size: Option<usize>, 
     next_token: Option<String>,
 ) -> Result<(u64, u64), BaseRunnerError> {
     let page_size = page_size.unwrap_or(1000);
+
     let start_peer = match next_token {
         Some(token) => {
             let decoded_bytes = BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
@@ -221,8 +230,11 @@ pub fn compute_seedtrust_peer_range(
         },
         None => 0
     };
+    let start_peer = std::cmp::min(start_peer, st_peers_cnt);
+    
     let end_peer = start_peer + page_size as u64;
     let end_peer = std::cmp::min(end_peer, st_peers_cnt as u64);
+    
     Ok((start_peer, end_peer))
 }
 
@@ -239,12 +251,12 @@ pub fn compute_seedtrust_peer_range(
 /// # Returns
 ///
 /// An `Option<String>` containing the base64 encoded next token if `next_peer_id` is in range; otherwise, `None`.
-pub fn create_seedtrust_next_token(st_peers_cnt: usize, next_peer_id: u64) -> Option<String> {
-    if 0 < next_peer_id && next_peer_id < st_peers_cnt as u64 {
+pub fn create_seedtrust_next_token(st_peers_cnt: u64, next_peer_id: u64) -> Option<String> {
+    if next_peer_id == 0 || next_peer_id == st_peers_cnt {
+        None
+    } else {
         let id_bytes = next_peer_id.to_be_bytes();
         let next_token = BASE64_STANDARD.encode(id_bytes);
         Some(next_token)
-    } else {
-        None
     }
 }
