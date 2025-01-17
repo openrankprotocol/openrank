@@ -260,3 +260,65 @@ pub fn create_seedtrust_next_token(st_peers_cnt: u64, next_peer_id: u64) -> Opti
         Some(next_token)
     }
 }
+
+#[test]
+fn test_compute_localtrust_peer_range() {
+    // lt: 100 * 100, page_size: 1000, next_token: None
+    // (0, 0) => (10, 0)
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, None, None).unwrap();
+    assert_eq!(from_peer_start, 0);
+    assert_eq!(to_peer_start, 0);
+    assert_eq!(from_peer_end, 10);
+    assert_eq!(to_peer_end, 0);
+
+    // lt: 100 * 100, page_size: 10, next_token: None
+    // (0, 0) => (0, 10)
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, Some(10), None).unwrap();
+    assert_eq!(from_peer_start, 0);
+    assert_eq!(to_peer_start, 0);
+    assert_eq!(from_peer_end, 0);
+    assert_eq!(to_peer_end, 10);
+
+    // lt: 100 * 100, page_size: 250, next_token: None
+    // (0, 0) => (2, 50)
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, Some(250), None).unwrap();
+    assert_eq!(from_peer_start, 0);
+    assert_eq!(to_peer_start, 0);
+    assert_eq!(from_peer_end, 2);
+    assert_eq!(to_peer_end, 50);
+
+    // lt: 100 * 100, page_size: 1000, next_token: "AAAAAAAAAAAAAAAAAAAACg=="
+    // (0, 10) => (10, 10)
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, None, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string())).unwrap();
+    assert_eq!(from_peer_start, 0);
+    assert_eq!(to_peer_start, 10);
+    assert_eq!(from_peer_end, 10);
+    assert_eq!(to_peer_end, 10);
+
+    // lt: 100 * 100, page_size: 1000, next_token: "AAAAAAAAAGMAAAAAAAAAWg=="
+    // (99, 90) => (100, 90)
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, None, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string())).unwrap();
+    assert_eq!(from_peer_start, 99);
+    assert_eq!(to_peer_start, 90);
+    assert_eq!(from_peer_end, 100);
+    assert_eq!(to_peer_end, 90);
+}
+
+#[test]
+fn test_create_localtrust_next_token() {
+    // lt: 100 * 100, from_peer_id: 0, to_peer_id: 10
+    let next_token = create_localtrust_next_token(100, 0, 10);
+    assert_eq!(next_token, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string()));
+
+    // lt: 100 * 100, from_peer_id: 99, to_peer_id: 90
+    let next_token = create_localtrust_next_token(100, 99, 90);
+    assert_eq!(next_token, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string()));
+
+    // lt: 100 * 100, from_peer_id: 100, to_peer_id: 0
+    let next_token = create_localtrust_next_token(100, 100, 0);
+    assert_eq!(next_token, None);
+
+    // lt: 100 * 100, from_peer_id: 0, to_peer_id: 0
+    let next_token = create_localtrust_next_token(100, 0, 0);
+    assert_eq!(next_token, None);
+}

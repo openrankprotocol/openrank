@@ -200,7 +200,7 @@ impl BaseRunner {
         let lt_peers_cnt = lt.len() as u64;
         let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
             compute_localtrust_peer_range(lt_peers_cnt, page_size, next_token)?;
-        if from_peer_start >= lt_peers_cnt {
+        if from_peer_start == lt_peers_cnt {
             return Ok(LocalTrustStateResponse::new(vec![], None));
         }
 
