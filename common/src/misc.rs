@@ -109,6 +109,30 @@ impl SeedTrustStateResponse {
     }
 }
 
+/// Computes the range of local trust peers for pagination.
+///
+/// This function calculates the start and end indices of peers for the current
+/// page based on the provided `page_size` and `next_token`. If a `next_token`
+/// is provided, it decodes the token to get the starting positions. Otherwise,
+/// it starts from the beginning. The function ensures that the end indices do
+/// not exceed the total number of peers (`lt_peers_cnt`).
+///
+/// # Arguments
+///
+/// * `lt_peers_cnt` - Total number of local trust peers.
+/// * `page_size` - Optional size of the page; defaults to 1000 if not provided.
+/// * `next_token` - Optional base64-encoded string representing the starting
+///   indices for the current page.
+///
+/// # Returns
+///
+/// A `Result` containing a tuple with the start and end indices for the
+/// `from_peer` and `to_peer` ranges, or an error if decoding the token fails.
+///
+/// # Errors
+///
+/// Returns `BaseRunnerError` if the token decoding or conversion to bytes
+/// fails.
 pub fn compute_localtrust_peer_range(
     lt_peers_cnt: u64,
     page_size: Option<usize>, 
@@ -131,6 +155,24 @@ pub fn compute_localtrust_peer_range(
     Ok((from_peer_start, from_peer_end, to_peer_start, to_peer_end))
 }
 
+/// Creates a next token for local trust pagination.
+///
+/// This function generates a base64 encoded string that represents the
+/// `from_peer_id` and `to_peer_id` as 8-byte integers. The `from_peer_id`
+/// must be less than `lt_peers_cnt` to generate a non-empty token.
+///
+/// # Arguments
+///
+/// * `lt_peers_cnt` - Total number of local trust peers. It defines the upper
+///   limit for `from_peer_id`.
+/// * `from_peer_id` - The peer ID for which the next token is to be created.
+/// * `to_peer_id` - The peer ID up to which the peers are to be returned in
+///   the next page.
+///
+/// # Returns
+///
+/// An `Option<String>` containing the base64 encoded next token if
+/// `from_peer_id` is in range; otherwise, `None`.
 pub fn create_localtrust_next_token(lt_peers_cnt: u64, from_peer_id: u64, to_peer_id: u64) -> Option<String> {
     if from_peer_id == lt_peers_cnt {
         None
@@ -141,6 +183,30 @@ pub fn create_localtrust_next_token(lt_peers_cnt: u64, from_peer_id: u64, to_pee
     }
 }
 
+/// Computes the range of seed trust peers for pagination.
+///
+/// This function calculates the start and end indices for a range of peers 
+/// based on the provided `next_token` and `page_size`. The `next_token` is 
+/// expected to be a base64 encoded string representing an 8-byte integer, 
+/// which determines the starting peer index (`start_peer`). If `next_token` 
+/// is `None`, the starting index defaults to 0.
+///
+/// The `end_peer` is calculated by adding the `page_size` (defaulting to 1000 
+/// if not provided) to the `start_peer`. The `end_peer` is capped at 
+/// `st_peers_cnt` to ensure it does not exceed the total number of peers.
+///
+/// # Arguments
+///
+/// * `st_peers_cnt` - The total number of seed trust peers.
+/// * `page_size` - Optional size of the page, determining the number of peers 
+///   in the range.
+/// * `next_token` - Optional base64 encoded string used to determine the 
+///   starting peer index.
+///
+/// # Returns
+///
+/// A `Result` containing a tuple with the start and end indices of the peer 
+/// range, or a `BaseRunnerError` if decoding the `next_token` fails.
 pub fn compute_seedtrust_peer_range(
     st_peers_cnt: usize,
     page_size: Option<usize>, 
@@ -160,6 +226,19 @@ pub fn compute_seedtrust_peer_range(
     Ok((start_peer, end_peer))
 }
 
+/// Creates a next token for seed trust pagination.
+///
+/// This function generates a base64 encoded string that represents the `next_peer_id` as an 8-byte integer.
+/// The `next_peer_id` must be greater than 0 and less than `st_peers_cnt` to generate a non-empty token.
+///
+/// # Arguments
+///
+/// * `st_peers_cnt` - Total number of seed trust peers. It defines the upper limit for `next_peer_id`.
+/// * `next_peer_id` - The peer ID for which the next token is to be created.
+///
+/// # Returns
+///
+/// An `Option<String>` containing the base64 encoded next token if `next_peer_id` is in range; otherwise, `None`.
 pub fn create_seedtrust_next_token(st_peers_cnt: usize, next_peer_id: u64) -> Option<String> {
     if 0 < next_peer_id && next_peer_id < st_peers_cnt as u64 {
         let id_bytes = next_peer_id.to_be_bytes();
