@@ -109,8 +109,8 @@ pub fn positive_run(
     );
     pre_process(&mut lt, &mut seed, count);
     info!(
-        "Pre-processing finished in {}s. LT size: {}, seed size: {}",
-        start.elapsed().as_secs(),
+        "Pre-processing finished in {:?}. LT size: {}, seed size: {}",
+        start.elapsed(),
         lt.len(),
         seed.len()
     );
@@ -147,8 +147,8 @@ pub fn positive_run(
         i += 1;
     }
     info!(
-        "EigenTrust compute finished in {}s. Num scores: {}, num iterations: {}",
-        start.elapsed().as_secs(),
+        "EigenTrust compute finished in {:?}. Num scores: {}, num iterations: {}",
+        start.elapsed(),
         scores.len(),
         i
     );
@@ -213,6 +213,7 @@ pub fn convergence_check(
     lt = normalise_lt(&lt);
 
     info!("Starting the convergence check...");
+    let start = Instant::now();
     // Calculate the next scores of each node
     let next_scores = iteration(&lt, &seed, scores);
     // Normalize the weighted next scores
@@ -223,7 +224,10 @@ pub fn convergence_check(
     if !is_converged {
         info!("Convergence check failed. Invalid peer count: {}", count);
     } else {
-        info!("Convergence check successful");
+        info!(
+            "Convergence check successful, completed in {:?}",
+            start.elapsed()
+        );
     }
     is_converged
 }

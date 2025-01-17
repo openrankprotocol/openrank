@@ -16,7 +16,7 @@ use openrank_common::{
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio::select;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 use openrank_common::runners::compute_runner::{self as runner, ComputeRunner};
@@ -331,7 +331,7 @@ impl Node {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         info!("Local node is listening on {address}");
                     }
-                    e => info!("{:?}", e),
+                    e => debug!("{:?}", e),
                 }
             }
         }
@@ -343,6 +343,8 @@ impl Node {
     /// - Just take TrustUpdate and SeedUpdate transactions
     /// - Update ComputeRunner using functions update_trust, update_seed
     pub fn node_recovery(&mut self) -> Result<(), Error> {
+        info!("Starting node recovery...");
+
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
@@ -350,10 +352,14 @@ impl Node {
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
+        info!("LT TXs read: {}", txs.len());
+
         let mut seed_update_txs: Vec<Tx> =
             self.db.get_range_from_start(consts::SEED_UPDATE, None, None).map_err(Error::Db)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
+
+        info!("ST TXs read: {}", txs.len());
 
         // sort txs by sequence_number
         txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
@@ -388,6 +394,8 @@ impl Node {
                 _ => (),
             }
         }
+
+        info!("Node recovery completed...");
 
         Ok(())
     }

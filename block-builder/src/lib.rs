@@ -33,7 +33,7 @@ use tokio::{
     select,
     sync::mpsc::{self, Receiver},
 };
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 mod sequencer;
@@ -452,7 +452,7 @@ impl Node {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         info!("Local node is listening on {address}");
                     },
-                    e => info!("NEW_EVENT: {:?}", e),
+                    e => debug!("{:?}", e),
                 }
             }
         }

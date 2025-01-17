@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use tokio::select;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 
 use openrank_common::runners::verification_runner::{self as runner, VerificationRunner};
@@ -462,7 +462,7 @@ impl Node {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         info!("Local node is listening on {address}");
                     }
-                    e => info!("{:?}", e),
+                    e => debug!("{:?}", e),
                 }
             }
         }
