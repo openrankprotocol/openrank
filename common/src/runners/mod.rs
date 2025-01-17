@@ -212,32 +212,31 @@ impl BaseRunner {
         if from_peer_start == from_peer_end {
             let lt_row = lt
                 .get(&from_peer_start)
-                .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                .ok_or(Error::OutboundLocalTrustNotFound(from_peer_start))?;
             for to_peer_id in to_peer_start..to_peer_end {
                 let lt_entry_value = lt_row
                     .get(&to_peer_id)
-                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                    .ok_or(Error::LocalTrustEntryNotFound(from_peer_start, to_peer_id))?;
                 result.push((from_peer_start, to_peer_id, lt_entry_value));
             }
         } else {
             let lt_row = lt
                 .get(&from_peer_start)
-                .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                .ok_or(Error::OutboundLocalTrustNotFound(from_peer_start))?;
             for to_peer_id in to_peer_start..lt_peers_cnt {
                 let lt_entry_value = lt_row
                     .get(&to_peer_id)
-                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                    .ok_or(Error::LocalTrustEntryNotFound(from_peer_start, to_peer_id))?;
                 result.push((from_peer_start, to_peer_id, lt_entry_value));
             }
 
             for from_peer_id in from_peer_start + 1..from_peer_end {
-                let lt_row = lt
-                    .get(&from_peer_id)
-                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                let lt_row =
+                    lt.get(&from_peer_id).ok_or(Error::OutboundLocalTrustNotFound(from_peer_id))?;
                 for to_peer_id in 0..lt_peers_cnt {
                     let lt_entry_value = lt_row
                         .get(&to_peer_id)
-                        .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                        .ok_or(Error::LocalTrustEntryNotFound(from_peer_id, to_peer_id))?;
                     result.push((from_peer_id, to_peer_id, lt_entry_value));
                 }
             }
@@ -245,11 +244,11 @@ impl BaseRunner {
             if from_peer_end != lt_peers_cnt {
                 let lt_row = lt
                     .get(&from_peer_end)
-                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                    .ok_or(Error::OutboundLocalTrustNotFound(from_peer_end))?;
                 for to_peer_id in 0..to_peer_end {
                     let lt_entry_value = lt_row
                         .get(&to_peer_id)
-                        .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                        .ok_or(Error::LocalTrustEntryNotFound(from_peer_end, to_peer_id))?;
                     result.push((from_peer_end, to_peer_id, lt_entry_value));
                 }
             }
@@ -274,7 +273,7 @@ impl BaseRunner {
 
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
-            let seed = st.get(&peer_id).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+            let seed = st.get(&peer_id).ok_or(Error::SeedTrustEntryNotFound(peer_id))?;
             result.push((peer_id, *seed));
         }
 
@@ -296,8 +295,12 @@ pub enum Error {
     SeedTrustMasterTreeNotFound(DomainHash),
 
     LocalTrustNotFound(OwnedNamespace),
-
     SeedTrustNotFound(OwnedNamespace),
+
+    OutboundLocalTrustNotFound(u64),
+    LocalTrustEntryNotFound(u64, u64),
+
+    SeedTrustEntryNotFound(u64),
 
     DomainIndexNotFound(String),
 
@@ -346,6 +349,22 @@ impl Display for Error {
             Self::SeedTrustNotFound(domain) => {
                 write!(f, "seed_trust not found for domain: {:?}", domain)
             },
+
+            Self::OutboundLocalTrustNotFound(index) => {
+                write!(f, "outbound_local_trust not found for peer: {}", index)
+            },
+            Self::LocalTrustEntryNotFound(from, to) => {
+                write!(
+                    f,
+                    "local_trust entry not found for from: {}, to: {}",
+                    from, to
+                )
+            },
+
+            Self::SeedTrustEntryNotFound(index) => {
+                write!(f, "seed_trust entry not found for peer: {}", index)
+            },
+
             Self::DomainIndexNotFound(address) => {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
