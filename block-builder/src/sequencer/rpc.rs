@@ -142,7 +142,7 @@ impl SequencerServer {
 
     pub fn log_call<I: ToString>(name: &str, args: Vec<I>) {
         info!(
-            "Incoming call: {}, args: {:?}",
+            "JsonRPC_CALL: {}, ARGS: {:?}",
             name,
             args.iter().map(|x| x.to_string()).collect::<String>()
         );

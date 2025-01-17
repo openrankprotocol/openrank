@@ -53,7 +53,7 @@ impl ComputeRunner {
 
     /// Compute the EigenTrust scores for certain domain.
     pub fn compute(&mut self, domain: Domain) -> Result<(), Error> {
-        info!("Running the compute for domain: {}", domain.to_hash());
+        info!("COMPUTE_RUN: {}", domain.to_hash());
         let lt = self
             .base
             .local_trust
@@ -76,7 +76,7 @@ impl ComputeRunner {
 
     /// Create the compute tree for certain domain.
     pub fn create_compute_tree(&mut self, domain: Domain) -> Result<(), Error> {
-        info!("Creating the compute tree for domain: {}", domain.to_hash());
+        info!("CREATE_COMPUTE_TREE: {}", domain.to_hash());
         let scores = self
             .compute_results
             .get(&domain.to_hash())
@@ -86,7 +86,7 @@ impl ComputeRunner {
         let compute_tree =
             DenseMerkleTree::<Keccak256>::new(score_hashes).map_err(Error::Merkle)?;
         info!(
-            "Compute Tree root hash: {}",
+            "COMPUTE_TREE_ROOT_HASH: {}",
             compute_tree.root().map_err(Error::Merkle)?
         );
         self.compute_tree.insert(domain.to_hash(), compute_tree);

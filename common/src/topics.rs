@@ -138,25 +138,25 @@ impl From<Topic> for String {
     fn from(value: Topic) -> Self {
         match value {
             Topic::NamespaceTrustUpdate(namespace) => {
-                format!("{}:{}", namespace.to_hex(), consts::TRUST_UPDATE)
+                format!("{}:{}", namespace, consts::TRUST_UPDATE)
             },
             Topic::NamespaceSeedUpdate(namespace) => {
-                format!("{}:{}", namespace.to_hex(), consts::SEED_UPDATE)
+                format!("{}:{}", namespace, consts::SEED_UPDATE)
             },
             Topic::DomainRequest(domain_id) => {
-                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_REQUEST)
+                format!("{}:{}", domain_id, consts::COMPUTE_REQUEST)
             },
             Topic::DomainAssignent(domain_id) => {
-                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_ASSIGNMENT)
+                format!("{}:{}", domain_id, consts::COMPUTE_ASSIGNMENT)
             },
             Topic::DomainCommitment(domain_id) => {
-                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_COMMITMENT)
+                format!("{}:{}", domain_id, consts::COMPUTE_COMMITMENT)
             },
             Topic::DomainScores(domain_id) => {
-                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_SCORES)
+                format!("{}:{}", domain_id, consts::COMPUTE_SCORES)
             },
             Topic::DomainVerification(domain_id) => {
-                format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_VERIFICATION)
+                format!("{}:{}", domain_id, consts::COMPUTE_VERIFICATION)
             },
         }
     }

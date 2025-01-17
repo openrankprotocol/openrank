@@ -158,6 +158,8 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::TrustUpdate(_) = tx.body() {
+                    info!("NAMESPACE_TRUST_UPDATE_EVENT: {}", namespace);
+
                     tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                     self.primary_db.put(tx.clone()).map_err(Error::Db)?;
                     broadcast_event(&mut self.swarm, tx.clone(), topic.clone())
@@ -170,6 +172,8 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::SeedUpdate(_) = tx.body() {
+                    info!("NAMESPACE_SEED_UPDATE_EVENT: {}", namespace);
+
                     tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                     self.primary_db.put(tx.clone()).map_err(Error::Db)?;
                     broadcast_event(&mut self.swarm, tx.clone(), topic.clone())
@@ -182,6 +186,8 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::ComputeRequest(compute_request) = tx.body() {
+                    info!("DOMAIN_REQUEST_EVENT: {}", domain_id);
+
                     let address = tx.verify().map_err(Error::Signature)?;
                     assert!(self.config.whitelist.users.contains(&address));
                     // Add Tx to db
@@ -207,6 +213,8 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::ComputeCommitment(commitment) = tx.body() {
+                    info!("DOMAIN_COMMITMENT_EVENT: {}", tx.hash());
+
                     let address = tx.verify().map_err(Error::Signature)?;
                     assert!(self.config.whitelist.computer.contains(&address));
                     // Add Tx to db
@@ -250,6 +258,8 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::ComputeScores(_) = tx.body() {
+                    info!("DOMAIN_SCORES: {}", tx.hash());
+
                     let address = tx.verify().map_err(Error::Signature)?;
                     assert!(self.config.whitelist.computer.contains(&address));
                     // Add Tx to db
@@ -262,6 +272,8 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::ComputeVerification(compute_verification) = tx.body() {
+                    info!("DOMAIN_VERIFICATION: {}", tx.hash());
+
                     let address = tx.verify().map_err(Error::Signature)?;
                     assert!(self.config.whitelist.verifier.contains(&address));
                     // Add Tx to db
@@ -319,7 +331,7 @@ impl Node {
                 if message.topic != topic_wrapper.hash() {
                     continue;
                 }
-                info!(
+                debug!(
                     "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                     message.topic.as_str(),
                 );
@@ -381,10 +393,10 @@ impl Node {
                 interval.tick().await;
                 match db_handler.refresh() {
                     Ok(_) => {
-                        info!("DB refreshed");
+                        info!("DB_REFRESH");
                     },
                     Err(e) => {
-                        error!("DB refresh error: {e:?}");
+                        error!("DB_REFRESH_ERROR: {e:?}");
                     },
                 }
             }
@@ -404,7 +416,7 @@ impl Node {
                         let tx_event = match tx_event_res {
                             Ok(tx_event) => tx_event,
                             Err(e) => {
-                                error!("TxEvent decoding error: {e:?}");
+                                error!("TX_EVENT_DECODING_ERROR: {e:?}");
                                 continue;
                             }
                         };
@@ -412,7 +424,7 @@ impl Node {
                         let tx = match tx_res {
                             Ok(tx) => tx,
                             Err(e) => {
-                                error!("Tx decoding error: {e:?}");
+                                error!("TX_EVENT_DECODING_ERROR: {e:?}");
                                 continue;
                             }
                         };
@@ -420,23 +432,23 @@ impl Node {
                         let seq_tx = match seq_tx_res {
                             Ok(seq_tx) => seq_tx,
                             Err(e) => {
-                                error!("Tx sequencing error: {e:?}");
+                                error!("TX_SEQUENCING_ERROR: {e:?}");
                                 continue;
                             }
                         };
-                        info!("Tx sequenced: {}", seq_tx.hash().to_hex());
+                        info!("TX_SEQUENCED: {}", seq_tx.hash().to_hex());
                     }
                 }
                 event = self.swarm.select_next_some() => match event {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {
-                            info!("mDNS discovered a new peer: {peer_id}");
+                            info!("mDNS_PEER_DISCOVERY: {peer_id}");
                             self.swarm.behaviour_mut().gossipsub_add_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, _multiaddr) in list {
-                            info!("mDNS discover peer has expired: {peer_id}");
+                            info!("mDNS_PEER_EXPIRE: {peer_id}");
                             self.swarm.behaviour_mut().gossipsub_remove_peer(&peer_id);
                         }
                     },
@@ -450,7 +462,7 @@ impl Node {
                         }
                     },
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        info!("Local node is listening on {address}");
+                        info!("LISTEN_ON {address}");
                     },
                     e => debug!("{:?}", e),
                 }

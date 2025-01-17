@@ -85,10 +85,7 @@ impl VerificationRunner {
     pub fn check_finished_assignments(
         &mut self, domain: Domain,
     ) -> Result<Vec<(TxHash, bool)>, Error> {
-        info!(
-            "Checking for finished assignment for domain: {}",
-            domain.to_hash()
-        );
+        info!("COMPLETED_ASSIGNMENT_SEARCH: {}", domain.to_hash());
         let assignments = self
             .active_assignments
             .get(&domain.clone().to_hash())
@@ -107,7 +104,7 @@ impl VerificationRunner {
                     let (res_lt_root, res_compute_root) =
                         self.get_root_hashes(domain.clone(), assignment_id.clone())?;
                     info!(
-                        "LT root: {}, Compute root: {}",
+                        "LT_ROOT: {}, COMPUTE_ROOT: {}",
                         res_lt_root, res_compute_root
                     );
                     let is_root_equal = cp_root == res_compute_root;
@@ -116,7 +113,7 @@ impl VerificationRunner {
                     results.push((assgn_tx.clone(), is_root_equal && is_converged));
                     completed.push(assignment_id.clone());
                     info!(
-                        "Completed assignment {} for domain: {}, is_root_equal: {}, is_converged: {}",
+                        "COMPLETED_ASSIGNMENT {} DOMAIN: {}, is_root_equal: {}, is_converged: {}",
                         assgn_tx,
                         domain.to_hash(),
                         is_root_equal,
@@ -168,7 +165,7 @@ impl VerificationRunner {
     pub fn create_compute_tree(
         &mut self, domain: Domain, assignment_id: TxHash,
     ) -> Result<(), Error> {
-        info!("Creating the compute tree for domain: {}", domain.to_hash());
+        info!("CREATE_COMPUTE_TREE: {}", domain.to_hash());
         let compute_tree_map = self
             .compute_tree
             .get_mut(&domain.to_hash())
@@ -201,7 +198,7 @@ impl VerificationRunner {
         let compute_tree =
             DenseMerkleTree::<Keccak256>::new(score_hashes).map_err(Error::Merkle)?;
         info!(
-            "Compute Tree root hash: {}",
+            "COMPUTE_TREE_ROOT_HASH: {}",
             compute_tree.root().map_err(Error::Merkle)?
         );
         compute_tree_map.insert(assignment_id.clone(), compute_tree);

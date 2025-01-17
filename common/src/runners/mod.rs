@@ -130,7 +130,7 @@ impl BaseRunner {
         }
         let lt_root = lt_master_tree.root().map_err(Error::Merkle)?;
         info!(
-            "LT update completed for domain: {}. New merkle root: {}",
+            "LT_UPDATE: {}. NEW_MERKLE_ROOT: {}",
             domain.to_hash(),
             lt_root,
         );
@@ -179,7 +179,7 @@ impl BaseRunner {
         }
         let st_root = st_master_tree.root().map_err(Error::Merkle)?;
         info!(
-            "ST update completed for domain: {}. New merkle root: {}",
+            "ST_UPDATE: {}. NEW_MERKLE_ROOT: {}",
             domain.to_hash(),
             st_root,
         );

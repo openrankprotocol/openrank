@@ -103,18 +103,18 @@ pub fn positive_run(
 ) -> Vec<(u64, f32)> {
     let start = Instant::now();
     info!(
-        "Pre-processing started. LT size: {}, seed size: {}",
+        "PRE_PROCESS_START, LT_SIZE: {}, SEED_SIZE: {}",
         lt.len(),
         seed.len()
     );
     pre_process(&mut lt, &mut seed, count);
     info!(
-        "Pre-processing finished in {:?}. LT size: {}, seed size: {}",
+        "PRE_PROCESS_FINISH: {:?}, LT_SIZE: {}, SEED_SIZE: {}",
         start.elapsed(),
         lt.len(),
         seed.len()
     );
-    info!("Normalising LT and Seed");
+    info!("NORMALISE_LT_SEED");
     seed = normalise_scores(&seed);
     lt = normalise_lt(&lt);
 
@@ -122,7 +122,7 @@ pub fn positive_run(
     let mut scores = seed.clone();
     // Iterate until convergence.
 
-    info!("Starting EigenTrust compute");
+    info!("COMPUTE_START");
     let start = Instant::now();
     let mut i = 0;
     loop {
@@ -147,7 +147,7 @@ pub fn positive_run(
         i += 1;
     }
     info!(
-        "EigenTrust compute finished in {:?}. Num scores: {}, num iterations: {}",
+        "COMPUTE_END: {:?}, NUM_SCORES: {}, NUM_ITER: {}",
         start.elapsed(),
         scores.len(),
         i
@@ -198,21 +198,21 @@ pub fn convergence_check(
     scores: &HashMap<u64, f32>, count: u64,
 ) -> bool {
     info!(
-        "Pre-processing started. LT size: {}, seed size: {}",
+        "PRE_PROCESS_START, LT_SIZE: {}, SEED_SIZE: {}",
         lt.len(),
         seed.len()
     );
     pre_process(&mut lt, &mut seed, count);
     info!(
-        "Pre-processing finished. LT size: {}, seed size: {}",
+        "PRE_PROCESS_END. LT_SIZE: {}, SEED_SIZE: {}",
         lt.len(),
         seed.len()
     );
-    info!("Normalising LT and Seed");
+    info!("NORMALISE_LT_SEED");
     seed = normalise_scores(&seed);
     lt = normalise_lt(&lt);
 
-    info!("Starting the convergence check...");
+    info!("CONVERGENCE_START");
     let start = Instant::now();
     // Calculate the next scores of each node
     let next_scores = iteration(&lt, &seed, scores);
@@ -222,12 +222,13 @@ pub fn convergence_check(
     // Check if the scores have converged
     let (is_converged, count) = is_converged(scores, &next_scores);
     if !is_converged {
-        info!("Convergence check failed. Invalid peer count: {}", count);
-    } else {
         info!(
-            "Convergence check successful, completed in {:?}",
-            start.elapsed()
+            "CONVERGENCE_FAILED: {:?} INVALID_COUNT: {}",
+            start.elapsed(),
+            count
         );
+    } else {
+        info!("CONVERGENCE_SUCCESSFUL: {:?}", start.elapsed());
     }
     is_converged
 }
