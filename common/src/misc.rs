@@ -134,30 +134,38 @@ impl SeedTrustStateResponse {
 /// Returns `BaseRunnerError` if the token decoding or conversion to bytes
 /// fails.
 pub fn compute_localtrust_peer_range(
-    lt_peers_cnt: u64,
-    page_size: Option<usize>, 
-    next_token: Option<String>,
+    lt_peers_cnt: u64, page_size: Option<usize>, next_token: Option<String>,
 ) -> Result<(u64, u64, u64, u64), BaseRunnerError> {
     let page_size = page_size.unwrap_or(1000);
 
     let (from_peer_start, to_peer_start) = match next_token {
         Some(token) => {
-            let decoded_bytes = BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
-            let id_bytes = TryInto::<[u8; 16]>::try_into(decoded_bytes).map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 16 bytes: {:?}", e)))?;
-            let first_bytes = id_bytes[0..8].try_into().map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e)))?;
-            let second_bytes = id_bytes[8..].try_into().map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e)))?;
-            (u64::from_be_bytes(first_bytes), u64::from_be_bytes(second_bytes))
+            let decoded_bytes =
+                BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
+            let id_bytes = TryInto::<[u8; 16]>::try_into(decoded_bytes).map_err(|e| {
+                BaseRunnerError::Misc(format!("Failed to convert to 16 bytes: {:?}", e))
+            })?;
+            let first_bytes = id_bytes[0..8].try_into().map_err(|e| {
+                BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e))
+            })?;
+            let second_bytes = id_bytes[8..].try_into().map_err(|e| {
+                BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e))
+            })?;
+            (
+                u64::from_be_bytes(first_bytes),
+                u64::from_be_bytes(second_bytes),
+            )
         },
-        None => (0, 0)
+        None => (0, 0),
     };
     let from_peer_start = std::cmp::min(from_peer_start, lt_peers_cnt);
     let to_peer_start = std::cmp::min(to_peer_start, lt_peers_cnt);
-    
+
     let to_peer_end = to_peer_start + page_size as u64;
     let from_peer_end = from_peer_start + to_peer_end / lt_peers_cnt;
     let from_peer_end = std::cmp::min(from_peer_end, lt_peers_cnt);
     let to_peer_end = to_peer_end % lt_peers_cnt;
-    
+
     Ok((from_peer_start, from_peer_end, to_peer_start, to_peer_end))
 }
 
@@ -179,10 +187,10 @@ pub fn compute_localtrust_peer_range(
 ///
 /// An `Option<String>` containing the base64 encoded next token if
 /// `from_peer_id` is in range; otherwise, `None`.
-pub fn create_localtrust_next_token(lt_peers_cnt: u64, from_peer_id: u64, to_peer_id: u64) -> Option<String> {
-    if from_peer_id == lt_peers_cnt {
-        None
-    } else if from_peer_id == 0 && to_peer_id == 0 {
+pub fn create_localtrust_next_token(
+    lt_peers_cnt: u64, from_peer_id: u64, to_peer_id: u64,
+) -> Option<String> {
+    if (from_peer_id == lt_peers_cnt) || (from_peer_id == 0 && to_peer_id == 0) {
         None
     } else {
         let id_bytes = [from_peer_id.to_be_bytes(), to_peer_id.to_be_bytes()].concat();
@@ -193,48 +201,49 @@ pub fn create_localtrust_next_token(lt_peers_cnt: u64, from_peer_id: u64, to_pee
 
 /// Computes the range of seed trust peers for pagination.
 ///
-/// This function calculates the start and end indices for a range of peers 
-/// based on the provided `next_token` and `page_size`. The `next_token` is 
-/// expected to be a base64 encoded string representing an 8-byte integer, 
-/// which determines the starting peer index (`start_peer`). If `next_token` 
+/// This function calculates the start and end indices for a range of peers
+/// based on the provided `next_token` and `page_size`. The `next_token` is
+/// expected to be a base64 encoded string representing an 8-byte integer,
+/// which determines the starting peer index (`start_peer`). If `next_token`
 /// is `None`, the starting index defaults to 0.
 ///
-/// The `end_peer` is calculated by adding the `page_size` (defaulting to 1000 
-/// if not provided) to the `start_peer`. The `end_peer` is capped at 
+/// The `end_peer` is calculated by adding the `page_size` (defaulting to 1000
+/// if not provided) to the `start_peer`. The `end_peer` is capped at
 /// `st_peers_cnt` to ensure it does not exceed the total number of peers.
 ///
 /// # Arguments
 ///
 /// * `st_peers_cnt` - The total number of seed trust peers.
-/// * `page_size` - Optional size of the page, determining the number of peers 
+/// * `page_size` - Optional size of the page, determining the number of peers
 ///   in the range.
-/// * `next_token` - Optional base64 encoded string used to determine the 
+/// * `next_token` - Optional base64 encoded string used to determine the
 ///   starting peer index.
 ///
 /// # Returns
 ///
-/// A `Result` containing a tuple with the start and end indices of the peer 
+/// A `Result` containing a tuple with the start and end indices of the peer
 /// range, or a `BaseRunnerError` if decoding the `next_token` fails.
 pub fn compute_seedtrust_peer_range(
-    st_peers_cnt: u64,
-    page_size: Option<usize>, 
-    next_token: Option<String>,
+    st_peers_cnt: u64, page_size: Option<usize>, next_token: Option<String>,
 ) -> Result<(u64, u64), BaseRunnerError> {
     let page_size = page_size.unwrap_or(1000);
 
     let start_peer = match next_token {
         Some(token) => {
-            let decoded_bytes = BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
-            let id_bytes = TryInto::<[u8; 8]>::try_into(decoded_bytes).map_err(|e| BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e)))?;
+            let decoded_bytes =
+                BASE64_STANDARD.decode(token).map_err(BaseRunnerError::Base64Decode)?;
+            let id_bytes = TryInto::<[u8; 8]>::try_into(decoded_bytes).map_err(|e| {
+                BaseRunnerError::Misc(format!("Failed to convert to 8 bytes: {:?}", e))
+            })?;
             u64::from_be_bytes(id_bytes)
         },
-        None => 0
+        None => 0,
     };
     let start_peer = std::cmp::min(start_peer, st_peers_cnt);
-    
+
     let end_peer = start_peer + page_size as u64;
-    let end_peer = std::cmp::min(end_peer, st_peers_cnt as u64);
-    
+    let end_peer = std::cmp::min(end_peer, st_peers_cnt);
+
     Ok((start_peer, end_peer))
 }
 
@@ -265,7 +274,8 @@ pub fn create_seedtrust_next_token(st_peers_cnt: u64, next_peer_id: u64) -> Opti
 fn test_compute_localtrust_peer_range() {
     // lt: 100 * 100, page_size: 1000, next_token: None
     // (0, 0) => (10, 0)
-    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, None, None).unwrap();
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
+        compute_localtrust_peer_range(100, None, None).unwrap();
     assert_eq!(from_peer_start, 0);
     assert_eq!(to_peer_start, 0);
     assert_eq!(from_peer_end, 10);
@@ -273,7 +283,8 @@ fn test_compute_localtrust_peer_range() {
 
     // lt: 100 * 100, page_size: 10, next_token: None
     // (0, 0) => (0, 10)
-    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, Some(10), None).unwrap();
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
+        compute_localtrust_peer_range(100, Some(10), None).unwrap();
     assert_eq!(from_peer_start, 0);
     assert_eq!(to_peer_start, 0);
     assert_eq!(from_peer_end, 0);
@@ -281,7 +292,8 @@ fn test_compute_localtrust_peer_range() {
 
     // lt: 100 * 100, page_size: 250, next_token: None
     // (0, 0) => (2, 50)
-    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, Some(250), None).unwrap();
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
+        compute_localtrust_peer_range(100, Some(250), None).unwrap();
     assert_eq!(from_peer_start, 0);
     assert_eq!(to_peer_start, 0);
     assert_eq!(from_peer_end, 2);
@@ -289,7 +301,9 @@ fn test_compute_localtrust_peer_range() {
 
     // lt: 100 * 100, page_size: 1000, next_token: "AAAAAAAAAAAAAAAAAAAACg=="
     // (0, 10) => (10, 10)
-    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, None, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string())).unwrap();
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
+        compute_localtrust_peer_range(100, None, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string()))
+            .unwrap();
     assert_eq!(from_peer_start, 0);
     assert_eq!(to_peer_start, 10);
     assert_eq!(from_peer_end, 10);
@@ -297,7 +311,9 @@ fn test_compute_localtrust_peer_range() {
 
     // lt: 100 * 100, page_size: 1000, next_token: "AAAAAAAAAGMAAAAAAAAAWg=="
     // (99, 90) => (100, 90)
-    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) = compute_localtrust_peer_range(100, None, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string())).unwrap();
+    let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
+        compute_localtrust_peer_range(100, None, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string()))
+            .unwrap();
     assert_eq!(from_peer_start, 99);
     assert_eq!(to_peer_start, 90);
     assert_eq!(from_peer_end, 100);
@@ -333,19 +349,22 @@ fn test_compute_seedtrust_peer_range() {
 
     // st: 100, page_size: 55, next_token: None
     // 0 => 55
-    let (from_peer_start, from_peer_end) = compute_seedtrust_peer_range(100, Some(55), None).unwrap();
+    let (from_peer_start, from_peer_end) =
+        compute_seedtrust_peer_range(100, Some(55), None).unwrap();
     assert_eq!(from_peer_start, 0);
     assert_eq!(from_peer_end, 55);
 
     // st: 100, page_size: 100, next_token: "AAAAAAAAADc="
     // 55 => 100
-    let (from_peer_start, from_peer_end) = compute_seedtrust_peer_range(100, Some(100), Some("AAAAAAAAADc=".to_string())).unwrap();
+    let (from_peer_start, from_peer_end) =
+        compute_seedtrust_peer_range(100, Some(100), Some("AAAAAAAAADc=".to_string())).unwrap();
     assert_eq!(from_peer_start, 55);
     assert_eq!(from_peer_end, 100);
 
     // st: 100, page_size: 10, next_token: "AAAAAAAAADc="
     // 55 => 65
-    let (from_peer_start, from_peer_end) = compute_seedtrust_peer_range(100, Some(10), Some("AAAAAAAAADc=".to_string())).unwrap();
+    let (from_peer_start, from_peer_end) =
+        compute_seedtrust_peer_range(100, Some(10), Some("AAAAAAAAADc=".to_string())).unwrap();
     assert_eq!(from_peer_start, 55);
     assert_eq!(from_peer_end, 65);
 }

@@ -1,6 +1,10 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
-    misc::{compute_localtrust_peer_range, compute_seedtrust_peer_range, create_localtrust_next_token, create_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust, SeedTrustStateResponse},
+    misc::{
+        compute_localtrust_peer_range, compute_seedtrust_peer_range, create_localtrust_next_token,
+        create_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        SeedTrustStateResponse,
+    },
     topics::{Domain, DomainHash},
     tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
 };
@@ -206,8 +210,9 @@ impl BaseRunner {
 
         let mut result = vec![];
         if from_peer_start == from_peer_end {
-            let lt_row =
-                lt.get(&from_peer_start).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+            let lt_row = lt
+                .get(&from_peer_start)
+                .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
             for to_peer_id in to_peer_start..to_peer_end {
                 let lt_entry_value = lt_row
                     .get(&to_peer_id)
@@ -215,29 +220,32 @@ impl BaseRunner {
                 result.push((from_peer_start, to_peer_id, lt_entry_value));
             }
         } else {
-            let lt_row =
-                lt.get(&from_peer_start).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+            let lt_row = lt
+                .get(&from_peer_start)
+                .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
             for to_peer_id in to_peer_start..lt_peers_cnt {
                 let lt_entry_value = lt_row
                     .get(&to_peer_id)
                     .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
                 result.push((from_peer_start, to_peer_id, lt_entry_value));
             }
-         
+
             for from_peer_id in from_peer_start + 1..from_peer_end {
-                let lt_row =
-                    lt.get(&from_peer_id).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                let lt_row = lt
+                    .get(&from_peer_id)
+                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
                 for to_peer_id in 0..lt_peers_cnt {
                     let lt_entry_value = lt_row
                         .get(&to_peer_id)
                         .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
                     result.push((from_peer_id, to_peer_id, lt_entry_value));
-                }    
+                }
             }
-            
+
             if from_peer_end != lt_peers_cnt {
-                let lt_row =
-                    lt.get(&from_peer_end).ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+                let lt_row = lt
+                    .get(&from_peer_end)
+                    .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
                 for to_peer_id in 0..to_peer_end {
                     let lt_entry_value = lt_row
                         .get(&to_peer_id)
@@ -261,12 +269,12 @@ impl BaseRunner {
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
 
         let st_peers_cnt = st.len() as u64;
-        let (start_peer, end_peer) = compute_seedtrust_peer_range(st_peers_cnt, page_size, next_token)?;
+        let (start_peer, end_peer) =
+            compute_seedtrust_peer_range(st_peers_cnt, page_size, next_token)?;
 
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
-            let seed =
-                st.get(&peer_id).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+            let seed = st.get(&peer_id).ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
             result.push((peer_id, *seed));
         }
 
