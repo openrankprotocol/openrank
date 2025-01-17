@@ -9,6 +9,7 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     broadcast_event, build_node, config,
     db::{self, Db, DbItem},
+    logs::setup_tracing,
     net,
     topics::{Domain, Topic},
     tx::{
@@ -34,7 +35,6 @@ use tokio::{
     sync::mpsc::{self, Receiver},
 };
 use tracing::{debug, error, info};
-use tracing_subscriber::EnvFilter;
 
 mod sequencer;
 
@@ -119,7 +119,7 @@ impl Node {
     /// - Initializes the Secret Key.
     pub async fn init() -> Result<Self, Box<dyn StdError>> {
         dotenv().ok();
-        tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+        setup_tracing();
 
         let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
         let secret_key_bytes = hex::decode(secret_key_hex)?;
@@ -158,7 +158,7 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::TrustUpdate(_) = tx.body() {
-                    info!("NAMESPACE_TRUST_UPDATE_EVENT: {}", namespace);
+                    info!("NAMESPACE_TRUST_UPDATE: {}", namespace);
 
                     tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                     self.primary_db.put(tx.clone()).map_err(Error::Db)?;
@@ -172,7 +172,7 @@ impl Node {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::SeedUpdate(_) = tx.body() {
-                    info!("NAMESPACE_SEED_UPDATE_EVENT: {}", namespace);
+                    info!("NAMESPACE_SEED_UPDATE: {}", namespace);
 
                     tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                     self.primary_db.put(tx.clone()).map_err(Error::Db)?;
@@ -209,11 +209,11 @@ impl Node {
                     return Err(Error::InvalidTxKind);
                 }
             },
-            Topic::DomainCommitment(_) => {
+            Topic::DomainCommitment(domain_id) => {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::ComputeCommitment(commitment) = tx.body() {
-                    info!("DOMAIN_COMMITMENT_EVENT: {}", tx.hash());
+                    info!("DOMAIN_COMMITMENT_EVENT: {}", domain_id);
 
                     let address = tx.verify().map_err(Error::Signature)?;
                     assert!(self.config.whitelist.computer.contains(&address));
@@ -254,11 +254,11 @@ impl Node {
                     return Err(Error::InvalidTxKind);
                 }
             },
-            Topic::DomainScores(_) => {
+            Topic::DomainScores(domain_id) => {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::ComputeScores(_) = tx.body() {
-                    info!("DOMAIN_SCORES: {}", tx.hash());
+                    info!("DOMAIN_SCORES_EVENT: {}", domain_id);
 
                     let address = tx.verify().map_err(Error::Signature)?;
                     assert!(self.config.whitelist.computer.contains(&address));
@@ -268,11 +268,11 @@ impl Node {
                     return Err(Error::InvalidTxKind);
                 }
             },
-            Topic::DomainVerification(_) => {
+            Topic::DomainVerification(domain_id) => {
                 let tx_event = TxEvent::decode(&mut data.as_slice()).map_err(Error::Decode)?;
                 let tx = Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                 if let tx::Body::ComputeVerification(compute_verification) = tx.body() {
-                    info!("DOMAIN_VERIFICATION: {}", tx.hash());
+                    info!("DOMAIN_VERIFICATION_EVENT: {}", domain_id);
 
                     let address = tx.verify().map_err(Error::Signature)?;
                     assert!(self.config.whitelist.verifier.contains(&address));
@@ -436,7 +436,7 @@ impl Node {
                                 continue;
                             }
                         };
-                        info!("TX_SEQUENCED: {}", seq_tx.hash().to_hex());
+                        info!("TX_SEQUENCED: {}", seq_tx.hash());
                     }
                 }
                 event = self.swarm.select_next_some() => match event {

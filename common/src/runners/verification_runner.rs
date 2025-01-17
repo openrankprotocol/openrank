@@ -113,8 +113,7 @@ impl VerificationRunner {
                     results.push((assgn_tx.clone(), is_root_equal && is_converged));
                     completed.push(assignment_id.clone());
                     info!(
-                        "COMPLETED_ASSIGNMENT {} DOMAIN: {}, is_root_equal: {}, is_converged: {}",
-                        assgn_tx,
+                        "COMPLETED_ASSIGNMENT, DOMAIN: {}, is_root_equal: {}, is_converged: {}",
                         domain.to_hash(),
                         is_root_equal,
                         is_converged,

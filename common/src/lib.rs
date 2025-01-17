@@ -1,5 +1,6 @@
 pub mod algos;
 pub mod config;
+pub mod logs;
 pub mod merkle;
 pub mod misc;
 pub mod net;

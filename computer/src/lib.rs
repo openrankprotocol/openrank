@@ -7,6 +7,7 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     address_from_sk, broadcast_event, build_node, config,
     db::{self, Db, DbItem},
+    logs::setup_tracing,
     net,
     topics::{Domain, Topic},
     tx::{compute, consts, Address, Body, Tx, TxHash},
@@ -20,7 +21,6 @@ use std::{
 };
 use tokio::select;
 use tracing::{debug, error, info};
-use tracing_subscriber::EnvFilter;
 
 use openrank_common::runners::compute_runner::{self as runner, ComputeRunner};
 
@@ -117,7 +117,7 @@ impl Node {
                         let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::TrustUpdate(trust_update) = tx.body().clone() {
-                            info!("NAMESPACE_TRUST_UPDATE_EVENT: {}", namespace);
+                            info!("NAMESPACE_TRUST_UPDATE: {}", namespace);
 
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             self.db.put(tx.clone()).map_err(Error::Db)?;
@@ -139,7 +139,7 @@ impl Node {
                         let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::SeedUpdate(seed_update) = tx.body().clone() {
-                            info!("NAMESPACE_TRUST_UPDATE_EVENT: {}", namespace);
+                            info!("NAMESPACE_SEED_UPDATE: {}", namespace);
 
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             self.db.put(tx.clone()).map_err(Error::Db)?;
@@ -161,7 +161,7 @@ impl Node {
                         let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::ComputeAssignment(compute_assignment) = tx.body() {
-                            info!("DOMAIN_ASSIGNMENT_EVENT: {}", tx.hash());
+                            info!("DOMAIN_ASSIGNMENT_EVENT: {}", domain_id);
 
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.block_builder.contains(&address));
@@ -251,7 +251,7 @@ impl Node {
     /// - Initializes the Secret Key.
     pub async fn init() -> Result<Self, Box<dyn std::error::Error>> {
         dotenv().ok();
-        tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+        setup_tracing();
 
         let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
         let secret_key_bytes = hex::decode(secret_key_hex)?;

@@ -139,14 +139,6 @@ impl SequencerServer {
             },
         }
     }
-
-    pub fn log_call<I: ToString>(name: &str, args: Vec<I>) {
-        info!(
-            "JsonRPC_CALL: {}, ARGS: {:?}",
-            name,
-            args.iter().map(|x| x.to_string()).collect::<String>()
-        );
-    }
 }
 
 #[async_trait]
@@ -154,7 +146,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `TrustUpdate` transactions from the network,
     /// and forward them to the network for processing.
     async fn trust_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        Self::log_call("trust_update", vec![&tx_str]);
+        info!("JsonRPC_CALL: {}", "trust_update");
 
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::TRUST_UPDATE)?;
         let trust_update = match body {
@@ -179,7 +171,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `SeedUpdate` transactions from the network,
     /// and forward them to the network node for processing.
     async fn seed_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        Self::log_call("seed_update", vec![&tx_str]);
+        info!("JsonRPC_CALL: {}", "seed_update");
 
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::SEED_UPDATE)?;
         let seed_update = match body {
@@ -204,7 +196,7 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `ComputeRequest` transactions from the network,
     /// and forward them to the network node for processing
     async fn compute_request(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
-        Self::log_call("compute_request", vec![&tx_str]);
+        info!("JsonRPC_CALL: {}", "compute_request");
 
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::COMPUTE_REQUEST)?;
         let compute_request = match body {
@@ -230,10 +222,7 @@ impl RpcServer for SequencerServer {
     async fn get_compute_result_seq_number(
         &self, request_tx_hash: tx::TxHash,
     ) -> Result<u64, ErrorObjectOwned> {
-        Self::log_call(
-            "get_compute_result_seq_number",
-            vec![request_tx_hash.clone().to_hex()],
-        );
+        info!("JsonRPC_CALL: {}", "get_compute_result_seq_number");
 
         let db_handler = self.db.clone();
 
@@ -247,7 +236,7 @@ impl RpcServer for SequencerServer {
     async fn get_compute_result(
         &self, seq_number: u64,
     ) -> Result<compute::Result, ErrorObjectOwned> {
-        Self::log_call("get_compute_result", vec![seq_number]);
+        info!("JsonRPC_CALL: {}", "get_compute_result");
 
         let db_handler = self.db.clone();
 
@@ -274,7 +263,7 @@ impl RpcServer for SequencerServer {
 
     /// Fetch the TX given its `kind` and `tx_hash`
     async fn get_tx(&self, kind: String, tx_hash: tx::TxHash) -> Result<Tx, ErrorObjectOwned> {
-        Self::log_call("get_tx", vec![tx_hash.clone().to_hex()]);
+        info!("JsonRPC_CALL: {}", "get_tx");
 
         let db_handler = self.db.clone();
 
@@ -286,12 +275,8 @@ impl RpcServer for SequencerServer {
 
     /// Fetch multiple TXs given an array of `keys`.
     async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned> {
-        Self::log_call(
-            "get_tx",
-            keys.iter()
-                .map(|(kind, tx)| format!("Kind: {} TxHash: {}", kind, tx.clone().to_hex()))
-                .collect(),
-        );
+        info!("JsonRPC_CALL: {}", "get_txs");
+
         let db_handler = self.db.clone();
 
         let mut key_bytes = Vec::new();
@@ -308,10 +293,8 @@ impl RpcServer for SequencerServer {
     async fn get_trust_updates(
         &self, query: GetTrustUpdateQuery,
     ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned> {
-        Self::log_call(
-            "get_trust_updates",
-            vec![format!("{:?} {:?}", query.from(), query.size())],
-        );
+        info!("JsonRPC_CALL: {}", "get_trust_updates");
+
         let db_handler = self.db.clone();
 
         let key = query
@@ -340,10 +323,7 @@ impl RpcServer for SequencerServer {
     async fn get_seed_updates(
         &self, query: GetSeedUpdateQuery,
     ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned> {
-        Self::log_call(
-            "get_seed_updates",
-            vec![format!("{:?} {:?}", query.from(), query.size())],
-        );
+        info!("JsonRPC_CALL: {}", "get_seed_updates");
 
         let db_handler = self.db.clone();
 
