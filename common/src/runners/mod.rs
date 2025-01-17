@@ -216,7 +216,8 @@ impl BaseRunner {
             for to_peer_id in to_peer_start..to_peer_end {
                 let lt_entry_value = lt_row
                     .get(&to_peer_id)
-                    .ok_or(Error::LocalTrustEntryNotFound(from_peer_start, to_peer_id))?;
+                    // .ok_or(Error::LocalTrustEntryNotFound(from_peer_start, to_peer_id))?; // TODO: what if `from_peer_start == to_peer_id`? what if non-existent?
+                    .unwrap_or_default();
                 result.push((from_peer_start, to_peer_id, lt_entry_value));
             }
         } else {
@@ -226,7 +227,8 @@ impl BaseRunner {
             for to_peer_id in to_peer_start..lt_peers_cnt {
                 let lt_entry_value = lt_row
                     .get(&to_peer_id)
-                    .ok_or(Error::LocalTrustEntryNotFound(from_peer_start, to_peer_id))?;
+                    // .ok_or(Error::LocalTrustEntryNotFound(from_peer_start, to_peer_id))?; // TODO: ditto.
+                    .unwrap_or_default();
                 result.push((from_peer_start, to_peer_id, lt_entry_value));
             }
 
@@ -236,7 +238,8 @@ impl BaseRunner {
                 for to_peer_id in 0..lt_peers_cnt {
                     let lt_entry_value = lt_row
                         .get(&to_peer_id)
-                        .ok_or(Error::LocalTrustEntryNotFound(from_peer_id, to_peer_id))?;
+                        // .ok_or(Error::LocalTrustEntryNotFound(from_peer_id, to_peer_id))?; // TODO: ditto.
+                        .unwrap_or_default();
                     result.push((from_peer_id, to_peer_id, lt_entry_value));
                 }
             }
@@ -248,7 +251,8 @@ impl BaseRunner {
                 for to_peer_id in 0..to_peer_end {
                     let lt_entry_value = lt_row
                         .get(&to_peer_id)
-                        .ok_or(Error::LocalTrustEntryNotFound(from_peer_end, to_peer_id))?;
+                        // .ok_or(Error::LocalTrustEntryNotFound(from_peer_end, to_peer_id))?; // TODO: ditto.
+                        .unwrap_or_default();
                     result.push((from_peer_end, to_peer_id, lt_entry_value));
                 }
             }
@@ -273,8 +277,11 @@ impl BaseRunner {
 
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
-            let seed = st.get(&peer_id).ok_or(Error::SeedTrustEntryNotFound(peer_id))?;
-            result.push((peer_id, *seed));
+            // TODO: what if non-existent value?
+            // let seed = st.get(&peer_id).ok_or(Error::SeedTrustEntryNotFound(peer_id))?; 
+            // result.push((peer_id, *seed));
+            let seed = st.get(&peer_id).copied().unwrap_or_default();
+            result.push((peer_id, seed));
         }
 
         let next_token = create_seedtrust_next_token(st_peers_cnt, end_peer);
