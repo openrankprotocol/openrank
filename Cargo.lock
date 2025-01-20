@@ -3156,10 +3156,10 @@ dependencies = [
  "futures",
  "getset",
  "hex",
+ "jsonrpsee",
  "k256",
  "libp2p",
  "openrank-common",
- "openrank-sequencer",
  "rand",
  "serde",
  "serde_json",
@@ -3237,26 +3237,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "toml",
-]
-
-[[package]]
-name = "openrank-sequencer"
-version = "0.1.6"
-dependencies = [
- "alloy-rlp",
- "futures",
- "getset",
- "hex",
- "jsonrpsee",
- "libp2p",
- "openrank-common",
- "rand",
- "serde",
- "serde_json",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

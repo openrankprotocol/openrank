@@ -59,9 +59,10 @@ pub fn listen_on<TBehavior: swarm::NetworkBehaviour>(
         .iter()
         .map(|addr| {
             let addr = addr.as_ref();
-            swarm
-                .listen_on(addr.parse().map_err(|e| BadListenAddr(addr.into(), e))?)
-                .map_err(|e| CannotListenOn(addr.into(), e))
+            swarm.listen_on(addr.parse().map_err(|e| BadListenAddr(addr.into(), e))?).map_err(|e| {
+                println!("{}", e);
+                CannotListenOn(addr.into(), e)
+            })
         })
         .collect()
 }

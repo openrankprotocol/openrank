@@ -123,10 +123,6 @@ pub enum Topic {
     DomainScores(DomainHash),
     /// Topic for the domain verification.
     DomainVerification(DomainHash),
-    /// Topic for the proposed block.
-    ProposedBlock,
-    /// Topic for the finalised block.
-    FinalisedBlock,
 }
 
 impl From<Topic> for String {
@@ -153,8 +149,6 @@ impl From<Topic> for String {
             Topic::DomainVerification(domain_id) => {
                 format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_VERIFICATION)
             },
-            Topic::ProposedBlock => consts::PROPOSED_BLOCK.to_string(),
-            Topic::FinalisedBlock => consts::FINALISED_BLOCK.to_string(),
         }
     }
 }

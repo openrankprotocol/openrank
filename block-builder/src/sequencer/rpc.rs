@@ -5,9 +5,9 @@ use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
 use openrank_common::db::{self, Db};
 use openrank_common::query::{GetSeedUpdateQuery, GetTrustUpdateQuery};
-use openrank_common::tx::consts;
 use openrank_common::tx::trust::{SeedUpdate, TrustUpdate};
 use openrank_common::tx::{self, compute, Address, Tx};
+use openrank_common::tx::{consts, Body};
 use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::fmt;
 use std::sync::Arc;
@@ -218,11 +218,10 @@ impl RpcServer for SequencerServer {
     ) -> Result<u64, ErrorObjectOwned> {
         let db_handler = self.db.clone();
 
-        let result = db_handler
-            .get::<compute::ResultReference>(request_tx_hash.to_bytes())
-            .map_err(SequencerServer::map_db_error)?;
+        let key = Tx::construct_full_key(consts::COMPUTE_REQUEST, request_tx_hash);
+        let tx = db_handler.get::<Tx>(key).map_err(SequencerServer::map_db_error)?;
 
-        Ok(*result.seq_number())
+        Ok(tx.get_sequence_number())
     }
 
     /// Fetch the ComputeResult TX by its sequence number
@@ -231,9 +230,23 @@ impl RpcServer for SequencerServer {
     ) -> Result<compute::Result, ErrorObjectOwned> {
         let db_handler = self.db.clone();
 
-        let key = compute::Result::construct_full_key(seq_number);
-        let result =
-            db_handler.get::<compute::Result>(key).map_err(SequencerServer::map_db_error)?;
+        let request = db_handler
+            .get::<compute::RequestSequence>(seq_number.to_be_bytes().to_vec())
+            .map_err(SequencerServer::map_db_error)?;
+        let result_reference = db_handler
+            .get::<compute::ResultReference>(request.compute_request_tx_hash().to_bytes())
+            .map_err(SequencerServer::map_db_error)?;
+
+        let key = Tx::construct_full_key(
+            consts::COMPUTE_RESULT,
+            result_reference.compute_result_tx_hash().clone(),
+        );
+        let tx = db_handler.get::<Tx>(key).map_err(SequencerServer::map_db_error)?;
+
+        let result = match tx.body() {
+            Body::ComputeResult(result) => Ok(result.clone()),
+            _ => Err(to_error_object(ErrorCode::InvalidTxKind, None::<String>)),
+        }?;
 
         Ok(result)
     }
