@@ -278,7 +278,7 @@ impl BaseRunner {
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
             // TODO: what if non-existent value?
-            // let seed = st.get(&peer_id).ok_or(Error::SeedTrustEntryNotFound(peer_id))?; 
+            // let seed = st.get(&peer_id).ok_or(Error::SeedTrustEntryNotFound(peer_id))?;
             // result.push((peer_id, *seed));
             let seed = st.get(&peer_id).copied().unwrap_or_default();
             result.push((peer_id, seed));
