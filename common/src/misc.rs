@@ -86,12 +86,12 @@ impl OutboundLocalTrust {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 pub struct LocalTrustStateResponse {
-    result: Vec<(u64, u64, f32)>,
+    result: Vec<(String, String, f32)>,
     next_token: Option<String>,
 }
 
 impl LocalTrustStateResponse {
-    pub fn new(result: Vec<(u64, u64, f32)>, next_token: Option<String>) -> Self {
+    pub fn new(result: Vec<(String, String, f32)>, next_token: Option<String>) -> Self {
         Self { result, next_token }
     }
 }
@@ -99,12 +99,12 @@ impl LocalTrustStateResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 pub struct SeedTrustStateResponse {
-    result: Vec<(u64, f32)>,
+    result: Vec<(String, f32)>,
     next_token: Option<String>,
 }
 
 impl SeedTrustStateResponse {
-    pub fn new(result: Vec<(u64, f32)>, next_token: Option<String>) -> Self {
+    pub fn new(result: Vec<(String, f32)>, next_token: Option<String>) -> Self {
         Self { result, next_token }
     }
 }
