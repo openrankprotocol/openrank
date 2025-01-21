@@ -3,7 +3,10 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::runners::Error as BaseRunnerError;
+use crate::{
+    runners::Error as BaseRunnerError,
+    tx::trust::{ScoreEntry, TrustEntry},
+};
 
 /// Local trust object.
 ///
@@ -86,12 +89,12 @@ impl OutboundLocalTrust {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 pub struct LocalTrustStateResponse {
-    result: Vec<(String, String, f32)>,
+    result: Vec<TrustEntry>,
     next_token: Option<String>,
 }
 
 impl LocalTrustStateResponse {
-    pub fn new(result: Vec<(String, String, f32)>, next_token: Option<String>) -> Self {
+    pub fn new(result: Vec<TrustEntry>, next_token: Option<String>) -> Self {
         Self { result, next_token }
     }
 }
@@ -99,12 +102,12 @@ impl LocalTrustStateResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 pub struct SeedTrustStateResponse {
-    result: Vec<(String, f32)>,
+    result: Vec<ScoreEntry>,
     next_token: Option<String>,
 }
 
 impl SeedTrustStateResponse {
-    pub fn new(result: Vec<(String, f32)>, next_token: Option<String>) -> Self {
+    pub fn new(result: Vec<ScoreEntry>, next_token: Option<String>) -> Self {
         Self { result, next_token }
     }
 }
