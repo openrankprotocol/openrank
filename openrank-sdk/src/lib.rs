@@ -140,7 +140,7 @@ pub struct OpenRankSDK {
     config: Config,
     sequencer_client: HttpClient,
     computer_client: HttpClient,
-    verifier_client: HttpClient,
+    _verifier_client: HttpClient,
 }
 
 impl OpenRankSDK {
@@ -153,10 +153,10 @@ impl OpenRankSDK {
             .build(config.computer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
 
-        let verifier_client = HttpClient::builder()
+        let _verifier_client = HttpClient::builder()
             .build(config.verifier.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
-        Ok(Self { secret_key, config, sequencer_client, computer_client, verifier_client })
+        Ok(Self { secret_key, config, sequencer_client, computer_client, _verifier_client })
     }
 
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
