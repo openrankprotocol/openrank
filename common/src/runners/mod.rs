@@ -234,9 +234,13 @@ impl BaseRunner {
                 .get(&from_peer_start)
                 .ok_or(Error::OutboundLocalTrustNotFound(from_peer_start))?;
             for to_peer_id in to_peer_start..to_peer_end {
+                if from_peer_start == to_peer_id {
+                    continue;
+                }
                 let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
-                result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                    result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                }
             }
         } else {
             let from = rev_domain_indices.get(&from_peer_start).unwrap();
@@ -244,9 +248,13 @@ impl BaseRunner {
                 .get(&from_peer_start)
                 .ok_or(Error::OutboundLocalTrustNotFound(from_peer_start))?;
             for to_peer_id in to_peer_start..lt_peers_cnt {
+                if from_peer_start == to_peer_id {
+                    continue;
+                }
                 let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
-                result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                    result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                }
             }
 
             for from_peer_id in from_peer_start + 1..from_peer_end {
@@ -254,9 +262,13 @@ impl BaseRunner {
                 let lt_row =
                     lt.get(&from_peer_id).ok_or(Error::OutboundLocalTrustNotFound(from_peer_id))?;
                 for to_peer_id in 0..lt_peers_cnt {
+                    if from_peer_id == to_peer_id {
+                        continue;
+                    }
                     let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                    let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
-                    result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                    if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                    }
                 }
             }
 
@@ -266,9 +278,13 @@ impl BaseRunner {
                     .get(&from_peer_end)
                     .ok_or(Error::OutboundLocalTrustNotFound(from_peer_end))?;
                 for to_peer_id in 0..to_peer_end {
+                    if from_peer_end == to_peer_id {
+                        continue;
+                    }
                     let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                    let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
-                    result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                    if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                    }
                 }
             }
         }
@@ -297,8 +313,9 @@ impl BaseRunner {
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
             let peer = rev_domain_indices.get(&peer_id).unwrap();
-            let seed = st.get(&peer_id).copied().unwrap_or_default();
-            result.push(ScoreEntry::new(peer.clone(), seed));
+            if let Some(seed) = st.get(&peer_id) {
+                result.push(ScoreEntry::new(peer.clone(), *seed));
+            }
         }
 
         let next_token = create_seedtrust_next_token(st_peers_cnt, end_peer);
