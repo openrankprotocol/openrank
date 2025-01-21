@@ -23,7 +23,7 @@ pub mod verification_runner;
 pub struct BaseRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
-    reverse_indices: HashMap<DomainHash, HashMap<u64, String>>,
+    rev_indices: HashMap<DomainHash, HashMap<u64, String>>,
     local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
@@ -35,7 +35,7 @@ impl BaseRunner {
     pub fn new(domains: &[Domain]) -> Self {
         let mut count = HashMap::new();
         let mut indices = HashMap::new();
-        let mut reverse_indices = HashMap::new();
+        let mut rev_indices = HashMap::new();
         let mut local_trust = HashMap::new();
         let mut seed_trust = HashMap::new();
         let mut lt_sub_trees = HashMap::new();
@@ -46,7 +46,7 @@ impl BaseRunner {
             let domain_hash = domain.to_hash();
             count.insert(domain_hash, 0);
             indices.insert(domain_hash, HashMap::new());
-            reverse_indices.insert(domain_hash, HashMap::new());
+            rev_indices.insert(domain_hash, HashMap::new());
             local_trust.insert(domain.trust_namespace(), HashMap::new());
             seed_trust.insert(domain.trust_namespace(), HashMap::new());
             lt_sub_trees.insert(domain_hash, HashMap::new());
@@ -63,7 +63,7 @@ impl BaseRunner {
         Self {
             count,
             indices,
-            reverse_indices,
+            rev_indices,
             local_trust,
             seed_trust,
             lt_sub_trees,
@@ -79,8 +79,8 @@ impl BaseRunner {
             .indices
             .get_mut(&domain.to_hash())
             .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
-        let reverse_domain_indices = self
-            .reverse_indices
+        let rev_domain_indices = self
+            .rev_indices
             .get_mut(&domain.to_hash())
             .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
         let count = self
@@ -105,7 +105,7 @@ impl BaseRunner {
             } else {
                 let curr_count = *count;
                 domain_indices.insert(entry.from().clone(), curr_count);
-                reverse_domain_indices.insert(curr_count, entry.from().clone());
+                rev_domain_indices.insert(curr_count, entry.from().clone());
                 *count += 1;
                 curr_count
             };
@@ -114,7 +114,7 @@ impl BaseRunner {
             } else {
                 let curr_count = *count;
                 domain_indices.insert(entry.to().clone(), curr_count);
-                reverse_domain_indices.insert(curr_count, entry.to().clone());
+                rev_domain_indices.insert(curr_count, entry.to().clone());
                 *count += 1;
                 curr_count
             };
@@ -152,8 +152,8 @@ impl BaseRunner {
             .indices
             .get_mut(&domain.to_hash())
             .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
-        let reverse_domain_indices = self
-            .reverse_indices
+        let rev_domain_indices = self
+            .rev_indices
             .get_mut(&domain.to_hash())
             .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
         let count = self
@@ -174,7 +174,7 @@ impl BaseRunner {
             } else {
                 let curr_count = *count;
                 domain_indices.insert(entry.id().clone(), curr_count);
-                reverse_domain_indices.insert(curr_count, entry.id().clone());
+                rev_domain_indices.insert(curr_count, entry.id().clone());
                 *count += 1;
                 curr_count
             };
@@ -211,8 +211,8 @@ impl BaseRunner {
     pub fn get_lt_state(
         &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
     ) -> Result<LocalTrustStateResponse, Error> {
-        let reverse_domain_indices = self
-            .reverse_indices
+        let rev_domain_indices = self
+            .rev_indices
             .get(&domain.to_hash())
             .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
         let lt = self
@@ -229,44 +229,44 @@ impl BaseRunner {
 
         let mut result = vec![];
         if from_peer_start == from_peer_end {
-            let from = reverse_domain_indices.get(&from_peer_start).unwrap();
+            let from = rev_domain_indices.get(&from_peer_start).unwrap();
             let lt_row = lt
                 .get(&from_peer_start)
                 .ok_or(Error::OutboundLocalTrustNotFound(from_peer_start))?;
             for to_peer_id in to_peer_start..to_peer_end {
-                let to = reverse_domain_indices.get(&to_peer_id).unwrap();
+                let to = rev_domain_indices.get(&to_peer_id).unwrap();
                 let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
                 result.push((from.clone(), to.clone(), lt_entry_value));
             }
         } else {
-            let from = reverse_domain_indices.get(&from_peer_start).unwrap();
+            let from = rev_domain_indices.get(&from_peer_start).unwrap();
             let lt_row = lt
                 .get(&from_peer_start)
                 .ok_or(Error::OutboundLocalTrustNotFound(from_peer_start))?;
             for to_peer_id in to_peer_start..lt_peers_cnt {
-                let to = reverse_domain_indices.get(&to_peer_id).unwrap();
+                let to = rev_domain_indices.get(&to_peer_id).unwrap();
                 let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
                 result.push((from.clone(), to.clone(), lt_entry_value));
             }
 
             for from_peer_id in from_peer_start + 1..from_peer_end {
-                let from = reverse_domain_indices.get(&from_peer_id).unwrap();
+                let from = rev_domain_indices.get(&from_peer_id).unwrap();
                 let lt_row =
                     lt.get(&from_peer_id).ok_or(Error::OutboundLocalTrustNotFound(from_peer_id))?;
                 for to_peer_id in 0..lt_peers_cnt {
-                    let to = reverse_domain_indices.get(&to_peer_id).unwrap();
+                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
                     let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
                     result.push((from.clone(), to.clone(), lt_entry_value));
                 }
             }
 
             if from_peer_end != lt_peers_cnt {
-                let from = reverse_domain_indices.get(&from_peer_end).unwrap();
+                let from = rev_domain_indices.get(&from_peer_end).unwrap();
                 let lt_row = lt
                     .get(&from_peer_end)
                     .ok_or(Error::OutboundLocalTrustNotFound(from_peer_end))?;
                 for to_peer_id in 0..to_peer_end {
-                    let to = reverse_domain_indices.get(&to_peer_id).unwrap();
+                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
                     let lt_entry_value = lt_row.get(&to_peer_id).unwrap_or_default();
                     result.push((from.clone(), to.clone(), lt_entry_value));
                 }
@@ -281,8 +281,8 @@ impl BaseRunner {
     pub fn get_st_state(
         &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
     ) -> Result<SeedTrustStateResponse, Error> {
-        let reverse_domain_indices = self
-            .reverse_indices
+        let rev_domain_indices = self
+            .rev_indices
             .get(&domain.to_hash())
             .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
         let st = self
@@ -296,7 +296,7 @@ impl BaseRunner {
 
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
-            let peer = reverse_domain_indices.get(&peer_id).unwrap();
+            let peer = rev_domain_indices.get(&peer_id).unwrap();
             let seed = st.get(&peer_id).copied().unwrap_or_default();
             result.push((peer.clone(), seed));
         }
@@ -342,7 +342,7 @@ impl Display for Error {
                 write!(f, "indices not found for domain: {:?}", domain)
             },
             Self::ReverseIndicesNotFound(domain) => {
-                write!(f, "reverse_indices not found for domain: {:?}", domain)
+                write!(f, "rev_indices not found for domain: {:?}", domain)
             },
             Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
 
