@@ -76,7 +76,7 @@ pub fn load_keypair(
     Ok(match std::fs::read(&path) {
         Ok(b) => Keypair::from_protobuf_encoding(&b).map_err(CannotDecodeKey)?,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            info!("generating a new p2p keypair");
+            info!("GENERATING_P2P_KEYPAIR");
             let keypair = Keypair::generate_ed25519();
             let b = keypair.to_protobuf_encoding().map_err(CannotEncodeKey)?;
             std::fs::write(&path, b).map_err(CannotWriteKey)?;

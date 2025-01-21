@@ -12,7 +12,7 @@ use openrank_common::{topics::Topic, tx_event::TxEvent};
 use std::fmt;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorCode {
@@ -146,6 +146,8 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `TrustUpdate` transactions from the network,
     /// and forward them to the network for processing.
     async fn trust_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "trust_update");
+
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::TRUST_UPDATE)?;
         let trust_update = match body {
             tx::Body::TrustUpdate(trust_update) => Ok(trust_update),
@@ -169,6 +171,8 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `SeedUpdate` transactions from the network,
     /// and forward them to the network node for processing.
     async fn seed_update(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "seed_update");
+
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::SEED_UPDATE)?;
         let seed_update = match body {
             tx::Body::SeedUpdate(seed_update) => Ok(seed_update),
@@ -192,6 +196,8 @@ impl RpcServer for SequencerServer {
     /// Handles incoming `ComputeRequest` transactions from the network,
     /// and forward them to the network node for processing
     async fn compute_request(&self, tx_str: String) -> Result<TxEvent, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "compute_request");
+
         let (tx_bytes, body) = self.decode_tx(tx_str, consts::COMPUTE_REQUEST)?;
         let compute_request = match body {
             tx::Body::ComputeRequest(compute_request) => Ok(compute_request),
@@ -216,6 +222,8 @@ impl RpcServer for SequencerServer {
     async fn get_compute_result_seq_number(
         &self, request_tx_hash: tx::TxHash,
     ) -> Result<u64, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "get_compute_result_seq_number");
+
         let db_handler = self.db.clone();
 
         let key = Tx::construct_full_key(consts::COMPUTE_REQUEST, request_tx_hash);
@@ -228,6 +236,8 @@ impl RpcServer for SequencerServer {
     async fn get_compute_result(
         &self, seq_number: u64,
     ) -> Result<compute::Result, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "get_compute_result");
+
         let db_handler = self.db.clone();
 
         let request = db_handler
@@ -253,6 +263,8 @@ impl RpcServer for SequencerServer {
 
     /// Fetch the TX given its `kind` and `tx_hash`
     async fn get_tx(&self, kind: String, tx_hash: tx::TxHash) -> Result<Tx, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "get_tx");
+
         let db_handler = self.db.clone();
 
         let key = Tx::construct_full_key(&kind, tx_hash);
@@ -263,6 +275,8 @@ impl RpcServer for SequencerServer {
 
     /// Fetch multiple TXs given an array of `keys`.
     async fn get_txs(&self, keys: Vec<(String, tx::TxHash)>) -> Result<Vec<Tx>, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "get_txs");
+
         let db_handler = self.db.clone();
 
         let mut key_bytes = Vec::new();
@@ -279,6 +293,8 @@ impl RpcServer for SequencerServer {
     async fn get_trust_updates(
         &self, query: GetTrustUpdateQuery,
     ) -> Result<Vec<TrustUpdate>, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "get_trust_updates");
+
         let db_handler = self.db.clone();
 
         let key = query
@@ -307,6 +323,8 @@ impl RpcServer for SequencerServer {
     async fn get_seed_updates(
         &self, query: GetSeedUpdateQuery,
     ) -> Result<Vec<SeedUpdate>, ErrorObjectOwned> {
+        info!("JsonRPC_CALL: {}", "get_seed_updates");
+
         let db_handler = self.db.clone();
 
         let key = query

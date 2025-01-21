@@ -1,5 +1,9 @@
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
+use tracing::info;
 
 use crate::misc::OutboundLocalTrust;
 
@@ -97,13 +101,30 @@ fn normalise_scores(scores: &HashMap<u64, f32>) -> HashMap<u64, f32> {
 pub fn positive_run(
     mut lt: HashMap<u64, OutboundLocalTrust>, mut seed: HashMap<u64, f32>, count: u64,
 ) -> Vec<(u64, f32)> {
+    let start = Instant::now();
+    info!(
+        "PRE_PROCESS_START, LT_SIZE: {}, SEED_SIZE: {}",
+        lt.len(),
+        seed.len()
+    );
     pre_process(&mut lt, &mut seed, count);
+    info!(
+        "PRE_PROCESS_FINISH: {:?}, LT_SIZE: {}, SEED_SIZE: {}",
+        start.elapsed(),
+        lt.len(),
+        seed.len()
+    );
+    info!("NORMALISE_LT_SEED");
     seed = normalise_scores(&seed);
     lt = normalise_lt(&lt);
 
     // Initialize the scores of each node to the seed trust values.
     let mut scores = seed.clone();
     // Iterate until convergence.
+
+    info!("COMPUTE_START");
+    let start = Instant::now();
+    let mut i = 0;
     loop {
         // Calculate the n+1 scores of each node.
         let n_plus_1_scores = iteration(&lt, &seed, &scores);
@@ -114,32 +135,44 @@ pub fn positive_run(
         // Normalise n+2 scores
         let n_plus_2_scores = normalise_scores(&n_plus_2_scores);
         // Check for convergence.
-        if is_converged(&n_plus_1_scores, &n_plus_2_scores) {
-            // Convert the scores to a vector of tuples and return it.
-            return n_plus_1_scores.into_iter().collect();
+        let (is_converged, _) = is_converged(&n_plus_1_scores, &n_plus_2_scores);
+        if is_converged {
+            // Return previous iteration, since the scores are converged.
+            scores = n_plus_1_scores;
+            break;
+        } else {
+            // Update the scores with the latest scores.
+            scores = n_plus_2_scores;
         }
-        // Update the scores.
-        scores = n_plus_2_scores;
+        i += 1;
     }
+    info!(
+        "COMPUTE_END: {:?}, NUM_SCORES: {}, NUM_ITER: {}",
+        start.elapsed(),
+        scores.len(),
+        i
+    );
+    scores.into_iter().collect()
 }
 
 /// Given the previous scores (`scores`) and the next scores (`next_scores`), checks if the scores have converged.
 /// It returns `true` if the scores have converged and `false` otherwise.
-pub fn is_converged(scores: &HashMap<u64, f32>, next_scores: &HashMap<u64, f32>) -> bool {
+pub fn is_converged(scores: &HashMap<u64, f32>, next_scores: &HashMap<u64, f32>) -> (bool, u32) {
     // Iterate over the scores and check if they have converged.
     scores
         .par_iter()
         .fold(
-            || true,
-            |is_converged, (i, v)| {
+            || (true, 0),
+            |(is_converged, count), (i, v)| {
                 // Get the next score of the node.
                 let next_score = next_scores.get(i).unwrap_or(&0.0);
                 // Check if the score has converged.
                 let curr_converged = (next_score - v).abs() < DELTA;
-                is_converged & curr_converged
+                let new_count = if !curr_converged { count + 1 } else { count };
+                (is_converged & curr_converged, new_count)
             },
         )
-        .reduce(|| true, |x, b| x & b)
+        .reduce(|| (true, 0), |(x, i1), (b, i2)| (x & b, i1 + i2))
 }
 
 /// Same as `is_converged`, but accepts the scores map in it's original form, where peers are identified by a `String`.
@@ -164,16 +197,40 @@ pub fn convergence_check(
     mut lt: HashMap<u64, OutboundLocalTrust>, mut seed: HashMap<u64, f32>,
     scores: &HashMap<u64, f32>, count: u64,
 ) -> bool {
+    info!(
+        "PRE_PROCESS_START, LT_SIZE: {}, SEED_SIZE: {}",
+        lt.len(),
+        seed.len()
+    );
     pre_process(&mut lt, &mut seed, count);
+    info!(
+        "PRE_PROCESS_END. LT_SIZE: {}, SEED_SIZE: {}",
+        lt.len(),
+        seed.len()
+    );
+    info!("NORMALISE_LT_SEED");
     seed = normalise_scores(&seed);
     lt = normalise_lt(&lt);
+
+    info!("CONVERGENCE_START");
+    let start = Instant::now();
     // Calculate the next scores of each node
     let next_scores = iteration(&lt, &seed, scores);
     // Normalize the weighted next scores
     let next_scores = normalise_scores(&next_scores);
 
     // Check if the scores have converged
-    is_converged(scores, &next_scores)
+    let (is_converged, count) = is_converged(scores, &next_scores);
+    if !is_converged {
+        info!(
+            "CONVERGENCE_FAILED: {:?} INVALID_COUNT: {}",
+            start.elapsed(),
+            count
+        );
+    } else {
+        info!("CONVERGENCE_SUCCESSFUL: {:?}", start.elapsed());
+    }
+    is_converged
 }
 
 fn iteration(
