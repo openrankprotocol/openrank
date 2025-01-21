@@ -81,8 +81,10 @@ impl From<runner::Error> for Error {
 /// The whitelist for the Verifier.
 struct Whitelist {
     /// The list of addresses that are allowed to be block builders.
+    #[serde(alias = "block_builders")]
     block_builder: Vec<Address>,
     /// The list of addresses that are allowed to be computers.
+    #[serde(alias = "computers")]
     computer: Vec<Address>,
 }
 
@@ -127,8 +129,7 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-verifier")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, &[&Tx::get_cf()])?;
-
+        let db = Db::new(&config.database, [Tx::get_cf()])?;
         let verification_runner = VerificationRunner::new(&config.domains);
 
         let verification_runner_arc_mutex = Arc::new(Mutex::new(verification_runner));
@@ -168,12 +169,10 @@ impl Node {
                     Topic::NamespaceTrustUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let tx::Body::TrustUpdate(trust_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == trust_update.trust_id());
                             let domain = domains
@@ -224,11 +223,10 @@ impl Node {
                             assert!(self.config.whitelist.block_builder.contains(&address));
                             // Add Tx to db
                             self.db.put(tx.clone()).map_err(Error::Db)?;
-                            let computer_address = address_from_sk(&self.secret_key);
-                            assert_eq!(
-                                computer_address,
-                                *compute_assignment.assigned_verifier_node()
-                            );
+                            let verifier_address = address_from_sk(&self.secret_key);
+                            assert!(compute_assignment
+                                .assigned_verifier_nodes()
+                                .contains(&verifier_address));
                             assert!(self
                                 .config
                                 .whitelist
@@ -468,8 +466,7 @@ impl Node {
             .chain(&topics_trust_update)
             .chain(&topics_seed_update)
             .chain(&topics_scores)
-            .chain(&topics_commitment)
-            .chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]);
+            .chain(&topics_commitment);
         for topic in iter_chain.clone() {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());

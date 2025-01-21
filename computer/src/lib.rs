@@ -75,7 +75,9 @@ impl From<runner::Error> for Error {
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 struct Whitelist {
+    #[serde(alias = "block_builders")]
     block_builder: Vec<Address>,
+    #[serde(alias = "verifiers")]
     verifier: Vec<Address>,
 }
 
@@ -121,12 +123,10 @@ impl Node {
                     Topic::NamespaceTrustUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::TrustUpdate(trust_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == trust_update.trust_id());
                             let domain = domains
@@ -147,12 +147,10 @@ impl Node {
                     Topic::NamespaceSeedUpdate(namespace) => {
                         let tx_event =
                             TxEvent::decode(&mut message.data.as_slice()).map_err(Error::Decode)?;
-                        let mut tx =
+                        let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::SeedUpdate(seed_update) = tx.body().clone() {
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
-                            // Add Tx to db
-                            tx.set_sequence_number(message.sequence_number.unwrap_or_default());
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == seed_update.seed_id());
                             let domain = domains
@@ -185,11 +183,9 @@ impl Node {
                                 &computer_address,
                                 compute_assignment.assigned_compute_node()
                             );
-                            assert!(self
-                                .config
-                                .whitelist
-                                .verifier
-                                .contains(compute_assignment.assigned_verifier_node()));
+                            for verfier_node in compute_assignment.assigned_verifier_nodes() {
+                                assert!(self.config.whitelist.verifier.contains(verfier_node));
+                            }
 
                             let domain = domains
                                 .iter()
@@ -276,7 +272,7 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-computer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, &[&Tx::get_cf()])?;
+        let db = Db::new(&config.database, [Tx::get_cf()])?;
 
         let compute_runner = ComputeRunner::new(&config.domains);
 
@@ -324,8 +320,7 @@ impl Node {
         let iter_chain = topics_assignment
             .iter()
             .chain(topics_trust_update.iter())
-            .chain(topics_seed_update.iter())
-            .chain(&[Topic::ProposedBlock, Topic::FinalisedBlock]);
+            .chain(topics_seed_update.iter());
         for topic in iter_chain.clone() {
             // Create a Gossipsub topic
             let topic = gossipsub::IdentTopic::new(topic.clone());

@@ -48,14 +48,16 @@ impl FromHex for OwnedNamespace {
     Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
 )]
 #[getset(get = "pub")]
+#[rlp(trailing)]
 pub struct TrustUpdate {
     trust_id: OwnedNamespace,
     entries: Vec<TrustEntry>,
+    seq_number: Option<u64>,
 }
 
 impl TrustUpdate {
     pub fn new(trust_id: OwnedNamespace, entries: Vec<TrustEntry>) -> Self {
-        Self { trust_id, entries }
+        Self { trust_id, entries, seq_number: None }
     }
 }
 
@@ -63,14 +65,16 @@ impl TrustUpdate {
     Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
 )]
 #[getset(get = "pub")]
+#[rlp(trailing)]
 pub struct SeedUpdate {
     seed_id: OwnedNamespace,
     entries: Vec<ScoreEntry>,
+    seq_number: Option<u64>,
 }
 
 impl SeedUpdate {
     pub fn new(seed_id: OwnedNamespace, entries: Vec<ScoreEntry>) -> Self {
-        Self { seed_id, entries }
+        Self { seed_id, entries, seq_number: None }
     }
 }
 
@@ -168,15 +172,15 @@ pub struct Assignment {
     to_sequence: u64,
     domain_id: DomainHash,
     trust_builder: Address,
-    trust_verifier: Vec<Address>,
+    trust_verifiers: Vec<Address>,
 }
 
 impl Assignment {
     pub fn new(
         to_sequence: u64, domain_id: DomainHash, trust_builder: Address,
-        trust_verifier: Vec<Address>,
+        trust_verifiers: Vec<Address>,
     ) -> Self {
-        Self { to_sequence, domain_id, trust_builder, trust_verifier }
+        Self { to_sequence, domain_id, trust_builder, trust_verifiers }
     }
 }
 
