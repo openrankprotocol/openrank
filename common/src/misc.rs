@@ -139,7 +139,11 @@ impl SeedTrustStateResponse {
 pub fn compute_localtrust_peer_range(
     lt_peers_cnt: u64, page_size: Option<usize>, next_token: Option<String>,
 ) -> Result<(u64, u64, u64, u64), BaseRunnerError> {
-    let page_size = page_size.unwrap_or(1000);
+    let page_size = if let Some(page_size) = page_size {
+        page_size as u64
+    } else {
+        lt_peers_cnt * lt_peers_cnt
+    };
 
     let (from_peer_start, to_peer_start) = match next_token {
         Some(token) => {
@@ -164,7 +168,7 @@ pub fn compute_localtrust_peer_range(
     let from_peer_start = std::cmp::min(from_peer_start, lt_peers_cnt);
     let to_peer_start = std::cmp::min(to_peer_start, lt_peers_cnt);
 
-    let to_peer_end = to_peer_start + page_size as u64;
+    let to_peer_end = to_peer_start + page_size;
     let from_peer_end = from_peer_start + to_peer_end / lt_peers_cnt;
     let from_peer_end = std::cmp::min(from_peer_end, lt_peers_cnt);
     let to_peer_end = to_peer_end % lt_peers_cnt;
@@ -229,7 +233,7 @@ pub fn create_localtrust_next_token(
 pub fn compute_seedtrust_peer_range(
     st_peers_cnt: u64, page_size: Option<usize>, next_token: Option<String>,
 ) -> Result<(u64, u64), BaseRunnerError> {
-    let page_size = page_size.unwrap_or(1000);
+    let page_size = if let Some(page_size) = page_size { page_size as u64 } else { st_peers_cnt };
 
     let start_peer = match next_token {
         Some(token) => {
@@ -244,7 +248,7 @@ pub fn compute_seedtrust_peer_range(
     };
     let start_peer = std::cmp::min(start_peer, st_peers_cnt);
 
-    let end_peer = start_peer + page_size as u64;
+    let end_peer = start_peer + page_size;
     let end_peer = std::cmp::min(end_peer, st_peers_cnt);
 
     Ok((start_peer, end_peer))
@@ -275,13 +279,13 @@ pub fn create_seedtrust_next_token(st_peers_cnt: u64, next_peer_id: u64) -> Opti
 
 #[test]
 fn test_compute_localtrust_peer_range() {
-    // lt: 100 * 100, page_size: 1000, next_token: None
-    // (0, 0) => (10, 0)
+    // lt: 100 * 100, page_size: 100 * 100, next_token: None
+    // (0, 0) => (100, 0)
     let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
         compute_localtrust_peer_range(100, None, None).unwrap();
     assert_eq!(from_peer_start, 0);
     assert_eq!(to_peer_start, 0);
-    assert_eq!(from_peer_end, 10);
+    assert_eq!(from_peer_end, 100);
     assert_eq!(to_peer_end, 0);
 
     // lt: 100 * 100, page_size: 10, next_token: None
@@ -302,17 +306,17 @@ fn test_compute_localtrust_peer_range() {
     assert_eq!(from_peer_end, 2);
     assert_eq!(to_peer_end, 50);
 
-    // lt: 100 * 100, page_size: 1000, next_token: "AAAAAAAAAAAAAAAAAAAACg=="
-    // (0, 10) => (10, 10)
+    // lt: 100 * 100, page_size: 100 * 100, next_token: "AAAAAAAAAAAAAAAAAAAACg=="
+    // (0, 10) => (100, 10)
     let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
         compute_localtrust_peer_range(100, None, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string()))
             .unwrap();
     assert_eq!(from_peer_start, 0);
     assert_eq!(to_peer_start, 10);
-    assert_eq!(from_peer_end, 10);
+    assert_eq!(from_peer_end, 100);
     assert_eq!(to_peer_end, 10);
 
-    // lt: 100 * 100, page_size: 1000, next_token: "AAAAAAAAAGMAAAAAAAAAWg=="
+    // lt: 100 * 100, page_size: 100 * 100, next_token: "AAAAAAAAAGMAAAAAAAAAWg=="
     // (99, 90) => (100, 90)
     let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
         compute_localtrust_peer_range(100, None, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string()))
@@ -344,7 +348,7 @@ fn test_create_localtrust_next_token() {
 
 #[test]
 fn test_compute_seedtrust_peer_range() {
-    // st: 100, page_size: 1000, next_token: None
+    // st: 100, page_size: 100, next_token: None
     // 0 => 100
     let (from_peer_start, from_peer_end) = compute_seedtrust_peer_range(100, None, None).unwrap();
     assert_eq!(from_peer_start, 0);
