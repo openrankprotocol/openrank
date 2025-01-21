@@ -1,3 +1,4 @@
+use crate::format_hex;
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
@@ -24,6 +25,12 @@ impl Hash {
 
     pub fn inner(&self) -> &[u8; 32] {
         &self.0
+    }
+}
+
+impl Display for Hash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", format_hex(self.clone().to_hex()))
     }
 }
 

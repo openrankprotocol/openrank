@@ -8,6 +8,7 @@ use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     address_from_sk, broadcast_event, build_node, config,
     db::{self, Db, DbItem, CHECKPOINTS_CF},
+    logs::setup_tracing,
     net,
     topics::{Domain, Topic},
     tx::{compute, consts, Address, Body, Tx, TxHash},
@@ -19,10 +20,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     sync::Arc,
+    time::Instant,
 };
 use tokio::{select, sync::Mutex};
-use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
+use tracing::{debug, error, info};
 
 use openrank_common::runners::compute_runner::{self as runner, ComputeRunner};
 
@@ -112,7 +113,7 @@ impl Node {
                 if message.topic != topic_wrapper.hash() {
                     continue;
                 }
-                info!(
+                debug!(
                     "TOPIC: {}, ID: {message_id}, FROM: {propagation_source}",
                     message.topic.as_str(),
                 );
@@ -123,6 +124,8 @@ impl Node {
                         let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::TrustUpdate(trust_update) = tx.body().clone() {
+                            info!("NAMESPACE_TRUST_UPDATE: {}", namespace);
+
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == trust_update.trust_id());
@@ -144,6 +147,8 @@ impl Node {
                         let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::SeedUpdate(seed_update) = tx.body().clone() {
+                            info!("NAMESPACE_SEED_UPDATE: {}", namespace);
+
                             tx.verify_against(namespace.owner()).map_err(Error::Signature)?;
                             self.db.put(tx.clone()).map_err(Error::Db)?;
                             assert!(namespace == seed_update.seed_id());
@@ -165,6 +170,8 @@ impl Node {
                         let tx =
                             Tx::decode(&mut tx_event.data().as_slice()).map_err(Error::Decode)?;
                         if let Body::ComputeAssignment(compute_assignment) = tx.body() {
+                            info!("DOMAIN_ASSIGNMENT_EVENT: {}", domain_id);
+
                             let address = tx.verify().map_err(Error::Signature)?;
                             assert!(self.config.whitelist.block_builder.contains(&address));
                             // Add Tx to db
@@ -252,7 +259,7 @@ impl Node {
     /// - Initializes the Secret Key.
     pub async fn init() -> Result<Self, Box<dyn std::error::Error>> {
         dotenv().ok();
-        tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+        setup_tracing();
 
         let secret_key_hex = std::env::var("SECRET_KEY").expect("SECRET_KEY must be set.");
         let secret_key_bytes = hex::decode(secret_key_hex)?;
@@ -329,13 +336,13 @@ impl Node {
                 event = self.swarm.select_next_some() => match event {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {
-                            info!("mDNS discovered a new peer: {peer_id}");
+                            info!("mDNS_PEER_DISCOVERY: {peer_id}");
                             self.swarm.behaviour_mut().gossipsub_add_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, _multiaddr) in list {
-                            info!("mDNS discover peer has expired: {peer_id}");
+                            info!("mDNS_PEER_EXPIRE: {peer_id}");
                             self.swarm.behaviour_mut().gossipsub_remove_peer(&peer_id);
                         }
                     },
@@ -344,13 +351,13 @@ impl Node {
                             event, iter_chain.clone().collect(), self.config.domains.clone(),
                         ).await;
                         if let Err(e) = res {
-                            error!("Gossipsub error: {e:?}");
+                            error!("GOSSIPSUB_ERROR: {e:?}");
                         }
                     },
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        info!("Local node is listening on {address}");
+                        info!("LISTEN_ON {address}");
                     }
-                    e => info!("{:?}", e),
+                    e => debug!("{:?}", e),
                 }
             }
         }
@@ -362,6 +369,9 @@ impl Node {
     /// - Just take TrustUpdate and SeedUpdate transactions
     /// - Update ComputeRunner using functions update_trust, update_seed
     pub async fn node_recovery(&mut self) -> Result<(), Error> {
+        info!("NODE_RECOVERY_START");
+        let start = Instant::now();
+
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
@@ -369,10 +379,14 @@ impl Node {
         txs.append(&mut trust_update_txs);
         drop(trust_update_txs);
 
+        info!("LT_TX_READ_LEN: {}", txs.len());
+
         let mut seed_update_txs: Vec<Tx> =
             self.db.get_range_from_start(consts::SEED_UPDATE, None, None).map_err(Error::Db)?;
         txs.append(&mut seed_update_txs);
         drop(seed_update_txs);
+
+        info!("ST_TX_READ_LEN: {}", txs.len());
 
         // sort txs by sequence_number
         txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
@@ -408,6 +422,8 @@ impl Node {
                 _ => (),
             }
         }
+
+        info!("NODE_RECOVERY_COMPLETED: {:?}", start.elapsed());
 
         Ok(())
     }

@@ -6,6 +6,7 @@ use core::result::Result as CoreResult;
 use getset::Getters;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::io::Read;
 
 #[derive(
@@ -31,8 +32,20 @@ impl OwnedNamespace {
         Address::from_slice(&bytes)
     }
 
+    pub fn id(&self) -> u32 {
+        let mut bytes = [0; 4];
+        bytes.copy_from_slice(&self.0[20..]);
+        u32::from_be_bytes(bytes)
+    }
+
     pub fn inner(&self) -> &[u8; 24] {
         &self.0
+    }
+}
+
+impl Display for OwnedNamespace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{:#}:{}", self.owner(), self.id())
     }
 }
 
