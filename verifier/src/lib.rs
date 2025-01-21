@@ -18,11 +18,8 @@ use openrank_common::{
 use rpc::{RpcServer, VerifierServer};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::{
-    error::Error as StdError,
-    sync::{Arc, Mutex},
-};
-use tokio::select;
+use std::{error::Error as StdError, sync::Arc};
+use tokio::{select, sync::Mutex};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -47,8 +44,6 @@ pub enum Error {
     Signature(ecdsa::Error),
     /// The invalid tx kind error.
     InvalidTxKind,
-    /// Cannot acquire lock of VerificationRunner
-    VerificationRunnerLockError(String),
 }
 
 impl StdError for Error {}
@@ -63,9 +58,6 @@ impl Display for Error {
             Self::Runner(err) => write!(f, "internal error: {}", err),
             Self::Signature(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
-            Self::VerificationRunnerLockError(err) => {
-                write!(f, "VerificationRunnerLockError: {}", err)
-            },
         }
     }
 }
@@ -129,7 +121,7 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-verifier")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, [Tx::get_cf()])?;
+        let db = Db::new(&config.database, [&Tx::get_cf()])?;
         let verification_runner = VerificationRunner::new(&config.domains);
 
         let verification_runner_arc_mutex = Arc::new(Mutex::new(verification_runner));
@@ -152,7 +144,7 @@ impl Node {
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
     /// Handling includes TX validation, storage in local db, or optionally triggering a broadcast
     /// of postceding TX to the network.
-    fn handle_gossipsub_events(
+    async fn handle_gossipsub_events(
         &mut self, event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
     ) -> Result<(), Error> {
         if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
@@ -179,8 +171,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut verification_runner_mut =
-                                self.verification_runner.lock().unwrap();
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
                             verification_runner_mut
                                 .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
@@ -202,10 +193,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut verification_runner_mut = self
-                                .verification_runner
-                                .lock()
-                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
                             verification_runner_mut
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
@@ -237,10 +225,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            let mut verification_runner_mut = self
-                                .verification_runner
-                                .lock()
-                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
                             verification_runner_mut
                                 .update_assigment(domain.clone(), tx.hash())
                                 .map_err(Error::Runner)?;
@@ -279,10 +264,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            let mut verification_runner_mut = self
-                                .verification_runner
-                                .lock()
-                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
                             verification_runner_mut
                                 .update_scores(domain.clone(), tx.hash(), compute_scores.clone())
                                 .map_err(Error::Runner)?;
@@ -321,10 +303,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound(domain_id.to_hex()))?;
-                            let mut verification_runner_mut = self
-                                .verification_runner
-                                .lock()
-                                .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
                             verification_runner_mut.update_commitment(compute_commitment.clone());
                             let res = verification_runner_mut
                                 .check_finished_assignments(domain.clone())
@@ -360,7 +339,7 @@ impl Node {
     /// - Load all the TXs from the DB
     /// - Just take TrustUpdate and SeedUpdate transactions
     /// - Update VerificationRunner using functions update_trust, update_seed
-    pub fn node_recovery(&mut self) -> Result<(), Error> {
+    pub async fn node_recovery(&mut self) -> Result<(), Error> {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
@@ -377,10 +356,7 @@ impl Node {
         txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
 
         // update verification runner
-        let mut verification_runner_mut = self
-            .verification_runner
-            .lock()
-            .map_err(|e| Error::VerificationRunnerLockError(e.to_string()))?;
+        let mut verification_runner_mut = self.verification_runner.lock().await;
         for tx in txs {
             match tx.body() {
                 tx::Body::TrustUpdate(trust_update) => {
@@ -502,7 +478,7 @@ impl Node {
                             event,
                             iter_chain.clone().collect(),
                             self.config.domains.clone(),
-                        );
+                        ).await;
                         if let Err(e) = res {
                             error!("Failed to handle gossipsub event: {e:?}");
                             continue;

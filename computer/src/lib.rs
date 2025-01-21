@@ -18,9 +18,9 @@ use rpc::{ComputerServer, RpcServer};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
-use tokio::select;
+use tokio::{select, sync::Mutex};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -45,8 +45,6 @@ pub enum Error {
     Signature(ecdsa::Error),
     /// The invalid tx kind error.
     InvalidTxKind,
-    /// Cannot acquire lock of ComputeRunner
-    ComputeRunnerLockError(String),
 }
 
 impl std::error::Error for Error {}
@@ -61,7 +59,6 @@ impl Display for Error {
             Self::Runner(err) => write!(f, "internal error: {}", err),
             Self::Signature(err) => err.fmt(f),
             Self::InvalidTxKind => write!(f, "InvalidTxKind"),
-            Self::ComputeRunnerLockError(err) => write!(f, "ComputeRunnerLockError: {}", err),
         }
     }
 }
@@ -106,7 +103,7 @@ impl Node {
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
     /// Handling includes TX validation, storage in local db, or optionally triggering a broadcast
     /// of postceding TX to the network.
-    fn handle_gossipsub_events(
+    async fn handle_gossipsub_events(
         &mut self, event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
     ) -> Result<(), Error> {
         if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
@@ -133,10 +130,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut computer_runner_mut = self
-                                .compute_runner
-                                .lock()
-                                .map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
+                            let mut computer_runner_mut = self.compute_runner.lock().await;
                             computer_runner_mut
                                 .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
@@ -157,10 +151,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            let mut computer_runner_mut = self
-                                .compute_runner
-                                .lock()
-                                .map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
+                            let mut computer_runner_mut = self.compute_runner.lock().await;
                             computer_runner_mut
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
@@ -191,10 +182,7 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            let mut computer_runner_mut = self
-                                .compute_runner
-                                .lock()
-                                .map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
+                            let mut computer_runner_mut = self.compute_runner.lock().await;
                             computer_runner_mut.compute(domain.clone()).map_err(Error::Runner)?;
                             computer_runner_mut
                                 .create_compute_tree(domain.clone())
@@ -354,7 +342,7 @@ impl Node {
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(event)) => {
                         let res = self.handle_gossipsub_events(
                             event, iter_chain.clone().collect(), self.config.domains.clone(),
-                        );
+                        ).await;
                         if let Err(e) = res {
                             error!("Gossipsub error: {e:?}");
                         }
@@ -373,7 +361,7 @@ impl Node {
     /// - Load all the TXs from the DB
     /// - Just take TrustUpdate and SeedUpdate transactions
     /// - Update ComputeRunner using functions update_trust, update_seed
-    pub fn node_recovery(&mut self) -> Result<(), Error> {
+    pub async fn node_recovery(&mut self) -> Result<(), Error> {
         // collect all trust update and seed update txs
         let mut txs = Vec::new();
         let mut trust_update_txs: Vec<Tx> =
@@ -390,8 +378,7 @@ impl Node {
         txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
 
         // update compute runner
-        let mut computer_runner_mut =
-            self.compute_runner.lock().map_err(|e| Error::ComputeRunnerLockError(e.to_string()))?;
+        let mut computer_runner_mut = self.compute_runner.lock().await;
         for tx in txs {
             match tx.body() {
                 Body::TrustUpdate(trust_update) => {

@@ -1,5 +1,5 @@
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use getset::Getters;
 use jsonrpsee::core::async_trait;
@@ -8,18 +8,17 @@ use jsonrpsee::types::ErrorObjectOwned;
 use openrank_common::misc::{LocalTrustStateResponse, SeedTrustStateResponse};
 use openrank_common::runners::verification_runner::VerificationRunner;
 use openrank_common::topics::Domain;
+use tokio::sync::Mutex;
 use tracing::error;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorCode {
     GetStateFailed = -32020,
-    VerificationRunnerLockFailed = -32021,
 }
 impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
             ErrorCode::GetStateFailed => "Get lt/seed state failed",
-            ErrorCode::VerificationRunnerLockFailed => "VerificationRunner lock failed",
         };
         write!(f, "{}", message)
     }
@@ -66,10 +65,7 @@ impl RpcServer for VerifierServer {
     async fn get_lt_state(
         &self, domain: Domain, page_size: Option<usize>, next_token: Option<String>,
     ) -> Result<LocalTrustStateResponse, ErrorObjectOwned> {
-        let verification_runner = self
-            .runner
-            .lock()
-            .map_err(|e| to_error_object(ErrorCode::VerificationRunnerLockFailed, Some(e)))?;
+        let verification_runner = self.runner.lock().await;
         let lt_state = verification_runner
             .base()
             .get_lt_state(&domain, page_size, next_token)
@@ -84,10 +80,7 @@ impl RpcServer for VerifierServer {
     async fn get_seed_state(
         &self, domain: Domain, page_size: Option<usize>, next_token: Option<String>,
     ) -> Result<SeedTrustStateResponse, ErrorObjectOwned> {
-        let verification_runner = self
-            .runner
-            .lock()
-            .map_err(|e| to_error_object(ErrorCode::VerificationRunnerLockFailed, Some(e)))?;
+        let verification_runner = self.runner.lock().await;
         let st_state = verification_runner
             .base()
             .get_st_state(&domain, page_size, next_token)
