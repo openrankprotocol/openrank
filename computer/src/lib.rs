@@ -7,7 +7,7 @@ use k256::ecdsa::{self, SigningKey};
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     address_from_sk, broadcast_event, build_node, config,
-    db::{self, Db, DbItem},
+    db::{self, Db, DbItem, CHECKPOINTS_CF},
     net,
     topics::{Domain, Topic},
     tx::{compute, consts, Address, Body, Tx, TxHash},
@@ -260,7 +260,7 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-computer")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, [Tx::get_cf()])?;
+        let db = Db::new(&config.database, [Tx::get_cf(), CHECKPOINTS_CF.to_string()])?;
 
         let compute_runner = ComputeRunner::new(&config.domains);
 

@@ -8,7 +8,7 @@ use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     address_from_sk, broadcast_event, build_node, config,
-    db::{self, Db, DbItem},
+    db::{self, Db, DbItem, CHECKPOINTS_CF},
     net,
     topics::{Domain, Topic},
     tx::{self, compute, consts, Address, Tx},
@@ -121,7 +121,7 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-verifier")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, [&Tx::get_cf()])?;
+        let db = Db::new(&config.database, [Tx::get_cf(), CHECKPOINTS_CF.to_string()])?;
         let verification_runner = VerificationRunner::new(&config.domains);
 
         let verification_runner_arc_mutex = Arc::new(Mutex::new(verification_runner));

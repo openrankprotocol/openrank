@@ -50,6 +50,10 @@ enum Method {
     GetComputeResultTxs { seq_number: String, config_path: String, output_path: Option<String> },
     /// Get arbitrary TX
     GetTx { tx_id: String, config_path: String, output_path: Option<String> },
+    /// Get trust state
+    GetTrustState { config_path: String, output_path: Option<String> },
+    /// Get seed state
+    GetSeedState { config_path: String, output_path: Option<String> },
     /// Get TrustUpdate contents
     GetTrustUpdates {
         config_path: String,
@@ -270,6 +274,38 @@ async fn main() -> ExitCode {
                 },
             }
         },
+        Method::GetTrustState { config_path, output_path } => {
+            match get_trust_state(&config_path).await {
+                Ok(res) => {
+                    if let Some(output_path) = output_path {
+                        if let Err(e) = write_json_to_file(&output_path, res) {
+                            eprintln!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                },
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            }
+        },
+        Method::GetSeedState { config_path, output_path } => {
+            match get_seed_state(&config_path).await {
+                Ok(res) => {
+                    if let Some(output_path) = output_path {
+                        if let Err(e) = write_json_to_file(&output_path, res) {
+                            eprintln!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                },
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            }
+        },
         Method::GetTrustUpdates { from, size, config_path, output_path } => {
             match get_trust_updates(&config_path, from, size).await {
                 Ok(res) => {
@@ -470,6 +506,30 @@ pub fn check_score_integrity(
     }
 
     OpenRankSDK::check_score_integrity(votes, scores, test_vector)
+}
+
+/// Call the `OpenRankSDK::get_trust_updates` func
+async fn get_trust_state(config_path: &str) -> Result<Vec<TrustEntry>, SdkError> {
+    // Read config
+    let config = read_config(config_path)?;
+
+    // Create SDK & get state
+    let sdk = OpenRankSDK::new(config.clone(), None)?;
+    let result = sdk.get_trust_state(config.domain().clone()).await?;
+
+    Ok(result.result().clone())
+}
+
+/// Call the `OpenRankSDK::get_trust_updates` func
+async fn get_seed_state(config_path: &str) -> Result<Vec<ScoreEntry>, SdkError> {
+    // Read config
+    let config = read_config(config_path)?;
+
+    // Create SDK & get state
+    let sdk = OpenRankSDK::new(config.clone(), None)?;
+    let result = sdk.get_seed_state(config.domain().clone()).await?;
+
+    Ok(result.result().clone())
 }
 
 /// Call the `OpenRankSDK::get_trust_updates` func
