@@ -15,10 +15,7 @@ use openrank_common::{
     MyBehaviour, MyBehaviourEvent,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt::{Display, Formatter, Result as FmtResult},
-    time::Instant,
-};
+use std::time::Instant;
 use tokio::select;
 use tracing::{debug, error, info};
 

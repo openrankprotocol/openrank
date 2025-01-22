@@ -6,10 +6,7 @@ use crate::{
 };
 use getset::Getters;
 use sha3::Keccak256;
-use std::{
-    collections::HashMap,
-    fmt::{Display, Formatter, Result as FmtResult},
-};
+use std::collections::HashMap;
 use tracing::info;
 
 pub mod compute_runner;
