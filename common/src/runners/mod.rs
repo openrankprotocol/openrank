@@ -203,69 +203,26 @@ impl BaseRunner {
     }
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("indices not found for domain: {0}")]
     IndicesNotFound(DomainHash),
+    #[error("count not found for domain: {0}")]
     CountNotFound(DomainHash),
-
+    #[error("local_trust_sub_trees not found for domain: {0}")]
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
+    #[error("local_trust_sub_trees not found for index: {0}")]
     LocalTrustSubTreesNotFoundWithIndex(u64),
-
+    #[error("local_trust_master_tree not found for domain: {0}")]
     LocalTrustMasterTreeNotFound(DomainHash),
+    #[error("seed_trust_master_tree not found for domain: {0}")]
     SeedTrustMasterTreeNotFound(DomainHash),
-
+    #[error("local_trust not found for domain: {0}")]
     LocalTrustNotFound(OwnedNamespace),
-
+    #[error("seed_trust not found for domain: {0}")]
     SeedTrustNotFound(OwnedNamespace),
-
+    #[error("domain_index not found for address: {0}")]
     DomainIndexNotFound(String),
-
+    #[error("{0}")]
     Merkle(merkle::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::IndicesNotFound(domain) => {
-                write!(f, "indices not found for domain: {:?}", domain)
-            },
-            Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
-
-            Self::LocalTrustSubTreesNotFoundWithDomain(domain) => {
-                write!(
-                    f,
-                    "local_trust_sub_trees not found for domain: {:?}",
-                    domain
-                )
-            },
-            Self::LocalTrustSubTreesNotFoundWithIndex(index) => {
-                write!(f, "local_trust_sub_trees not found for index: {}", index)
-            },
-
-            Self::LocalTrustMasterTreeNotFound(domain) => {
-                write!(
-                    f,
-                    "local_trust_master_tree not found for domain: {:?}",
-                    domain
-                )
-            },
-            Self::SeedTrustMasterTreeNotFound(domain) => {
-                write!(
-                    f,
-                    "seed_trust_master_tree not found for domain: {:?}",
-                    domain
-                )
-            },
-            Self::LocalTrustNotFound(domain) => {
-                write!(f, "local_trust not found for domain: {:?}", domain)
-            },
-            Self::SeedTrustNotFound(domain) => {
-                write!(f, "seed_trust not found for domain: {:?}", domain)
-            },
-            Self::DomainIndexNotFound(address) => {
-                write!(f, "domain_indice not found for address: {:?}", address)
-            },
-            Self::Merkle(err) => err.fmt(f),
-        }
-    }
 }

@@ -24,39 +24,30 @@ use tracing::{debug, error, info};
 
 use openrank_common::runners::compute_runner::{self as runner, ComputeRunner};
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 /// Errors that can arise while using the computer node.
 pub enum Error {
     /// The decode error. This can arise when decoding a transaction.
+    #[error("Domain not found: {0}")]
     Decode(alloy_rlp::Error),
     /// The database error. The database error can occur when interacting with the database.
+    #[error("{0}")]
     Db(db::Error),
     /// The domain not found error. This can arise when the domain is not found in the config.
+    #[error("Domain not found: {0}")]
     DomainNotFound(String),
     /// The p2p error. This can arise when sending or receiving messages over the p2p network.
+    #[error("P2P error: {0}")]
     P2P(String),
     /// The compute internal error. This can arise when there is an internal error in the compute runner.
+    #[error("Internal error: {0}")]
     Runner(runner::Error),
     /// The signature error. This can arise when verifying a transaction signature.
+    #[error("Signature error: {0}")]
     Signature(ecdsa::Error),
     /// The invalid tx kind error.
+    #[error("Invalud TX kind")]
     InvalidTxKind,
-}
-
-impl std::error::Error for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Decode(err) => err.fmt(f),
-            Self::Db(err) => err.fmt(f),
-            Self::DomainNotFound(domain) => write!(f, "Domain not found: {}", domain),
-            Self::P2P(err) => write!(f, "p2p error: {}", err),
-            Self::Runner(err) => write!(f, "internal error: {}", err),
-            Self::Signature(err) => err.fmt(f),
-            Self::InvalidTxKind => write!(f, "InvalidTxKind"),
-        }
-    }
 }
 
 impl From<runner::Error> for Error {

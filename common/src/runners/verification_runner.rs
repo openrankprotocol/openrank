@@ -288,58 +288,26 @@ impl VerificationRunner {
     }
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("{0}")]
     Base(BaseError),
-
+    #[error("compute_tree not found for domain: {0}")]
     ComputeTreeNotFoundWithDomain(DomainHash),
+    #[error("compute_scores not found for domain: {0}")]
     ComputeTreeNotFoundWithTxHash(TxHash),
-
+    #[error("compute_scores not found for domain: {0}")]
     ComputeScoresNotFoundWithDomain(DomainHash),
+    #[error("compute_scores not found for tx_hash: {0}")]
     ComputeScoresNotFoundWithTxHash(TxHash),
-
+    #[error("active_assignments not found for domain: {0}")]
     ActiveAssignmentsNotFound(DomainHash),
-
+    #[error("commitment not found for assignment_id: {0}")]
     CommitmentNotFound(TxHash),
+    #[error("domain_indice not found for address: {0}")]
     DomainIndexNotFound(String),
-
+    #[error("{0}")]
     Merkle(merkle::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Base(err) => err.fmt(f),
-            Self::ComputeTreeNotFoundWithDomain(domain) => {
-                write!(f, "compute_tree not found for domain: {:?}", domain)
-            },
-            Self::ComputeTreeNotFoundWithTxHash(tx_hash) => {
-                write!(f, "compute_tree not found for tx_hash: {:?}", tx_hash)
-            },
-
-            Self::ComputeScoresNotFoundWithDomain(domain) => {
-                write!(f, "compute_scores not found for domain: {:?}", domain)
-            },
-            Self::ComputeScoresNotFoundWithTxHash(tx_hash) => {
-                write!(f, "compute_scores not found for tx_hash: {:?}", tx_hash)
-            },
-
-            Self::ActiveAssignmentsNotFound(domain) => {
-                write!(f, "active_assignments not found for domain: {:?}", domain)
-            },
-            Self::CommitmentNotFound(assigment_id) => {
-                write!(
-                    f,
-                    "commitment not found for assignment_id: {:?}",
-                    assigment_id
-                )
-            },
-            Self::DomainIndexNotFound(address) => {
-                write!(f, "domain_indice not found for address: {:?}", address)
-            },
-            Self::Merkle(err) => err.fmt(f),
-        }
-    }
 }
 
 impl From<BaseError> for Error {

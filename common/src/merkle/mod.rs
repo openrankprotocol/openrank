@@ -2,7 +2,6 @@ use crate::format_hex;
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
-use std::error::Error as StdError;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[cfg(test)]
@@ -90,22 +89,13 @@ pub fn hash_leaf<H: Digest>(preimage: Vec<u8>) -> Hash {
     Hash(bytes)
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 /// An error type for the merkle tree.
 pub enum Error {
     /// The root of the merkle tree is not found.
+    #[error("Root not found")]
     RootNotFound,
     /// The nodes are not found in the merkle tree.
+    #[error("Nodes not found")]
     NodesNotFound,
-}
-
-impl StdError for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::RootNotFound => write!(f, "RootNotFound"),
-            Self::NodesNotFound => write!(f, "NodesNotFound"),
-        }
-    }
 }

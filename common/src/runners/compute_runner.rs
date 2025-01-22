@@ -135,39 +135,23 @@ impl ComputeRunner {
     }
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 /// Errors that can arise while using the compute runner.
 pub enum Error {
+    #[error("Base Error: {0}")]
     Base(BaseError),
     /// The compute results for the domain are not found.
+    #[error("ComputeResultsNotFound Error: {0}")]
     ComputeResultsNotFound(DomainHash),
     /// The index to address mapping for the domain are not found.
+    #[error("IndexToAddressNotFound Error: {0}")]
     IndexToAddressNotFound(u64),
     /// The compute tree for the domain are not found.
+    #[error("ComputeTreeNotFound Error: {0}")]
     ComputeTreeNotFound(DomainHash),
-
     /// The compute merkle tree error.
+    #[error("Merkle Error: {0}")]
     Merkle(merkle::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Base(err) => err.fmt(f),
-
-            Self::ComputeResultsNotFound(domain) => {
-                write!(f, "compute_results not found for domain: {:?}", domain)
-            },
-            Self::IndexToAddressNotFound(index) => {
-                write!(f, "index_to_address not found for index: {}", index)
-            },
-            Self::ComputeTreeNotFound(domain) => {
-                write!(f, "compute_tree not found for domain: {:?}", domain)
-            },
-
-            Self::Merkle(err) => err.fmt(f),
-        }
-    }
 }
 
 impl From<BaseError> for Error {
