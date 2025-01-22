@@ -196,15 +196,13 @@ mod tests {
     fn test_compute_peer_range() {
         // st: 100, page_size: 100, next_token: None
         // 0 => 100
-        let (from_peer_start, from_peer_end) =
-            compute_peer_range(100, None, None).unwrap();
+        let (from_peer_start, from_peer_end) = compute_peer_range(100, None, None).unwrap();
         assert_eq!(from_peer_start, 0);
         assert_eq!(from_peer_end, 100);
 
         // st: 100, page_size: 55, next_token: None
         // 0 => 55
-        let (from_peer_start, from_peer_end) =
-            compute_peer_range(100, Some(55), None).unwrap();
+        let (from_peer_start, from_peer_end) = compute_peer_range(100, Some(55), None).unwrap();
         assert_eq!(from_peer_start, 0);
         assert_eq!(from_peer_end, 55);
 

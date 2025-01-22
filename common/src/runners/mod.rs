@@ -1,7 +1,8 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
     misc::{
-        compute_peer_range, create_next_token, LocalTrustStateResponse, OutboundLocalTrust, SeedTrustStateResponse
+        compute_peer_range, create_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        SeedTrustStateResponse,
     },
     topics::{Domain, DomainHash},
     tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
@@ -266,8 +267,7 @@ impl BaseRunner {
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
 
         let st_peers_cnt = st.len() as u64;
-        let (start_peer, end_peer) =
-            compute_peer_range(st_peers_cnt, page_size, next_token)?;
+        let (start_peer, end_peer) = compute_peer_range(st_peers_cnt, page_size, next_token)?;
 
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
