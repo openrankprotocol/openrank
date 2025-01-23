@@ -5,6 +5,7 @@ use k256::ecdsa::{Error as EcdsaError, SigningKey};
 use openrank_common::{
     algos::et::is_converged_org,
     merkle::hash_leaf,
+    misc::{LocalTrustStateResponse, SeedTrustStateResponse},
     query::{GetSeedUpdateQuery, GetTrustUpdateQuery},
     topics::Domain,
     tx::{
@@ -34,6 +35,10 @@ pub struct Config {
     domain: Domain,
     /// The Sequencer configuration. It contains the endpoint of the Sequencer.
     sequencer: Sequencer,
+    /// The Computer configuration
+    computer: Computer,
+    /// The Verifier configuration
+    verifier: Verifier,
 }
 
 /// Creates a new `Config` from a local TOML file, given file path.
@@ -62,6 +67,20 @@ pub struct Sequencer {
     endpoint: String,
     result_start: Option<u32>,
     result_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+/// The configuration for the Computer.
+pub struct Computer {
+    endpoint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+/// The configuration for the Verifier.
+pub struct Verifier {
+    endpoint: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
@@ -119,15 +138,25 @@ pub enum SdkError {
 pub struct OpenRankSDK {
     secret_key: Option<SigningKey>,
     config: Config,
-    client: HttpClient,
+    sequencer_client: HttpClient,
+    computer_client: HttpClient,
+    _verifier_client: HttpClient,
 }
 
 impl OpenRankSDK {
     pub fn new(config: Config, secret_key: Option<SigningKey>) -> Result<Self, SdkError> {
-        let client = HttpClient::builder()
+        let sequencer_client = HttpClient::builder()
             .build(config.sequencer.endpoint.as_str())
             .map_err(SdkError::JsonRpcClientError)?;
-        Ok(Self { secret_key, config, client })
+
+        let computer_client = HttpClient::builder()
+            .build(config.computer.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+
+        let _verifier_client = HttpClient::builder()
+            .build(config.verifier.endpoint.as_str())
+            .map_err(SdkError::JsonRpcClientError)?;
+        Ok(Self { secret_key, config, sequencer_client, computer_client, _verifier_client })
     }
 
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
@@ -145,7 +174,7 @@ impl OpenRankSDK {
             tx.sign(sk).map_err(SdkError::EcdsaError)?;
 
             let result: TxEvent = self
-                .client
+                .sequencer_client
                 .request("sequencer_trust_update", vec![hex::encode(encode(tx))])
                 .await
                 .map_err(SdkError::JsonRpcClientError)?;
@@ -167,7 +196,7 @@ impl OpenRankSDK {
             tx.sign(sk).map_err(SdkError::EcdsaError)?;
 
             let tx_event: TxEvent = self
-                .client
+                .sequencer_client
                 .request("sequencer_seed_update", vec![hex::encode(encode(tx))])
                 .await
                 .map_err(SdkError::JsonRpcClientError)?;
@@ -190,7 +219,7 @@ impl OpenRankSDK {
         let tx_hash = tx.hash();
 
         let tx_event: TxEvent = self
-            .client
+            .sequencer_client
             .request("sequencer_compute_request", vec![hex::encode(encode(tx))])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -207,14 +236,14 @@ impl OpenRankSDK {
         // Checking if ComputeRequest exists, if not, it should return an error
         let compute_request_key = (consts::COMPUTE_REQUEST, compute_request_tx_hash.clone());
         let _: Tx = self
-            .client
+            .sequencer_client
             .request("sequencer_get_tx", compute_request_key)
             .await
             .map_err(SdkError::JsonRpcClientError)?;
 
         // If ComputeRequest exists, we can proceed with fetching results
         let res: Result<u64, SdkError> = self
-            .client
+            .sequencer_client
             .request(
                 "sequencer_get_compute_result_seq_number",
                 vec![compute_request_tx_hash.clone()],
@@ -238,7 +267,7 @@ impl OpenRankSDK {
         }?;
 
         let result: compute::Result = self
-            .client
+            .sequencer_client
             .request("sequencer_get_compute_result", vec![seq_number])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -248,7 +277,7 @@ impl OpenRankSDK {
             result.compute_commitment_tx_hash().clone(),
         );
         let commitment_tx: Tx = self
-            .client
+            .sequencer_client
             .request("sequencer_get_tx", commitment_tx_key)
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -261,7 +290,7 @@ impl OpenRankSDK {
             scores_tx_keys.push((consts::COMPUTE_SCORES, scores_tx_hash));
         }
         let scores_txs: Vec<Tx> = self
-            .client
+            .sequencer_client
             .request("sequencer_get_txs", vec![scores_tx_keys])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -290,7 +319,7 @@ impl OpenRankSDK {
 
         let assignment_key = (consts::COMPUTE_ASSIGNMENT, commitment.assignment_tx_hash());
         let assignment_tx: Tx = self
-            .client
+            .sequencer_client
             .request("sequencer_get_tx", assignment_key)
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -314,7 +343,7 @@ impl OpenRankSDK {
             verification_tx_keys.push((consts::COMPUTE_VERIFICATION, verification_tx_hash));
         }
         let verification_txs: Vec<Tx> = self
-            .client
+            .sequencer_client
             .request("sequencer_get_txs", vec![verification_tx_keys])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -345,7 +374,7 @@ impl OpenRankSDK {
     /// 2. Calls the Sequencer to get the results of the compute that contains references to compute hashes.
     pub async fn get_compute_result(&self, seq_number: u64) -> Result<compute::Result, SdkError> {
         let result: compute::Result = self
-            .client
+            .sequencer_client
             .request("sequencer_get_compute_result", vec![seq_number])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -356,7 +385,7 @@ impl OpenRankSDK {
     /// 2. Calls the Sequencer to get all the txs that are included inside a specific compute result.
     pub async fn get_compute_result_txs(&self, seq_number: u64) -> Result<Vec<Tx>, SdkError> {
         let result: compute::Result = self
-            .client
+            .sequencer_client
             .request("sequencer_get_compute_result", vec![seq_number])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -375,7 +404,7 @@ impl OpenRankSDK {
         }
 
         let txs_res = self
-            .client
+            .sequencer_client
             .request("sequencer_get_txs", vec![txs_arg])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -388,11 +417,41 @@ impl OpenRankSDK {
         let tx_hash_bytes = hex::decode(tx_hash).map_err(SdkError::HexError)?;
         let tx_hash = TxHash::from_bytes(tx_hash_bytes);
         let tx: Tx = self
-            .client
+            .sequencer_client
             .request("sequencer_get_tx", (prefix.to_string(), tx_hash))
             .await
             .map_err(SdkError::JsonRpcClientError)?;
         Ok(tx)
+    }
+
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get the current state of LT matrix.
+    pub async fn get_trust_state(
+        &self, domain: Domain,
+    ) -> Result<LocalTrustStateResponse, SdkError> {
+        let trust_state: LocalTrustStateResponse = self
+            .computer_client
+            .request(
+                "computer_get_lt_state",
+                (domain, None::<usize>, None::<String>),
+            )
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        Ok(trust_state)
+    }
+
+    /// 1. Creates a new `Client`, which can be used to call the Sequencer.
+    /// 2. Calls the Sequencer to get the current state of LT matrix.
+    pub async fn get_seed_state(&self, domain: Domain) -> Result<SeedTrustStateResponse, SdkError> {
+        let seed_state: SeedTrustStateResponse = self
+            .computer_client
+            .request(
+                "computer_get_seed_state",
+                (domain, None::<usize>, None::<String>),
+            )
+            .await
+            .map_err(SdkError::JsonRpcClientError)?;
+        Ok(seed_state)
     }
 
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
@@ -410,7 +469,7 @@ impl OpenRankSDK {
 
         let results_query = GetTrustUpdateQuery::new(from, size);
         let trust_updates: Vec<TrustUpdate> = self
-            .client
+            .sequencer_client
             .request("sequencer_get_trust_updates", vec![results_query])
             .await
             .map_err(SdkError::JsonRpcClientError)?;
@@ -432,7 +491,7 @@ impl OpenRankSDK {
 
         let results_query = GetSeedUpdateQuery::new(from, size);
         let seed_updates: Vec<SeedUpdate> = self
-            .client
+            .sequencer_client
             .request("sequencer_get_seed_updates", vec![results_query])
             .await
             .map_err(SdkError::JsonRpcClientError)?;

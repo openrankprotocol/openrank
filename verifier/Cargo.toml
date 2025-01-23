@@ -36,3 +36,4 @@ sha3 = { workspace = true }
 k256 = { workspace = true }
 getset = { workspace = true }
 thiserror = { workspace = true }
+jsonrpsee = { workspace = true, features = ["server", "macros"] }
