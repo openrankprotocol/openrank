@@ -1,6 +1,9 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
-    misc::OutboundLocalTrust,
+    misc::{
+        compute_peer_range, create_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        SeedTrustStateResponse,
+    },
     topics::{Domain, DomainHash},
     tx::trust::{OwnedNamespace, ScoreEntry, TrustEntry},
 };
@@ -17,9 +20,10 @@ pub mod verification_runner;
 
 #[derive(Getters)]
 #[getset(get = "pub")]
-pub(crate) struct BaseRunner {
+pub struct BaseRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
+    rev_indices: HashMap<DomainHash, HashMap<u64, String>>,
     local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
     seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
@@ -31,6 +35,7 @@ impl BaseRunner {
     pub fn new(domains: &[Domain]) -> Self {
         let mut count = HashMap::new();
         let mut indices = HashMap::new();
+        let mut rev_indices = HashMap::new();
         let mut local_trust = HashMap::new();
         let mut seed_trust = HashMap::new();
         let mut lt_sub_trees = HashMap::new();
@@ -41,6 +46,7 @@ impl BaseRunner {
             let domain_hash = domain.to_hash();
             count.insert(domain_hash, 0);
             indices.insert(domain_hash, HashMap::new());
+            rev_indices.insert(domain_hash, HashMap::new());
             local_trust.insert(domain.trust_namespace(), HashMap::new());
             seed_trust.insert(domain.trust_namespace(), HashMap::new());
             lt_sub_trees.insert(domain_hash, HashMap::new());
@@ -57,6 +63,7 @@ impl BaseRunner {
         Self {
             count,
             indices,
+            rev_indices,
             local_trust,
             seed_trust,
             lt_sub_trees,
@@ -72,6 +79,10 @@ impl BaseRunner {
             .indices
             .get_mut(&domain.to_hash())
             .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
+        let rev_domain_indices = self
+            .rev_indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
         let count = self
             .count
             .get_mut(&domain.to_hash())
@@ -94,6 +105,7 @@ impl BaseRunner {
             } else {
                 let curr_count = *count;
                 domain_indices.insert(entry.from().clone(), curr_count);
+                rev_domain_indices.insert(curr_count, entry.from().clone());
                 *count += 1;
                 curr_count
             };
@@ -102,6 +114,7 @@ impl BaseRunner {
             } else {
                 let curr_count = *count;
                 domain_indices.insert(entry.to().clone(), curr_count);
+                rev_domain_indices.insert(curr_count, entry.to().clone());
                 *count += 1;
                 curr_count
             };
@@ -145,6 +158,10 @@ impl BaseRunner {
             .indices
             .get_mut(&domain.to_hash())
             .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
+        let rev_domain_indices = self
+            .rev_indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
         let count = self
             .count
             .get_mut(&domain.to_hash())
@@ -163,6 +180,7 @@ impl BaseRunner {
             } else {
                 let curr_count = *count;
                 domain_indices.insert(entry.id().clone(), curr_count);
+                rev_domain_indices.insert(curr_count, entry.id().clone());
                 *count += 1;
                 curr_count
             };
@@ -201,11 +219,73 @@ impl BaseRunner {
         let tree_roots = hash_two::<Keccak256>(lt_tree_root, st_tree_root);
         Ok(tree_roots)
     }
+
+    pub fn get_lt_state(
+        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<LocalTrustStateResponse, Error> {
+        let rev_domain_indices = self
+            .rev_indices
+            .get(&domain.to_hash())
+            .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
+        let domain_lt = self
+            .local_trust
+            .get(&domain.trust_namespace())
+            .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+
+        let lt_peers_cnt = domain_lt.len() as u64;
+        let (from_peer_start, from_peer_end) =
+            compute_peer_range(lt_peers_cnt, page_size, next_token)?;
+
+        let mut result = vec![];
+        for from_peer_id in from_peer_start..from_peer_end {
+            let from = rev_domain_indices.get(&from_peer_id).unwrap();
+            if let Some(from_map) = domain_lt.get(&from_peer_id) {
+                for to_peer_id in 0..lt_peers_cnt {
+                    if let Some(lt_entry_value) = from_map.get(&to_peer_id) {
+                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                    }
+                }
+            }
+        }
+        let next_token = create_next_token(lt_peers_cnt, from_peer_end);
+
+        Ok(LocalTrustStateResponse::new(result, next_token))
+    }
+
+    pub fn get_st_state(
+        &self, domain: &Domain, page_size: Option<usize>, next_token: Option<String>,
+    ) -> Result<SeedTrustStateResponse, Error> {
+        let rev_domain_indices = self
+            .rev_indices
+            .get(&domain.to_hash())
+            .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
+        let st = self
+            .seed_trust
+            .get(&domain.seed_namespace())
+            .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+
+        let st_peers_cnt = st.len() as u64;
+        let (start_peer, end_peer) = compute_peer_range(st_peers_cnt, page_size, next_token)?;
+
+        let mut result = vec![];
+        for peer_id in start_peer..end_peer {
+            let peer = rev_domain_indices.get(&peer_id).unwrap();
+            if let Some(seed) = st.get(&peer_id) {
+                result.push(ScoreEntry::new(peer.clone(), *seed));
+            }
+        }
+
+        let next_token = create_next_token(st_peers_cnt, end_peer);
+
+        Ok(SeedTrustStateResponse::new(result, next_token))
+    }
 }
 
 #[derive(Debug)]
 pub enum Error {
     IndicesNotFound(DomainHash),
+    ReverseIndicesNotFound(DomainHash),
     CountNotFound(DomainHash),
 
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
@@ -215,12 +295,19 @@ pub enum Error {
     SeedTrustMasterTreeNotFound(DomainHash),
 
     LocalTrustNotFound(OwnedNamespace),
-
     SeedTrustNotFound(OwnedNamespace),
+
+    OutboundLocalTrustNotFound(u64),
+    LocalTrustEntryNotFound(u64, u64),
+
+    SeedTrustEntryNotFound(u64),
 
     DomainIndexNotFound(String),
 
     Merkle(merkle::Error),
+
+    Base64Decode(base64::DecodeError),
+    Misc(String),
 }
 
 impl Display for Error {
@@ -228,6 +315,9 @@ impl Display for Error {
         match self {
             Self::IndicesNotFound(domain) => {
                 write!(f, "indices not found for domain: {:?}", domain)
+            },
+            Self::ReverseIndicesNotFound(domain) => {
+                write!(f, "rev_indices not found for domain: {:?}", domain)
             },
             Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
 
@@ -262,10 +352,28 @@ impl Display for Error {
             Self::SeedTrustNotFound(domain) => {
                 write!(f, "seed_trust not found for domain: {:?}", domain)
             },
+
+            Self::OutboundLocalTrustNotFound(index) => {
+                write!(f, "outbound_local_trust not found for peer: {}", index)
+            },
+            Self::LocalTrustEntryNotFound(from, to) => {
+                write!(
+                    f,
+                    "local_trust entry not found for from: {}, to: {}",
+                    from, to
+                )
+            },
+
+            Self::SeedTrustEntryNotFound(index) => {
+                write!(f, "seed_trust entry not found for peer: {}", index)
+            },
+
             Self::DomainIndexNotFound(address) => {
                 write!(f, "domain_indice not found for address: {:?}", address)
             },
             Self::Merkle(err) => err.fmt(f),
+            Self::Base64Decode(err) => err.fmt(f),
+            Self::Misc(msg) => write!(f, "misc error: {}", msg),
         }
     }
 }

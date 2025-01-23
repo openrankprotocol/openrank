@@ -35,3 +35,4 @@ serde_json = { workspace = true }
 sha3 = { workspace = true }
 k256 = { workspace = true }
 getset = { workspace = true }
+jsonrpsee = { workspace = true, features = ["server", "macros"] }

@@ -2,12 +2,13 @@ use alloy_rlp::Decodable;
 use dotenv::dotenv;
 use futures::StreamExt;
 use getset::Getters;
+use jsonrpsee::{server::Server, RpcModule};
 use k256::ecdsa;
 use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     address_from_sk, broadcast_event, build_node, config,
-    db::{self, Db, DbItem},
+    db::{self, Db, DbItem, CHECKPOINTS_CF},
     logs::setup_tracing,
     net,
     topics::{Domain, Topic},
@@ -15,13 +16,16 @@ use openrank_common::{
     tx_event::TxEvent,
     MyBehaviour, MyBehaviourEvent,
 };
+use rpc::{RpcServer, VerifierServer};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::{error::Error as StdError, time::Instant};
-use tokio::select;
+use std::{error::Error as StdError, sync::Arc, time::Instant};
+use tokio::{select, sync::Mutex};
 use tracing::{debug, error, info};
 
 use openrank_common::runners::verification_runner::{self as runner, VerificationRunner};
+
+mod rpc;
 
 #[derive(Debug)]
 /// Errors that can arise while using the verifier node.
@@ -86,6 +90,7 @@ struct Config {
     whitelist: Whitelist,
     database: db::Config,
     p2p: net::Config,
+    rpc: net::RpcConfig,
 }
 
 #[derive(Getters)]
@@ -95,8 +100,9 @@ pub struct Node {
     swarm: Swarm<MyBehaviour>,
     config: Config,
     db: Db,
-    verification_runner: VerificationRunner,
+    verification_runner: Arc<Mutex<VerificationRunner>>,
     secret_key: SigningKey,
+    rpc: RpcModule<VerifierServer>,
 }
 
 impl Node {
@@ -115,19 +121,30 @@ impl Node {
 
         let config_loader = config::Loader::new("openrank-verifier")?;
         let config: Config = config_loader.load_or_create(include_str!("../config.toml"))?;
-        let db = Db::new(&config.database, [Tx::get_cf()])?;
+        let db = Db::new(&config.database, [Tx::get_cf(), CHECKPOINTS_CF.to_string()])?;
         let verification_runner = VerificationRunner::new(&config.domains);
+
+        let verification_runner_arc_mutex = Arc::new(Mutex::new(verification_runner));
+        let verifier_server = VerifierServer::new(verification_runner_arc_mutex.clone());
+        let rpc = verifier_server.into_rpc();
 
         let swarm = build_node(net::load_keypair(config.p2p().keypair(), &config_loader)?).await?;
         info!("PEER_ID: {:?}", swarm.local_peer_id());
 
-        Ok(Self { swarm, config, db, verification_runner, secret_key })
+        Ok(Self {
+            swarm,
+            config,
+            db,
+            verification_runner: verification_runner_arc_mutex,
+            secret_key,
+            rpc,
+        })
     }
 
     /// Handles incoming gossipsub `event` given the `topics` this node is interested in.
     /// Handling includes TX validation, storage in local db, or optionally triggering a broadcast
     /// of postceding TX to the network.
-    fn handle_gossipsub_events(
+    async fn handle_gossipsub_events(
         &mut self, event: gossipsub::Event, topics: Vec<&Topic>, domains: Vec<Domain>,
     ) -> Result<(), Error> {
         if let gossipsub::Event::Message { propagation_source, message_id, message } = event {
@@ -156,7 +173,8 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            self.verification_runner
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
+                            verification_runner_mut
                                 .update_trust(domain.clone(), trust_update.entries().clone())
                                 .map_err(Error::Runner)?;
                         } else {
@@ -179,7 +197,8 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.trust_namespace() == namespace)
                                 .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                            self.verification_runner
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
+                            verification_runner_mut
                                 .update_seed(domain.clone(), seed_update.entries().clone())
                                 .map_err(Error::Runner)?;
                         } else {
@@ -212,11 +231,11 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            self.verification_runner
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
+                            verification_runner_mut
                                 .update_assigment(domain.clone(), tx.hash())
                                 .map_err(Error::Runner)?;
-                            let res = self
-                                .verification_runner
+                            let res = verification_runner_mut
                                 .check_finished_assignments(domain.clone())
                                 .map_err(Error::Runner)?;
                             for (tx_hash, verification_res) in res {
@@ -253,11 +272,11 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound((*domain_id).to_hex()))?;
-                            self.verification_runner
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
+                            verification_runner_mut
                                 .update_scores(domain.clone(), tx.hash(), compute_scores.clone())
                                 .map_err(Error::Runner)?;
-                            let res = self
-                                .verification_runner
+                            let res = verification_runner_mut
                                 .check_finished_assignments(domain.clone())
                                 .map_err(Error::Runner)?;
                             for (tx_hash, verification_res) in res {
@@ -294,9 +313,9 @@ impl Node {
                                 .iter()
                                 .find(|x| &x.to_hash() == domain_id)
                                 .ok_or(Error::DomainNotFound(domain_id.to_hex()))?;
-                            self.verification_runner.update_commitment(compute_commitment.clone());
-                            let res = self
-                                .verification_runner
+                            let mut verification_runner_mut = self.verification_runner.lock().await;
+                            verification_runner_mut.update_commitment(compute_commitment.clone());
+                            let res = verification_runner_mut
                                 .check_finished_assignments(domain.clone())
                                 .map_err(Error::Runner)?;
                             for (tx_hash, verification_res) in res {
@@ -330,7 +349,7 @@ impl Node {
     /// - Load all the TXs from the DB
     /// - Just take TrustUpdate and SeedUpdate transactions
     /// - Update VerificationRunner using functions update_trust, update_seed
-    pub fn node_recovery(&mut self) -> Result<(), Error> {
+    pub async fn node_recovery(&mut self) -> Result<(), Error> {
         info!("NODE_RECOVERY_START");
         let start = Instant::now();
 
@@ -354,6 +373,7 @@ impl Node {
         txs.sort_unstable_by_key(|tx| tx.get_sequence_number());
 
         // update verification runner
+        let mut verification_runner_mut = self.verification_runner.lock().await;
         for tx in txs {
             match tx.body() {
                 tx::Body::TrustUpdate(trust_update) => {
@@ -364,7 +384,7 @@ impl Node {
                         .iter()
                         .find(|x| x.trust_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                    self.verification_runner
+                    verification_runner_mut
                         .update_trust(domain.clone(), trust_update.entries().clone())
                         .map_err(Error::Runner)?;
                 },
@@ -376,7 +396,7 @@ impl Node {
                         .iter()
                         .find(|x| x.seed_namespace() == namespace)
                         .ok_or(Error::DomainNotFound(namespace.clone().to_hex()))?;
-                    self.verification_runner
+                    verification_runner_mut
                         .update_seed(domain.clone(), seed_update.entries().clone())
                         .map_err(Error::Runner)?;
                 },
@@ -451,6 +471,11 @@ impl Node {
 
         net::listen_on(&mut self.swarm, self.config.p2p().listen_on())?;
 
+        // spawn a rpc server
+        let server = Server::builder().build(self.config.rpc().address()).await?;
+        let handle = server.start(self.rpc.clone());
+        tokio::spawn(handle.stopped());
+
         // Kick it off
         loop {
             select! {
@@ -472,7 +497,7 @@ impl Node {
                             event,
                             iter_chain.clone().collect(),
                             self.config.domains.clone(),
-                        );
+                        ).await;
                         if let Err(e) = res {
                             error!("GOSSIPSUB_EVENT_ERROR: {e:?}");
                             continue;

@@ -8,7 +8,7 @@ use k256::ecdsa::SigningKey;
 use libp2p::{gossipsub, mdns, swarm::SwarmEvent, Swarm};
 use openrank_common::{
     broadcast_event, build_node, config,
-    db::{self, Db, DbItem},
+    db::{self, Db, DbItem, CHECKPOINTS_CF},
     logs::setup_tracing,
     net,
     topics::{Domain, Topic},
@@ -133,6 +133,7 @@ impl Node {
             ResultReference::get_cf(),
             RequestSequence::get_cf(),
             TxSequence::get_cf(),
+            CHECKPOINTS_CF.to_string(),
         ];
         let primary_db = Db::new(&config.database, &cfs)?;
         let primary_db = Arc::new(primary_db);

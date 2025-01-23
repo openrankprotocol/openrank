@@ -107,3 +107,5 @@ fabric.properties
 
 # Script for removing local db folders
 flush_db.sh
+
+/playground/*
