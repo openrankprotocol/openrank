@@ -239,13 +239,12 @@ impl BaseRunner {
         let mut result = vec![];
         for from_peer_id in from_peer_start..from_peer_end {
             let from = rev_domain_indices.get(&from_peer_id).unwrap();
-            let from_map = domain_lt
-                .get(&from_peer_id)
-                .ok_or(Error::OutboundLocalTrustNotFound(from_peer_id))?;
-            for to_peer_id in 0..lt_peers_cnt {
-                if let Some(lt_entry_value) = from_map.get(&to_peer_id) {
-                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                    result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+            if let Some(from_map) = domain_lt.get(&from_peer_id) {
+                for to_peer_id in 0..lt_peers_cnt {
+                    if let Some(lt_entry_value) = from_map.get(&to_peer_id) {
+                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                    }
                 }
             }
         }
