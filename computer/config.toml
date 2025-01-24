@@ -23,4 +23,4 @@ directory = "./local-storage"
 listen_on = ["/ip4/0.0.0.0/udp/10000/quic-v1", "/ip4/0.0.0.0/tcp/10000"]
 
 [rpc]
-address = "127.0.0.1:60001"
+address = "0.0.0.0:60001"
