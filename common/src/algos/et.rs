@@ -176,7 +176,9 @@ pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32
 }
 
 /// Same as `is_converged`, but accepts the scores map in it's original form, where peers are identified by a `String`.
-pub fn is_converged_org(scores: &BTreeMap<String, f32>, next_scores: &BTreeMap<String, f32>) -> bool {
+pub fn is_converged_org(
+    scores: &BTreeMap<String, f32>, next_scores: &BTreeMap<String, f32>,
+) -> bool {
     scores
         .par_iter()
         .fold(
