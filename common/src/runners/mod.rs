@@ -9,7 +9,7 @@ use crate::{
 };
 use getset::Getters;
 use sha3::Keccak256;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tracing::info;
 
 pub mod compute_runner;
@@ -21,8 +21,8 @@ pub struct BaseRunner {
     count: HashMap<DomainHash, u64>,
     indices: HashMap<DomainHash, HashMap<String, u64>>,
     rev_indices: HashMap<DomainHash, HashMap<u64, String>>,
-    local_trust: HashMap<OwnedNamespace, HashMap<u64, OutboundLocalTrust>>,
-    seed_trust: HashMap<OwnedNamespace, HashMap<u64, f32>>,
+    local_trust: HashMap<OwnedNamespace, BTreeMap<u64, OutboundLocalTrust>>,
+    seed_trust: HashMap<OwnedNamespace, BTreeMap<u64, f32>>,
     lt_sub_trees: HashMap<DomainHash, HashMap<u64, DenseIncrementalMerkleTree<Keccak256>>>,
     lt_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
     st_master_tree: HashMap<DomainHash, DenseIncrementalMerkleTree<Keccak256>>,
@@ -44,8 +44,8 @@ impl BaseRunner {
             count.insert(domain_hash, 0);
             indices.insert(domain_hash, HashMap::new());
             rev_indices.insert(domain_hash, HashMap::new());
-            local_trust.insert(domain.trust_namespace(), HashMap::new());
-            seed_trust.insert(domain.trust_namespace(), HashMap::new());
+            local_trust.insert(domain.trust_namespace(), BTreeMap::new());
+            seed_trust.insert(domain.trust_namespace(), BTreeMap::new());
             lt_sub_trees.insert(domain_hash, HashMap::new());
             lt_master_tree.insert(
                 domain_hash,

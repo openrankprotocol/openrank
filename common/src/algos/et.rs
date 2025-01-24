@@ -1,6 +1,6 @@
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     time::Instant,
 };
 use tracing::info;
@@ -17,7 +17,7 @@ const PRE_TRUST_WEIGHT: f32 = 0.5;
 const DELTA: f32 = 0.01;
 
 fn find_reachable_peers(
-    lt: &HashMap<u64, OutboundLocalTrust>, seed: &HashMap<u64, f32>,
+    lt: &BTreeMap<u64, OutboundLocalTrust>, seed: &BTreeMap<u64, f32>,
 ) -> HashSet<u64> {
     let mut to_visit: Vec<&u64> = seed.keys().collect();
     let mut visited = HashSet::new();
@@ -39,7 +39,7 @@ fn find_reachable_peers(
 ///
 /// - Removes self-trust (diagonal entries), as prohibited by EigenTrust.
 fn pre_process(
-    lt: &mut HashMap<u64, OutboundLocalTrust>, seed: &mut HashMap<u64, f32>, count: u64,
+    lt: &mut BTreeMap<u64, OutboundLocalTrust>, seed: &mut BTreeMap<u64, f32>, count: u64,
 ) {
     // Calculate the sum of all seed trust values.
     let sum: f32 = seed.par_iter().map(|(_, v)| v).sum();
@@ -65,31 +65,31 @@ fn pre_process(
 }
 
 /// Normalizes the `lt` matrix by dividing each element by the sum of its row.
-fn normalise_lt(lt: &HashMap<u64, OutboundLocalTrust>) -> HashMap<u64, OutboundLocalTrust> {
+fn normalise_lt(lt: &BTreeMap<u64, OutboundLocalTrust>) -> BTreeMap<u64, OutboundLocalTrust> {
     lt.par_iter()
-        .fold(HashMap::new, |mut lt_norm, (from, from_map)| {
+        .fold(BTreeMap::new, |mut lt_norm, (from, from_map)| {
             let from_map_norm = from_map.norm();
             lt_norm.insert(*from, from_map_norm);
             lt_norm
         })
-        .reduce(HashMap::new, |mut acc, lt_norm| {
+        .reduce(BTreeMap::new, |mut acc, lt_norm| {
             acc.extend(lt_norm);
             acc
         })
 }
 
 /// Normalizes the scores, to eliminate the rounding error
-fn normalise_scores(scores: &HashMap<u64, f32>) -> HashMap<u64, f32> {
+fn normalise_scores(scores: &BTreeMap<u64, f32>) -> BTreeMap<u64, f32> {
     // Calculate the sum of all seed trust values.
     let sum: f32 = scores.par_iter().map(|(_, v)| v).sum();
 
     scores
         .par_iter()
-        .fold(HashMap::new, |mut scores, (i, value)| {
+        .fold(BTreeMap::new, |mut scores, (i, value)| {
             scores.insert(*i, *value / sum);
             scores
         })
-        .reduce(HashMap::new, |mut acc, scores| {
+        .reduce(BTreeMap::new, |mut acc, scores| {
             acc.extend(scores);
             acc
         })
@@ -99,7 +99,7 @@ fn normalise_scores(scores: &HashMap<u64, f32>) -> HashMap<u64, f32> {
 /// The algorithm iteratively updates the scores of each node until convergence.
 /// It returns a vector of tuples containing the node ID and the final score.
 pub fn positive_run(
-    mut lt: HashMap<u64, OutboundLocalTrust>, mut seed: HashMap<u64, f32>, count: u64,
+    mut lt: BTreeMap<u64, OutboundLocalTrust>, mut seed: BTreeMap<u64, f32>, count: u64,
 ) -> Vec<(u64, f32)> {
     let start = Instant::now();
     info!(
@@ -157,7 +157,7 @@ pub fn positive_run(
 
 /// Given the previous scores (`scores`) and the next scores (`next_scores`), checks if the scores have converged.
 /// It returns `true` if the scores have converged and `false` otherwise.
-pub fn is_converged(scores: &HashMap<u64, f32>, next_scores: &HashMap<u64, f32>) -> (bool, u32) {
+pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32>) -> (bool, u32) {
     // Iterate over the scores and check if they have converged.
     scores
         .par_iter()
@@ -176,7 +176,7 @@ pub fn is_converged(scores: &HashMap<u64, f32>, next_scores: &HashMap<u64, f32>)
 }
 
 /// Same as `is_converged`, but accepts the scores map in it's original form, where peers are identified by a `String`.
-pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<String, f32>) -> bool {
+pub fn is_converged_org(scores: &BTreeMap<String, f32>, next_scores: &BTreeMap<String, f32>) -> bool {
     scores
         .par_iter()
         .fold(
@@ -194,8 +194,8 @@ pub fn is_converged_org(scores: &HashMap<String, f32>, next_scores: &HashMap<Str
 /// seed trust values (`seed`), and previous scores (`scores`).
 /// It returns `true` if the scores have converged and `false` otherwise.
 pub fn convergence_check(
-    mut lt: HashMap<u64, OutboundLocalTrust>, mut seed: HashMap<u64, f32>,
-    scores: &HashMap<u64, f32>, count: u64,
+    mut lt: BTreeMap<u64, OutboundLocalTrust>, mut seed: BTreeMap<u64, f32>,
+    scores: &BTreeMap<u64, f32>, count: u64,
 ) -> bool {
     info!(
         "PRE_PROCESS_START, LT_SIZE: {}, SEED_SIZE: {}",
@@ -234,10 +234,10 @@ pub fn convergence_check(
 }
 
 fn iteration(
-    lt: &HashMap<u64, OutboundLocalTrust>, seed: &HashMap<u64, f32>, scores: &HashMap<u64, f32>,
-) -> HashMap<u64, f32> {
+    lt: &BTreeMap<u64, OutboundLocalTrust>, seed: &BTreeMap<u64, f32>, scores: &BTreeMap<u64, f32>,
+) -> BTreeMap<u64, f32> {
     lt.par_iter()
-        .fold(HashMap::new, |mut next_scores, (from, from_map)| {
+        .fold(BTreeMap::new, |mut next_scores, (from, from_map)| {
             let origin_score = scores.get(from).unwrap_or(&0.0);
             for (to, value) in from_map.outbound_trust_scores() {
                 let score = *value * origin_score;
@@ -257,7 +257,7 @@ fn iteration(
             }
             next_scores
         })
-        .reduce(HashMap::new, |mut acc, next| {
+        .reduce(BTreeMap::new, |mut acc, next| {
             for (i, v) in next {
                 if acc.contains_key(&i) {
                     let val = acc.get(&i).unwrap();

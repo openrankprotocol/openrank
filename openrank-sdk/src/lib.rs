@@ -20,7 +20,7 @@ use openrank_common::{
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
-use std::{cmp::Ordering, collections::HashMap, fs::File, io::Read};
+use std::{cmp::Ordering, collections::BTreeMap, fs::File, io::Read};
 use std::{io, num};
 
 const TRUST_CHUNK_SIZE: usize = 500;
@@ -501,12 +501,12 @@ impl OpenRankSDK {
     pub fn check_score_integrity(
         votes: Vec<bool>, computed_scores: Vec<ScoreEntry>, correct_scores: Vec<ScoreEntry>,
     ) -> Result<bool, SdkError> {
-        let mut computed_scores_map = HashMap::new();
+        let mut computed_scores_map = BTreeMap::new();
         for score in computed_scores {
             computed_scores_map.insert(score.id().clone(), *score.value());
         }
 
-        let mut correct_scores_map = HashMap::new();
+        let mut correct_scores_map = BTreeMap::new();
         for score in correct_scores {
             correct_scores_map.insert(score.id().clone(), *score.value());
         }
