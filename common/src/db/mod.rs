@@ -2,8 +2,6 @@ use getset::Getters;
 use rocksdb::{self, Direction, IteratorMode, Options, ReadOptions, DB};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{self, to_vec};
-use std::error::Error as StdError;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 
 mod items;
 
@@ -11,33 +9,24 @@ pub use rocksdb::ErrorKind as RocksDBErrorKind;
 
 pub const CHECKPOINTS_CF: &str = "checkpoints";
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 /// Errors that can arise while using database.
 pub enum Error {
     /// RocksDB failed.
+    #[error("DB Error: {0}")]
     RocksDB(rocksdb::Error),
     /// Error when decoding entries from RocksDB.
+    #[error("Serde Error: {0}")]
     Serde(serde_json::Error),
     /// Error when column family is not found.
+    #[error("CF Not Found")]
     CfNotFound,
     /// Error when entry is not found.
+    #[error("Entry not found")]
     NotFound,
     /// Config parsing error.
+    #[error("Config Error: {0}")]
     Config(String),
-}
-
-impl StdError for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::RocksDB(e) => write!(f, "{}", e),
-            Self::Serde(e) => write!(f, "{}", e),
-            Self::CfNotFound => write!(f, "CfNotFound"),
-            Self::NotFound => write!(f, "NotFound"),
-            Self::Config(msg) => write!(f, "Config({:?})", msg),
-        }
-    }
 }
 
 pub trait DbItem {

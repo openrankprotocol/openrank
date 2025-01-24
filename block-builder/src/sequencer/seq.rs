@@ -5,34 +5,18 @@ use openrank_common::{
         Body, Tx, TxSequence,
     },
 };
-use std::{
-    error::Error as StdError,
-    fmt::{Formatter, Result as FmtResult},
-    sync::Arc,
-};
-use std::{
-    fmt::Display,
-    time::{SystemTime, SystemTimeError},
-};
+use std::sync::Arc;
+use std::time::{SystemTime, SystemTimeError};
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 /// Errors that can arise while using the block builder node.
 pub enum Error {
     /// The database error. The error can occur when interacting with the database.
+    #[error("DB Error: {0}")]
     Db(db::Error),
     /// SystemTime error. The error can occur when computing timestamps.
+    #[error("System time error: {0}")]
     SystemTime(SystemTimeError),
-}
-
-impl StdError for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Db(e) => write!(f, "{}", e),
-            Self::SystemTime(e) => write!(f, "{}", e),
-        }
-    }
 }
 
 pub struct Sequencer {

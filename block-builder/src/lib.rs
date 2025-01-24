@@ -25,11 +25,8 @@ use sequencer::{
     seq::Sequencer,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use std::{error::Error as StdError, sync::Arc};
-use std::{
-    fmt::{Display, Formatter, Result as FmtResult},
-    time::Duration,
-};
 use tokio::{
     select,
     sync::mpsc::{self, Receiver},
@@ -40,33 +37,24 @@ mod sequencer;
 
 const DB_REFRESH_INTERVAL: u64 = 10; // seconds
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 /// Errors that can arise while using the block builder node.
 pub enum Error {
     /// The decode error. This can arise when decoding a transaction.
+    #[error("Decode Error: {0}")]
     Decode(alloy_rlp::Error),
     /// The database error. The error can occur when interacting with the database.
+    #[error("Db Error: {0}")]
     Db(db::Error),
     /// The p2p error. This can arise when sending or receiving messages over the p2p network.
+    #[error("P2P error: {0}")]
     P2P(String),
     /// The signature error. This can arise when verifying a transaction signature.
+    #[error("Signature error: {0}")]
     Signature(ecdsa::Error),
     /// The invalid tx kind error. This can arise when the transaction kind is not valid.
+    #[error("Invalid TX kind")]
     InvalidTxKind,
-}
-
-impl StdError for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Decode(err) => err.fmt(f),
-            Self::Db(err) => err.fmt(f),
-            Self::P2P(err) => write!(f, "p2p error: {}", err),
-            Self::Signature(err) => err.fmt(f),
-            Self::InvalidTxKind => write!(f, "InvalidTxKind"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]

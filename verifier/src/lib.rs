@@ -18,8 +18,7 @@ use openrank_common::{
 };
 use rpc::{RpcServer, VerifierServer};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::{error::Error as StdError, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 use tokio::{select, sync::Mutex};
 use tracing::{debug, error, info};
 
@@ -27,39 +26,30 @@ use openrank_common::runners::verification_runner::{self as runner, Verification
 
 mod rpc;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 /// Errors that can arise while using the verifier node.
 pub enum Error {
     /// The decode error. This can arise when decoding a transaction.
+    #[error("Decode error: {0}")]
     Decode(alloy_rlp::Error),
     /// The database error. The database error can occur when interacting with the database.
+    #[error("DB error: {0}")]
     Db(db::Error),
     /// The domain not found error. This can arise when the domain is not found in the config.
+    #[error("Domain not found error: {0}")]
     DomainNotFound(String),
     /// The p2p error. This can arise when sending or receiving messages over the p2p network.
+    #[error("P2P error: {0}")]
     P2P(String),
     /// The compute internal error. This can arise when there is an internal error in the verification runner.
+    #[error("Runner error: {0}")]
     Runner(runner::Error),
     /// The signature error. This can arise when verifying a transaction signature.
+    #[error("Signature error: {0}")]
     Signature(ecdsa::Error),
     /// The invalid tx kind error.
+    #[error("Invalid TX kind")]
     InvalidTxKind,
-}
-
-impl StdError for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Decode(err) => err.fmt(f),
-            Self::Db(err) => err.fmt(f),
-            Self::DomainNotFound(domain) => write!(f, "Domain not found: {}", domain),
-            Self::P2P(err) => write!(f, "p2p error: {}", err),
-            Self::Runner(err) => write!(f, "internal error: {}", err),
-            Self::Signature(err) => err.fmt(f),
-            Self::InvalidTxKind => write!(f, "InvalidTxKind"),
-        }
-    }
 }
 
 impl From<runner::Error> for Error {

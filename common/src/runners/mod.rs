@@ -9,10 +9,7 @@ use crate::{
 };
 use getset::Getters;
 use sha3::Keccak256;
-use std::{
-    collections::HashMap,
-    fmt::{Display, Formatter, Result as FmtResult},
-};
+use std::collections::HashMap;
 use tracing::info;
 
 pub mod compute_runner;
@@ -282,98 +279,32 @@ impl BaseRunner {
     }
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("'indices' not found for domain: {0}")]
     IndicesNotFound(DomainHash),
+    #[error("'rev_indices' not found for domain: {0}")]
     ReverseIndicesNotFound(DomainHash),
+    #[error("'count' not found for domain: {0}")]
     CountNotFound(DomainHash),
-
+    #[error("'local_trust_sub_trees' not found for domain: {0}")]
     LocalTrustSubTreesNotFoundWithDomain(DomainHash),
+    #[error("'local_trust_sub_trees' not found for index: {0}")]
     LocalTrustSubTreesNotFoundWithIndex(u64),
-
+    #[error("'local_trust_master_tree' not found for domain: {0}")]
     LocalTrustMasterTreeNotFound(DomainHash),
+    #[error("'seed_trust_master_tree' not found for domain: {0}")]
     SeedTrustMasterTreeNotFound(DomainHash),
-
+    #[error("'local_trust' not found for domain: {0}")]
     LocalTrustNotFound(OwnedNamespace),
+    #[error("'seed_trust' not found for domain: {0}")]
     SeedTrustNotFound(OwnedNamespace),
-
-    OutboundLocalTrustNotFound(u64),
-    LocalTrustEntryNotFound(u64, u64),
-
-    SeedTrustEntryNotFound(u64),
-
+    #[error("'domain_index' not found for address: {0}")]
     DomainIndexNotFound(String),
-
+    #[error("Merkle Error: {0}")]
     Merkle(merkle::Error),
-
+    #[error("Base 64 Decode Error: {0}")]
     Base64Decode(base64::DecodeError),
+    #[error("Misc Error: {0}")]
     Misc(String),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::IndicesNotFound(domain) => {
-                write!(f, "indices not found for domain: {:?}", domain)
-            },
-            Self::ReverseIndicesNotFound(domain) => {
-                write!(f, "rev_indices not found for domain: {:?}", domain)
-            },
-            Self::CountNotFound(domain) => write!(f, "count not found for domain: {:?}", domain),
-
-            Self::LocalTrustSubTreesNotFoundWithDomain(domain) => {
-                write!(
-                    f,
-                    "local_trust_sub_trees not found for domain: {:?}",
-                    domain
-                )
-            },
-            Self::LocalTrustSubTreesNotFoundWithIndex(index) => {
-                write!(f, "local_trust_sub_trees not found for index: {}", index)
-            },
-
-            Self::LocalTrustMasterTreeNotFound(domain) => {
-                write!(
-                    f,
-                    "local_trust_master_tree not found for domain: {:?}",
-                    domain
-                )
-            },
-            Self::SeedTrustMasterTreeNotFound(domain) => {
-                write!(
-                    f,
-                    "seed_trust_master_tree not found for domain: {:?}",
-                    domain
-                )
-            },
-            Self::LocalTrustNotFound(domain) => {
-                write!(f, "local_trust not found for domain: {:?}", domain)
-            },
-            Self::SeedTrustNotFound(domain) => {
-                write!(f, "seed_trust not found for domain: {:?}", domain)
-            },
-
-            Self::OutboundLocalTrustNotFound(index) => {
-                write!(f, "outbound_local_trust not found for peer: {}", index)
-            },
-            Self::LocalTrustEntryNotFound(from, to) => {
-                write!(
-                    f,
-                    "local_trust entry not found for from: {}, to: {}",
-                    from, to
-                )
-            },
-
-            Self::SeedTrustEntryNotFound(index) => {
-                write!(f, "seed_trust entry not found for peer: {}", index)
-            },
-
-            Self::DomainIndexNotFound(address) => {
-                write!(f, "domain_indice not found for address: {:?}", address)
-            },
-            Self::Merkle(err) => err.fmt(f),
-            Self::Base64Decode(err) => err.fmt(f),
-            Self::Misc(msg) => write!(f, "misc error: {}", msg),
-        }
-    }
 }
