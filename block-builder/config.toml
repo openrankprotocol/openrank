@@ -25,4 +25,4 @@ secondary = "./local-secondary-storage"
 listen_on = ["/ip4/0.0.0.0/udp/8000/quic-v1", "/ip4/0.0.0.0/tcp/8000"]
 
 [rpc]
-address = "127.0.0.1:60000"
+address = "0.0.0.0:60000"
