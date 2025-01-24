@@ -1,7 +1,7 @@
 use base64::prelude::*;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::{
     runners::Error as BaseRunnerError,
@@ -23,7 +23,7 @@ pub struct OutboundLocalTrust {
     /// assigns to its peers. The trust values are represented as a vector of
     /// floats, where each element in the vector corresponds to the trust value
     /// assigned to a particular peer.
-    outbound_trust_scores: HashMap<u64, f32>,
+    outbound_trust_scores: BTreeMap<u64, f32>,
     /// The sum of the trust values assigned to all peers.
     ///
     /// The `outbound_sum` value stores the sum of the trust values assigned to
@@ -40,15 +40,15 @@ impl Default for OutboundLocalTrust {
 
 impl OutboundLocalTrust {
     pub fn new() -> Self {
-        Self { outbound_trust_scores: HashMap::new(), outbound_sum: 0.0 }
+        Self { outbound_trust_scores: BTreeMap::new(), outbound_sum: 0.0 }
     }
 
-    pub fn set_outbound_trust_scores(&mut self, outbound_trust_scores: HashMap<u64, f32>) {
+    pub fn set_outbound_trust_scores(&mut self, outbound_trust_scores: BTreeMap<u64, f32>) {
         self.outbound_trust_scores = outbound_trust_scores;
         self.outbound_sum = self.outbound_trust_scores.values().sum();
     }
 
-    pub fn from_score_map(score_map: &HashMap<u64, f32>) -> Self {
+    pub fn from_score_map(score_map: &BTreeMap<u64, f32>) -> Self {
         let outbound_trust_scores = score_map.clone();
         let outbound_sum = outbound_trust_scores.values().sum();
         Self { outbound_trust_scores, outbound_sum }
@@ -63,7 +63,7 @@ impl OutboundLocalTrust {
         OutboundLocalTrust { outbound_trust_scores, outbound_sum }
     }
 
-    /*----------------- HashMap similar utils -----------------*/
+    /*----------------- BTreeMap similar utils -----------------*/
     pub fn get(&self, peer_id: &u64) -> Option<f32> {
         self.outbound_trust_scores.get(peer_id).copied()
     }

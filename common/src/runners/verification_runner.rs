@@ -10,7 +10,7 @@ use crate::{
 };
 use getset::Getters;
 use sha3::Keccak256;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tracing::info;
 
 use super::{BaseRunner, Error as BaseError};
@@ -245,11 +245,11 @@ impl VerificationRunner {
             }
             scores
         };
-        let score_entries: HashMap<u64, f32> = {
+        let score_entries: BTreeMap<u64, f32> = {
             let score_entries_vec: Vec<ScoreEntry> =
                 scores.iter().flat_map(|cs| cs.entries().clone()).collect();
 
-            let mut score_entries_map: HashMap<u64, f32> = HashMap::new();
+            let mut score_entries_map: BTreeMap<u64, f32> = BTreeMap::new();
             for entry in score_entries_vec {
                 let i = domain_indices
                     .get(entry.id())
