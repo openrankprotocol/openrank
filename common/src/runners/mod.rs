@@ -1,7 +1,8 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
     misc::{
-        compute_peer_range, create_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        compute_localtrust_peer_range, compute_seedtrust_peer_range, create_localtrust_next_token,
+        create_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
         SeedTrustStateResponse,
     },
     topics::{Domain, DomainHash},
@@ -230,22 +231,72 @@ impl BaseRunner {
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
 
         let lt_peers_cnt = domain_lt.len() as u64;
-        let (from_peer_start, from_peer_end) =
-            compute_peer_range(lt_peers_cnt, page_size, next_token)?;
+        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
+            compute_localtrust_peer_range(lt_peers_cnt, page_size, next_token)?;
+        if from_peer_start == lt_peers_cnt {
+            return Ok(LocalTrustStateResponse::new(vec![], None));
+        }
 
         let mut result = vec![];
-        for from_peer_id in from_peer_start..from_peer_end {
-            let from = rev_domain_indices.get(&from_peer_id).unwrap();
-            if let Some(from_map) = domain_lt.get(&from_peer_id) {
-                for to_peer_id in 0..lt_peers_cnt {
-                    if let Some(lt_entry_value) = from_map.get(&to_peer_id) {
-                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
+        if from_peer_start == from_peer_end {
+            let from = rev_domain_indices.get(&from_peer_start).unwrap();
+            if let Some(lt_row) = domain_lt.get(&from_peer_start) {
+                for to_peer_id in to_peer_start..to_peer_end {
+                    if from_peer_start == to_peer_id {
+                        continue;
+                    }
+                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                    if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
                         result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
                     }
                 }
             }
+        } else {
+            let from = rev_domain_indices.get(&from_peer_start).unwrap();
+            if let Some(lt_row) = domain_lt.get(&from_peer_start) {
+                for to_peer_id in to_peer_start..lt_peers_cnt {
+                    if from_peer_start == to_peer_id {
+                        continue;
+                    }
+                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                    if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                    }
+                }
+            }
+
+            for from_peer_id in from_peer_start + 1..from_peer_end {
+                let from = rev_domain_indices.get(&from_peer_id).unwrap();
+                if let Some(lt_row) = domain_lt.get(&from_peer_id) {
+                    for to_peer_id in 0..lt_peers_cnt {
+                        if from_peer_id == to_peer_id {
+                            continue;
+                        }
+                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                        if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                            result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                        }
+                    }
+                }
+            }
+
+            if from_peer_end != lt_peers_cnt {
+                let from = rev_domain_indices.get(&from_peer_end).unwrap();
+                if let Some(lt_row) = domain_lt.get(&from_peer_end) {
+                    for to_peer_id in 0..to_peer_end {
+                        if from_peer_end == to_peer_id {
+                            continue;
+                        }
+                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                        if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                            result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+                        }
+                    }
+                }
+            }
         }
-        let next_token = create_next_token(lt_peers_cnt, from_peer_end);
+
+        let next_token = create_localtrust_next_token(lt_peers_cnt, from_peer_end, to_peer_end);
 
         Ok(LocalTrustStateResponse::new(result, next_token))
     }
@@ -263,7 +314,8 @@ impl BaseRunner {
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
 
         let st_peers_cnt = st.len() as u64;
-        let (start_peer, end_peer) = compute_peer_range(st_peers_cnt, page_size, next_token)?;
+        let (start_peer, end_peer) =
+            compute_seedtrust_peer_range(st_peers_cnt, page_size, next_token)?;
 
         let mut result = vec![];
         for peer_id in start_peer..end_peer {
@@ -273,7 +325,7 @@ impl BaseRunner {
             }
         }
 
-        let next_token = create_next_token(st_peers_cnt, end_peer);
+        let next_token = create_seedtrust_next_token(st_peers_cnt, end_peer);
 
         Ok(SeedTrustStateResponse::new(result, next_token))
     }
