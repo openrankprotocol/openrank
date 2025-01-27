@@ -138,29 +138,8 @@ pub fn decode_localtrust_next_token(
     Ok((from_peer_start, to_peer_start))
 }
 
-/// Creates a next token for local trust pagination.
-///
-/// This function generates a base64 encoded string that represents the
-/// `from_peer_id` and `to_peer_id` as 8-byte integers.
-///
-/// # Arguments
-///
-/// * `lt_peers_cnt` - Total number of local trust peers. It defines the upper
-///   limit for `from_peer_id`.
-/// * `from_peer_id` - The peer ID for which the next token is to be created.
-/// * `to_peer_id` - The peer ID up to which the peers are to be returned in
-///   the next page.
-///
-/// # Returns
-///
-/// An `Option<String>` containing the base64 encoded next token if
-/// `from_peer_id` is in range; otherwise, `None`.
-pub fn create_localtrust_next_token(
-    lt_peers_cnt: u64, from_peer_id: u64, to_peer_id: u64,
-) -> Option<String> {
-    if (from_peer_id + 1 == lt_peers_cnt && to_peer_id + 1 == lt_peers_cnt)
-        || (from_peer_id == 0 && to_peer_id == 0)
-    {
+pub fn encode_localtrust_next_token(from_peer_id: u64, to_peer_id: u64) -> Option<String> {
+    if from_peer_id == 0 && to_peer_id == 0 {
         None
     } else {
         let to_peer_id = to_peer_id + 1;
@@ -185,21 +164,8 @@ pub fn decode_seedtrust_next_token(next_token: Option<String>) -> Result<u64, Ba
     Ok(start_peer)
 }
 
-/// Creates a next token for seed trust pagination.
-///
-/// This function generates a base64 encoded string that represents the `next_peer_id` as an 8-byte integer.
-/// The `next_peer_id` must be greater than 0 and less than `st_peers_cnt` to generate a non-empty token.
-///
-/// # Arguments
-///
-/// * `st_peers_cnt` - Total number of seed trust peers. It defines the upper limit for `next_peer_id`.
-/// * `next_peer_id` - The peer ID for which the next token is to be created.
-///
-/// # Returns
-///
-/// An `Option<String>` containing the base64 encoded next token if `next_peer_id` is in range; otherwise, `None`.
-pub fn create_seedtrust_next_token(st_peers_cnt: u64, next_peer_id: u64) -> Option<String> {
-    if next_peer_id == 0 || next_peer_id + 1 == st_peers_cnt {
+pub fn encode_seedtrust_next_token(next_peer_id: u64) -> Option<String> {
+    if next_peer_id == 0 {
         None
     } else {
         let id_bytes = next_peer_id.to_be_bytes();
@@ -236,22 +202,18 @@ mod test {
     }
 
     #[test]
-    fn test_create_localtrust_next_token() {
-        // lt: 100 * 100, from_peer_id: 0, to_peer_id: 10
-        let next_token = create_localtrust_next_token(100, 0, 10);
+    fn test_encode_localtrust_next_token() {
+        // from_peer_id: 0, to_peer_id: 0
+        let next_token = encode_localtrust_next_token(0, 0);
+        assert_eq!(next_token, None);
+
+        // from_peer_id: 0, to_peer_id: 10
+        let next_token = encode_localtrust_next_token(0, 10);
         assert_eq!(next_token, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string()));
 
-        // lt: 100 * 100, from_peer_id: 99, to_peer_id: 90
-        let next_token = create_localtrust_next_token(100, 99, 90);
+        // from_peer_id: 99, to_peer_id: 90
+        let next_token = encode_localtrust_next_token(99, 90);
         assert_eq!(next_token, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string()));
-
-        // lt: 100 * 100, from_peer_id: 99, to_peer_id: 99
-        let next_token = create_localtrust_next_token(100, 99, 99);
-        assert_eq!(next_token, None);
-
-        // lt: 100 * 100, from_peer_id: 0, to_peer_id: 0
-        let next_token = create_localtrust_next_token(100, 0, 0);
-        assert_eq!(next_token, None);
     }
 
     #[test]
@@ -269,17 +231,13 @@ mod test {
     }
 
     #[test]
-    fn test_create_seedtrust_next_token() {
-        // st: 100, next_peer_id: 0
-        let next_token = create_seedtrust_next_token(100, 0);
+    fn test_encode_seedtrust_next_token() {
+        // next_peer_id: 0
+        let next_token = encode_seedtrust_next_token(0);
         assert_eq!(next_token, None);
 
-        // st:100 next_peer_id: 100
-        let next_token = create_seedtrust_next_token(100, 100);
-        assert_eq!(next_token, None);
-
-        // st: 100, next_peer_id: 55
-        let next_token = create_seedtrust_next_token(100, 55);
+        // next_peer_id: 55
+        let next_token = encode_seedtrust_next_token(55);
         assert_eq!(next_token, Some("AAAAAAAAADc=".to_string()));
     }
 }

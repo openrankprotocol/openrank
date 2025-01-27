@@ -1,8 +1,8 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
     misc::{
-        create_localtrust_next_token, create_seedtrust_next_token, decode_localtrust_next_token,
-        decode_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        decode_localtrust_next_token, decode_seedtrust_next_token, encode_localtrust_next_token,
+        encode_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
         SeedTrustStateResponse,
     },
     topics::{Domain, DomainHash},
@@ -230,16 +230,13 @@ impl BaseRunner {
             .get(&domain.trust_namespace())
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
 
-        let lt_peers_cnt = domain_lt.len() as u64;
-        let (from_peer_start, to_peer_start) = decode_localtrust_next_token(next_token)?;
-
-        let mut from_peer_end = 0;
-        let mut to_peer_end = 0;
-
-        let maximum_size = domain_lt.len() * domain_lt.len();
-        let mut entry_to_be_added = page_size.unwrap_or(maximum_size);
         let mut result = vec![];
 
+        let lt_peers_cnt = domain_lt.len() as u64;
+        let (from_peer_start, to_peer_start) = decode_localtrust_next_token(next_token)?;
+        let mut from_peer_end = 0;
+        let mut to_peer_end = 0;
+        let mut entry_to_be_added = page_size.unwrap_or(domain_lt.len() * domain_lt.len());
         'outer: for from_peer_id in from_peer_start..lt_peers_cnt {
             let from = rev_domain_indices.get(&from_peer_id).unwrap();
             let lt_row = domain_lt.get(&from_peer_id).unwrap();
@@ -258,8 +255,12 @@ impl BaseRunner {
                 }
             }
         }
+        if from_peer_end + 1 == lt_peers_cnt && to_peer_end + 1 == lt_peers_cnt {
+            from_peer_end = 0;
+            to_peer_end = 0;
+        }
 
-        let next_token = create_localtrust_next_token(lt_peers_cnt, from_peer_end, to_peer_end);
+        let next_token = encode_localtrust_next_token(from_peer_end, to_peer_end);
 
         Ok(LocalTrustStateResponse::new(result, next_token))
     }
@@ -276,14 +277,12 @@ impl BaseRunner {
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
 
-        let st_peers_cnt = domain_st.len() as u64;
-        let start_peer = decode_seedtrust_next_token(next_token)?;
-
-        let mut end_peer = 0;
-
-        let mut entry_to_be_added = page_size.unwrap_or(domain_st.len());
         let mut result = vec![];
 
+        let st_peers_cnt = domain_st.len() as u64;
+        let start_peer = decode_seedtrust_next_token(next_token)?;
+        let mut end_peer = 0;
+        let mut entry_to_be_added = page_size.unwrap_or(domain_st.len());
         for peer_id in start_peer..st_peers_cnt {
             if let Some(seed) = domain_st.get(&peer_id) {
                 let peer = rev_domain_indices.get(&peer_id).unwrap();
@@ -296,8 +295,11 @@ impl BaseRunner {
                 }
             }
         }
+        if end_peer + 1 == st_peers_cnt {
+            end_peer = 0;
+        }
 
-        let next_token = create_seedtrust_next_token(st_peers_cnt, end_peer);
+        let next_token = encode_seedtrust_next_token(end_peer);
 
         Ok(SeedTrustStateResponse::new(result, next_token))
     }
