@@ -112,39 +112,9 @@ impl SeedTrustStateResponse {
     }
 }
 
-/// Computes the range of local trust peers for pagination.
-///
-/// This function calculates the start and end indices of peers for the current
-/// page based on the provided `page_size` and `next_token`. If a `next_token`
-/// is provided, it decodes the token to get the starting positions. Otherwise,
-/// it starts from the beginning. The function ensures that the end indices do
-/// not exceed the total number of peers (`lt_peers_cnt`).
-///
-/// # Arguments
-///
-/// * `lt_peers_cnt` - Total number of local trust peers.
-/// * `page_size` - Optional size of the page; defaults to 1000 if not provided.
-/// * `next_token` - Optional base64-encoded string representing the starting
-///   indices for the current page.
-///
-/// # Returns
-///
-/// A `Result` containing a tuple with the start and end indices for the
-/// `from_peer` and `to_peer` ranges, or an error if decoding the token fails.
-///
-/// # Errors
-///
-/// Returns `BaseRunnerError` if the token decoding or conversion to bytes
-/// fails.
-pub fn compute_localtrust_peer_range(
-    lt_peers_cnt: u64, page_size: Option<usize>, next_token: Option<String>,
-) -> Result<(u64, u64, u64, u64), BaseRunnerError> {
-    let page_size = if let Some(page_size) = page_size {
-        page_size as u64
-    } else {
-        lt_peers_cnt * lt_peers_cnt
-    };
-
+pub fn decode_localtrust_next_token(
+    next_token: Option<String>,
+) -> Result<(u64, u64), BaseRunnerError> {
     let (from_peer_start, to_peer_start) = match next_token {
         Some(token) => {
             let decoded_bytes =
@@ -165,22 +135,13 @@ pub fn compute_localtrust_peer_range(
         },
         None => (0, 0),
     };
-    let from_peer_start = std::cmp::min(from_peer_start, lt_peers_cnt);
-    let to_peer_start = std::cmp::min(to_peer_start, lt_peers_cnt);
-
-    let to_peer_end = to_peer_start + page_size;
-    let from_peer_end = from_peer_start + to_peer_end / lt_peers_cnt;
-    let from_peer_end = std::cmp::min(from_peer_end, lt_peers_cnt);
-    let to_peer_end = to_peer_end % lt_peers_cnt;
-
-    Ok((from_peer_start, from_peer_end, to_peer_start, to_peer_end))
+    Ok((from_peer_start, to_peer_start))
 }
 
 /// Creates a next token for local trust pagination.
 ///
 /// This function generates a base64 encoded string that represents the
-/// `from_peer_id` and `to_peer_id` as 8-byte integers. The `from_peer_id`
-/// must be less than `lt_peers_cnt` to generate a non-empty token.
+/// `from_peer_id` and `to_peer_id` as 8-byte integers.
 ///
 /// # Arguments
 ///
@@ -197,7 +158,9 @@ pub fn compute_localtrust_peer_range(
 pub fn create_localtrust_next_token(
     lt_peers_cnt: u64, from_peer_id: u64, to_peer_id: u64,
 ) -> Option<String> {
-    if (from_peer_id == lt_peers_cnt) || (from_peer_id == 0 && to_peer_id == 0) {
+    if (from_peer_id + 1 == lt_peers_cnt && to_peer_id + 1 == lt_peers_cnt)
+        || (from_peer_id == 0 && to_peer_id == 0)
+    {
         None
     } else {
         let id_bytes = [from_peer_id.to_be_bytes(), to_peer_id.to_be_bytes()].concat();
@@ -282,53 +245,26 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_compute_localtrust_peer_range() {
-        // lt: 100 * 100, page_size: 100 * 100, next_token: None
-        // (0, 0) => (100, 0)
-        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
-            compute_localtrust_peer_range(100, None, None).unwrap();
+    fn test_decode_localtrust_next_token() {
+        // next_token: None
+        // (0, 0)
+        let (from_peer_start, to_peer_start) = decode_localtrust_next_token(None).unwrap();
         assert_eq!(from_peer_start, 0);
         assert_eq!(to_peer_start, 0);
-        assert_eq!(from_peer_end, 100);
-        assert_eq!(to_peer_end, 0);
 
-        // lt: 100 * 100, page_size: 10, next_token: None
-        // (0, 0) => (0, 10)
-        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
-            compute_localtrust_peer_range(100, Some(10), None).unwrap();
-        assert_eq!(from_peer_start, 0);
-        assert_eq!(to_peer_start, 0);
-        assert_eq!(from_peer_end, 0);
-        assert_eq!(to_peer_end, 10);
-
-        // lt: 100 * 100, page_size: 250, next_token: None
-        // (0, 0) => (2, 50)
-        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
-            compute_localtrust_peer_range(100, Some(250), None).unwrap();
-        assert_eq!(from_peer_start, 0);
-        assert_eq!(to_peer_start, 0);
-        assert_eq!(from_peer_end, 2);
-        assert_eq!(to_peer_end, 50);
-
-        // lt: 100 * 100, page_size: 100 * 100, next_token: "AAAAAAAAAAAAAAAAAAAACg=="
-        // (0, 10) => (100, 10)
-        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
-            compute_localtrust_peer_range(100, None, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string()))
-                .unwrap();
+        // next_token: "AAAAAAAAAAAAAAAAAAAACg=="
+        // (0, 10)
+        let (from_peer_start, to_peer_start) =
+            decode_localtrust_next_token(Some("AAAAAAAAAAAAAAAAAAAACg==".to_string())).unwrap();
         assert_eq!(from_peer_start, 0);
         assert_eq!(to_peer_start, 10);
-        assert_eq!(from_peer_end, 100);
-        assert_eq!(to_peer_end, 10);
 
-        // lt: 100 * 100, page_size: 100 * 100, next_token: "AAAAAAAAAGMAAAAAAAAAWg=="
-        // (99, 90) => (100, 90)
-        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
-            compute_localtrust_peer_range(100, None, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string()))
-                .unwrap();
+        // next_token: "AAAAAAAAAGMAAAAAAAAAWg=="
+        // (99, 90)
+        let (from_peer_start, to_peer_start) =
+            decode_localtrust_next_token(Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string())).unwrap();
         assert_eq!(from_peer_start, 99);
         assert_eq!(to_peer_start, 90);
-        assert_eq!(from_peer_end, 100);
-        assert_eq!(to_peer_end, 90);
     }
 
     #[test]
@@ -341,8 +277,8 @@ mod test {
         let next_token = create_localtrust_next_token(100, 99, 90);
         assert_eq!(next_token, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string()));
 
-        // lt: 100 * 100, from_peer_id: 100, to_peer_id: 0
-        let next_token = create_localtrust_next_token(100, 100, 0);
+        // lt: 100 * 100, from_peer_id: 99, to_peer_id: 99
+        let next_token = create_localtrust_next_token(100, 99, 99);
         assert_eq!(next_token, None);
 
         // lt: 100 * 100, from_peer_id: 0, to_peer_id: 0

@@ -1,8 +1,8 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
     misc::{
-        compute_localtrust_peer_range, compute_seedtrust_peer_range, create_localtrust_next_token,
-        create_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        compute_seedtrust_peer_range, create_localtrust_next_token, create_seedtrust_next_token,
+        decode_localtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
         SeedTrustStateResponse,
     },
     topics::{Domain, DomainHash},
@@ -231,66 +231,29 @@ impl BaseRunner {
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
 
         let lt_peers_cnt = domain_lt.len() as u64;
-        let (from_peer_start, from_peer_end, to_peer_start, to_peer_end) =
-            compute_localtrust_peer_range(lt_peers_cnt, page_size, next_token)?;
-        if from_peer_start == lt_peers_cnt {
-            return Ok(LocalTrustStateResponse::new(vec![], None));
-        }
+        let (from_peer_start, to_peer_start) = decode_localtrust_next_token(next_token)?;
 
+        let mut from_peer_end = 0;
+        let mut to_peer_end = 0;
+
+        let maximum_size = domain_lt.len() * domain_lt.len();
+        let mut entry_to_be_added = page_size.unwrap_or(maximum_size);
         let mut result = vec![];
-        if from_peer_start == from_peer_end {
-            let from = rev_domain_indices.get(&from_peer_start).unwrap();
-            if let Some(lt_row) = domain_lt.get(&from_peer_start) {
-                for to_peer_id in to_peer_start..to_peer_end {
-                    if from_peer_start == to_peer_id {
-                        continue;
-                    }
-                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                    if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
-                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
-                    }
-                }
-            }
-        } else {
-            let from = rev_domain_indices.get(&from_peer_start).unwrap();
-            if let Some(lt_row) = domain_lt.get(&from_peer_start) {
-                for to_peer_id in to_peer_start..lt_peers_cnt {
-                    if from_peer_start == to_peer_id {
-                        continue;
-                    }
-                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                    if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
-                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
-                    }
-                }
-            }
 
-            for from_peer_id in from_peer_start + 1..from_peer_end {
-                let from = rev_domain_indices.get(&from_peer_id).unwrap();
-                if let Some(lt_row) = domain_lt.get(&from_peer_id) {
-                    for to_peer_id in 0..lt_peers_cnt {
-                        if from_peer_id == to_peer_id {
-                            continue;
-                        }
-                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                        if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
-                            result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
-                        }
-                    }
-                }
-            }
+        'outer: for from_peer_id in from_peer_start..lt_peers_cnt {
+            let from = rev_domain_indices.get(&from_peer_id).unwrap();
+            let lt_row = domain_lt.get(&from_peer_id).unwrap();
+            let to_peer_start = if from_peer_id == from_peer_start { to_peer_start } else { 0 };
+            for to_peer_id in to_peer_start..lt_peers_cnt {
+                if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                    result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
 
-            if from_peer_end != lt_peers_cnt {
-                let from = rev_domain_indices.get(&from_peer_end).unwrap();
-                if let Some(lt_row) = domain_lt.get(&from_peer_end) {
-                    for to_peer_id in 0..to_peer_end {
-                        if from_peer_end == to_peer_id {
-                            continue;
-                        }
-                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                        if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
-                            result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
-                        }
+                    entry_to_be_added -= 1;
+                    if entry_to_be_added == 0 {
+                        from_peer_end = from_peer_id;
+                        to_peer_end = to_peer_id;
+                        break 'outer;
                     }
                 }
             }
