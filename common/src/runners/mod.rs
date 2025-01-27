@@ -1,7 +1,8 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
     misc::{
-        compute_peer_range, create_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        decode_localtrust_next_token, decode_seedtrust_next_token, encode_localtrust_next_token,
+        encode_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
         SeedTrustStateResponse,
     },
     topics::{Domain, DomainHash},
@@ -229,23 +230,37 @@ impl BaseRunner {
             .get(&domain.trust_namespace())
             .ok_or(Error::LocalTrustNotFound(domain.trust_namespace()))?;
 
-        let lt_peers_cnt = domain_lt.len() as u64;
-        let (from_peer_start, from_peer_end) =
-            compute_peer_range(lt_peers_cnt, page_size, next_token)?;
-
         let mut result = vec![];
-        for from_peer_id in from_peer_start..from_peer_end {
+
+        let lt_peers_cnt = domain_lt.len() as u64;
+        let (from_peer_start, to_peer_start) = decode_localtrust_next_token(next_token)?;
+        let mut from_peer_end = 0;
+        let mut to_peer_end = 0;
+        let mut entry_to_be_added = page_size.unwrap_or(domain_lt.len() * domain_lt.len());
+        'outer: for from_peer_id in from_peer_start..lt_peers_cnt {
             let from = rev_domain_indices.get(&from_peer_id).unwrap();
-            if let Some(from_map) = domain_lt.get(&from_peer_id) {
-                for to_peer_id in 0..lt_peers_cnt {
-                    if let Some(lt_entry_value) = from_map.get(&to_peer_id) {
-                        let to = rev_domain_indices.get(&to_peer_id).unwrap();
-                        result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+            let lt_row = domain_lt.get(&from_peer_id).unwrap();
+            let to_peer_start = if from_peer_id == from_peer_start { to_peer_start } else { 0 };
+            for to_peer_id in to_peer_start..lt_peers_cnt {
+                if let Some(lt_entry_value) = lt_row.get(&to_peer_id) {
+                    let to = rev_domain_indices.get(&to_peer_id).unwrap();
+                    result.push(TrustEntry::new(from.clone(), to.clone(), lt_entry_value));
+
+                    entry_to_be_added -= 1;
+                    if entry_to_be_added == 0 {
+                        from_peer_end = from_peer_id;
+                        to_peer_end = to_peer_id;
+                        break 'outer;
                     }
                 }
             }
         }
-        let next_token = create_next_token(lt_peers_cnt, from_peer_end);
+        if from_peer_end + 1 == lt_peers_cnt && to_peer_end + 1 == lt_peers_cnt {
+            from_peer_end = 0;
+            to_peer_end = 0;
+        }
+
+        let next_token = encode_localtrust_next_token(from_peer_end, to_peer_end);
 
         Ok(LocalTrustStateResponse::new(result, next_token))
     }
@@ -257,23 +272,34 @@ impl BaseRunner {
             .rev_indices
             .get(&domain.to_hash())
             .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
-        let st = self
+        let domain_st = self
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
 
-        let st_peers_cnt = st.len() as u64;
-        let (start_peer, end_peer) = compute_peer_range(st_peers_cnt, page_size, next_token)?;
-
         let mut result = vec![];
-        for peer_id in start_peer..end_peer {
-            let peer = rev_domain_indices.get(&peer_id).unwrap();
-            if let Some(seed) = st.get(&peer_id) {
+
+        let st_peers_cnt = domain_st.len() as u64;
+        let start_peer = decode_seedtrust_next_token(next_token)?;
+        let mut end_peer = 0;
+        let mut entry_to_be_added = page_size.unwrap_or(domain_st.len());
+        for peer_id in start_peer..st_peers_cnt {
+            if let Some(seed) = domain_st.get(&peer_id) {
+                let peer = rev_domain_indices.get(&peer_id).unwrap();
                 result.push(ScoreEntry::new(peer.clone(), *seed));
+
+                entry_to_be_added -= 1;
+                if entry_to_be_added == 0 {
+                    end_peer = peer_id;
+                    break;
+                }
             }
         }
+        if end_peer + 1 == st_peers_cnt {
+            end_peer = 0;
+        }
 
-        let next_token = create_next_token(st_peers_cnt, end_peer);
+        let next_token = encode_seedtrust_next_token(end_peer);
 
         Ok(SeedTrustStateResponse::new(result, next_token))
     }
