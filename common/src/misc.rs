@@ -164,11 +164,12 @@ pub fn decode_seedtrust_next_token(next_token: Option<String>) -> Result<u64, Ba
     Ok(start_peer)
 }
 
-pub fn encode_seedtrust_next_token(next_peer_id: u64) -> Option<String> {
-    if next_peer_id == 0 {
+pub fn encode_seedtrust_next_token(peer_id: u64) -> Option<String> {
+    if peer_id == 0 {
         None
     } else {
-        let id_bytes = next_peer_id.to_be_bytes();
+        let peer_id = peer_id + 1;
+        let id_bytes = peer_id.to_be_bytes();
         let next_token = BASE64_STANDARD.encode(id_bytes);
         Some(next_token)
     }
@@ -238,6 +239,6 @@ mod test {
 
         // next_peer_id: 55
         let next_token = encode_seedtrust_next_token(55);
-        assert_eq!(next_token, Some("AAAAAAAAADc=".to_string()));
+        assert_eq!(next_token, Some("AAAAAAAAADg=".to_string()));
     }
 }
