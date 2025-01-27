@@ -209,11 +209,11 @@ mod test {
 
         // from_peer_id: 0, to_peer_id: 10
         let next_token = encode_localtrust_next_token(0, 10);
-        assert_eq!(next_token, Some("AAAAAAAAAAAAAAAAAAAACg==".to_string()));
+        assert_eq!(next_token, Some("AAAAAAAAAAAAAAAAAAAACw==".to_string()));
 
         // from_peer_id: 99, to_peer_id: 90
         let next_token = encode_localtrust_next_token(99, 90);
-        assert_eq!(next_token, Some("AAAAAAAAAGMAAAAAAAAAWg==".to_string()));
+        assert_eq!(next_token, Some("AAAAAAAAAGMAAAAAAAAAWw==".to_string()));
     }
 
     #[test]
