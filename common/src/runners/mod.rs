@@ -1,8 +1,8 @@
 use crate::{
     merkle::{self, hash_leaf, hash_two, incremental::DenseIncrementalMerkleTree, Hash},
     misc::{
-        compute_seedtrust_peer_range, create_localtrust_next_token, create_seedtrust_next_token,
-        decode_localtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
+        create_localtrust_next_token, create_seedtrust_next_token, decode_localtrust_next_token,
+        decode_seedtrust_next_token, LocalTrustStateResponse, OutboundLocalTrust,
         SeedTrustStateResponse,
     },
     topics::{Domain, DomainHash},
@@ -271,20 +271,29 @@ impl BaseRunner {
             .rev_indices
             .get(&domain.to_hash())
             .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
-        let st = self
+        let domain_st = self
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or(Error::SeedTrustNotFound(domain.seed_namespace()))?;
 
-        let st_peers_cnt = st.len() as u64;
-        let (start_peer, end_peer) =
-            compute_seedtrust_peer_range(st_peers_cnt, page_size, next_token)?;
+        let st_peers_cnt = domain_st.len() as u64;
+        let start_peer = decode_seedtrust_next_token(next_token)?;
 
+        let mut end_peer = 0;
+
+        let mut entry_to_be_added = page_size.unwrap_or(domain_st.len());
         let mut result = vec![];
-        for peer_id in start_peer..end_peer {
-            let peer = rev_domain_indices.get(&peer_id).unwrap();
-            if let Some(seed) = st.get(&peer_id) {
+
+        for peer_id in start_peer..st_peers_cnt {
+            if let Some(seed) = domain_st.get(&peer_id) {
+                let peer = rev_domain_indices.get(&peer_id).unwrap();
                 result.push(ScoreEntry::new(peer.clone(), *seed));
+
+                entry_to_be_added -= 1;
+                if entry_to_be_added == 0 {
+                    end_peer = peer_id;
+                    break;
+                }
             }
         }
 

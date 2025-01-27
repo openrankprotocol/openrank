@@ -170,35 +170,7 @@ pub fn create_localtrust_next_token(
     }
 }
 
-/// Computes the range of seed trust peers for pagination.
-///
-/// This function calculates the start and end indices for a range of peers
-/// based on the provided `next_token` and `page_size`. The `next_token` is
-/// expected to be a base64 encoded string representing an 8-byte integer,
-/// which determines the starting peer index (`start_peer`). If `next_token`
-/// is `None`, the starting index defaults to 0.
-///
-/// The `end_peer` is calculated by adding the `page_size` (defaulting to 1000
-/// if not provided) to the `start_peer`. The `end_peer` is capped at
-/// `st_peers_cnt` to ensure it does not exceed the total number of peers.
-///
-/// # Arguments
-///
-/// * `st_peers_cnt` - The total number of seed trust peers.
-/// * `page_size` - Optional size of the page, determining the number of peers
-///   in the range.
-/// * `next_token` - Optional base64 encoded string used to determine the
-///   starting peer index.
-///
-/// # Returns
-///
-/// A `Result` containing a tuple with the start and end indices of the peer
-/// range, or a `BaseRunnerError` if decoding the `next_token` fails.
-pub fn compute_seedtrust_peer_range(
-    st_peers_cnt: u64, page_size: Option<usize>, next_token: Option<String>,
-) -> Result<(u64, u64), BaseRunnerError> {
-    let page_size = if let Some(page_size) = page_size { page_size as u64 } else { st_peers_cnt };
-
+pub fn decode_seedtrust_next_token(next_token: Option<String>) -> Result<u64, BaseRunnerError> {
     let start_peer = match next_token {
         Some(token) => {
             let decoded_bytes =
@@ -210,12 +182,7 @@ pub fn compute_seedtrust_peer_range(
         },
         None => 0,
     };
-    let start_peer = std::cmp::min(start_peer, st_peers_cnt);
-
-    let end_peer = start_peer + page_size;
-    let end_peer = std::cmp::min(end_peer, st_peers_cnt);
-
-    Ok((start_peer, end_peer))
+    Ok(start_peer)
 }
 
 /// Creates a next token for seed trust pagination.
@@ -232,7 +199,7 @@ pub fn compute_seedtrust_peer_range(
 ///
 /// An `Option<String>` containing the base64 encoded next token if `next_peer_id` is in range; otherwise, `None`.
 pub fn create_seedtrust_next_token(st_peers_cnt: u64, next_peer_id: u64) -> Option<String> {
-    if next_peer_id == 0 || next_peer_id == st_peers_cnt {
+    if next_peer_id == 0 || next_peer_id + 1 == st_peers_cnt {
         None
     } else {
         let id_bytes = next_peer_id.to_be_bytes();
@@ -288,34 +255,17 @@ mod test {
     }
 
     #[test]
-    fn test_compute_seedtrust_peer_range() {
-        // st: 100, page_size: 100, next_token: None
-        // 0 => 100
-        let (from_peer_start, from_peer_end) =
-            compute_seedtrust_peer_range(100, None, None).unwrap();
+    fn test_decode_seedtrust_next_token() {
+        // next_token: None
+        // 0
+        let from_peer_start = decode_seedtrust_next_token(None).unwrap();
         assert_eq!(from_peer_start, 0);
-        assert_eq!(from_peer_end, 100);
 
-        // st: 100, page_size: 55, next_token: None
-        // 0 => 55
-        let (from_peer_start, from_peer_end) =
-            compute_seedtrust_peer_range(100, Some(55), None).unwrap();
-        assert_eq!(from_peer_start, 0);
-        assert_eq!(from_peer_end, 55);
-
-        // st: 100, page_size: 100, next_token: "AAAAAAAAADc="
-        // 55 => 100
-        let (from_peer_start, from_peer_end) =
-            compute_seedtrust_peer_range(100, Some(100), Some("AAAAAAAAADc=".to_string())).unwrap();
+        // next_token: "AAAAAAAAADc="
+        // 55
+        let from_peer_start =
+            decode_seedtrust_next_token(Some("AAAAAAAAADc=".to_string())).unwrap();
         assert_eq!(from_peer_start, 55);
-        assert_eq!(from_peer_end, 100);
-
-        // st: 100, page_size: 10, next_token: "AAAAAAAAADc="
-        // 55 => 65
-        let (from_peer_start, from_peer_end) =
-            compute_seedtrust_peer_range(100, Some(10), Some("AAAAAAAAADc=".to_string())).unwrap();
-        assert_eq!(from_peer_start, 55);
-        assert_eq!(from_peer_end, 65);
     }
 
     #[test]
