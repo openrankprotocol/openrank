@@ -163,6 +163,7 @@ pub fn create_localtrust_next_token(
     {
         None
     } else {
+        let to_peer_id = to_peer_id + 1;
         let id_bytes = [from_peer_id.to_be_bytes(), to_peer_id.to_be_bytes()].concat();
         let next_token = BASE64_STANDARD.encode(id_bytes);
         Some(next_token)
