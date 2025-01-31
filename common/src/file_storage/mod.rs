@@ -1,32 +1,7 @@
-use std::{error::Error as StdError, fmt::{Display, Formatter, Result as FmtResult}};
-
 use getset::Getters;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::tx::Tx;
-
-#[derive(Debug)]
-/// Errors that can arise while using database.
-pub enum Error {
-    /// Error when decoding entries from file.
-    Serde(serde_json::Error),
-    /// Error when entry is not found.
-    NotFound,
-    /// Error in config.
-    Config(String),
-}
-
-impl StdError for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Serde(e) => write!(f, "{}", e),
-            Self::NotFound => write!(f, "NotFound"),
-            Self::Config(msg) => write!(f, "Config({:?})", msg),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
@@ -43,11 +18,7 @@ pub struct FileStorage {
 
 impl FileStorage {
     pub fn new(config: Config) -> Self {
-        Self {
-            buffers: Vec::new(),
-            last_tx_index: 0,
-            config,
-        }
+        Self { buffers: Vec::new(), last_tx_index: 0, config }
     }
 
     pub fn put(&mut self, tx: Tx) {
@@ -74,9 +45,23 @@ impl FileStorage {
         // empty the buffer
         self.buffers.clear();
 
-        // save "last_tx_index" 
+        // save "last_tx_index"
         self.last_tx_index = curr_batch_end;
 
         Ok(())
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+/// Errors that can arise while using database.
+pub enum Error {
+    /// Error when decoding entries from file.
+    #[error("Serde Error: {0}")]
+    Serde(serde_json::Error),
+    /// Error when entry is not found.
+    #[error("File not found")]
+    NotFound,
+    /// Error in config.
+    #[error("Config Error: {0}")]
+    Config(String),
 }
