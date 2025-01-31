@@ -6,6 +6,7 @@ use core::result::Result as CoreResult;
 use getset::Getters;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::io::Read;
 
 #[derive(
@@ -31,8 +32,20 @@ impl OwnedNamespace {
         Address::from_slice(&bytes)
     }
 
+    pub fn id(&self) -> u32 {
+        let mut bytes = [0; 4];
+        bytes.copy_from_slice(&self.0[20..]);
+        u32::from_be_bytes(bytes)
+    }
+
     pub fn inner(&self) -> &[u8; 24] {
         &self.0
+    }
+}
+
+impl Display for OwnedNamespace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{:#}:{}", self.owner(), self.id())
     }
 }
 
@@ -48,14 +61,16 @@ impl FromHex for OwnedNamespace {
     Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
 )]
 #[getset(get = "pub")]
+#[rlp(trailing)]
 pub struct TrustUpdate {
     trust_id: OwnedNamespace,
     entries: Vec<TrustEntry>,
+    seq_number: Option<u64>,
 }
 
 impl TrustUpdate {
     pub fn new(trust_id: OwnedNamespace, entries: Vec<TrustEntry>) -> Self {
-        Self { trust_id, entries }
+        Self { trust_id, entries, seq_number: None }
     }
 }
 
@@ -63,14 +78,16 @@ impl TrustUpdate {
     Debug, Clone, Default, PartialEq, Serialize, Deserialize, RlpEncodable, RlpDecodable, Getters,
 )]
 #[getset(get = "pub")]
+#[rlp(trailing)]
 pub struct SeedUpdate {
     seed_id: OwnedNamespace,
     entries: Vec<ScoreEntry>,
+    seq_number: Option<u64>,
 }
 
 impl SeedUpdate {
     pub fn new(seed_id: OwnedNamespace, entries: Vec<ScoreEntry>) -> Self {
-        Self { seed_id, entries }
+        Self { seed_id, entries, seq_number: None }
     }
 }
 
@@ -168,15 +185,15 @@ pub struct Assignment {
     to_sequence: u64,
     domain_id: DomainHash,
     trust_builder: Address,
-    trust_verifier: Vec<Address>,
+    trust_verifiers: Vec<Address>,
 }
 
 impl Assignment {
     pub fn new(
         to_sequence: u64, domain_id: DomainHash, trust_builder: Address,
-        trust_verifier: Vec<Address>,
+        trust_verifiers: Vec<Address>,
     ) -> Self {
-        Self { to_sequence, domain_id, trust_builder, trust_verifier }
+        Self { to_sequence, domain_id, trust_builder, trust_verifiers }
     }
 }
 

@@ -11,7 +11,6 @@ Visit our [site](https://openrank.com/) and read our [documentation](https://doc
 
 The OpenRank project consists of several components:
 
-- **Sequencer** : Handles the sequencing of events and data publication to the network. (Located in `./sequencer`)
 - **Block Builder** : Builds and publishes blocks to the network. (Located in `./block-builder`)
 - **Computer** : Performs computations and generates results. (Located in `./computer`)
 - **Verifier** : Responsible for verifying the integrity of data and ensuring the correctness of computations. (Located in `./verifier`)

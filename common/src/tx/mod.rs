@@ -1,8 +1,7 @@
-use crate::address_from_sk;
 use crate::merkle::hash_leaf;
+use crate::{address_from_sk, format_hex};
 use alloy_rlp::{encode, BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
-use block::{FinalisedBlock, ProposedBlock};
 use getset::Getters;
 use k256::ecdsa::signature::hazmat::PrehashVerifier;
 use k256::ecdsa::{
@@ -10,6 +9,7 @@ use k256::ecdsa::{
 };
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
+use std::fmt::{Display, Formatter};
 use std::io::Read;
 use trust::{SeedUpdate, TrustUpdate};
 
@@ -26,8 +26,6 @@ pub mod consts {
     pub const COMPUTE_COMMITMENT: &str = "compute_commitment";
     pub const COMPUTE_VERIFICATION: &str = "compute_verification";
     pub const COMPUTE_RESULT: &str = "compute_result";
-    pub const PROPOSED_BLOCK: &str = "proposed_block";
-    pub const FINALISED_BLOCK: &str = "finalised_block";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,8 +37,7 @@ pub enum Body {
     ComputeScores(compute::Scores),
     ComputeCommitment(compute::Commitment),
     ComputeVerification(compute::Verification),
-    ProposedBlock(ProposedBlock),
-    FinalisedBlock(FinalisedBlock),
+    ComputeResult(compute::Result),
 }
 
 impl Encodable for Body {
@@ -53,8 +50,7 @@ impl Encodable for Body {
             Body::ComputeScores(compute_scores) => (4, encode(compute_scores)),
             Body::ComputeCommitment(compute_commitment) => (5, encode(compute_commitment)),
             Body::ComputeVerification(compute_verification) => (6, encode(compute_verification)),
-            Body::ProposedBlock(proposed_block) => (7, encode(proposed_block)),
-            Body::FinalisedBlock(finalised_block) => (8, encode(finalised_block)),
+            Body::ComputeResult(compute_result) => (7, encode(compute_result)),
         };
         out.put_u8(prefix);
         out.put_slice(&bytes);
@@ -79,8 +75,7 @@ impl Decodable for Body {
             6 => Ok(Body::ComputeVerification(compute::Verification::decode(
                 buf,
             )?)),
-            7 => Ok(Body::ProposedBlock(ProposedBlock::decode(buf)?)),
-            8 => Ok(Body::FinalisedBlock(FinalisedBlock::decode(buf)?)),
+            7 => Ok(Body::ComputeResult(compute::Result::decode(buf)?)),
             _ => Err(RlpError::Custom("unexpected prefix")),
         }
     }
@@ -96,8 +91,7 @@ impl Body {
             Body::ComputeScores(_) => consts::COMPUTE_SCORES,
             Body::ComputeCommitment(_) => consts::COMPUTE_COMMITMENT,
             Body::ComputeVerification(_) => consts::COMPUTE_VERIFICATION,
-            Body::ProposedBlock(_) => consts::PROPOSED_BLOCK,
-            Body::FinalisedBlock(_) => consts::FINALISED_BLOCK,
+            Body::ComputeResult(_) => consts::COMPUTE_RESULT,
         }
     }
 }
@@ -125,6 +119,10 @@ impl Tx {
             signature: Signature::default(),
             sequence_number: None,
         }
+    }
+
+    pub fn body_mut(&mut self) -> &mut Body {
+        &mut self.body
     }
 
     pub fn hash(&self) -> TxHash {
@@ -224,6 +222,20 @@ impl Tx {
     }
 }
 
+#[derive(Debug, Clone, RlpEncodable, RlpDecodable, Serialize, Deserialize, Getters)]
+#[getset(get = "pub")]
+pub struct TxSequence {
+    tx_hash: TxHash,
+    seq_number: u64,
+    timestamp: u64,
+}
+
+impl TxSequence {
+    pub fn new(tx_hash: TxHash, seq_number: u64, timestamp: u64) -> Self {
+        Self { tx_hash, seq_number, timestamp }
+    }
+}
+
 pub type Address = alloy_primitives::Address;
 
 #[derive(
@@ -252,6 +264,12 @@ impl TxHash {
 
     pub fn inner(&self) -> &[u8; 32] {
         &self.0
+    }
+}
+
+impl Display for TxHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", format_hex(self.clone().to_hex()))
     }
 }
 

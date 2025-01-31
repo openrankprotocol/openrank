@@ -1,8 +1,11 @@
 pub mod algos;
 pub mod config;
+pub mod logs;
 pub mod merkle;
+pub mod misc;
 pub mod net;
 pub mod query;
+pub mod runners;
 pub mod topics;
 pub mod tx;
 pub mod tx_event;
@@ -137,6 +140,17 @@ pub fn address_from_sk(sk: &SigningKey) -> Address {
     address_bytes.copy_from_slice(&hash.inner()[12..]);
 
     Address::from_slice(&address_bytes)
+}
+
+pub fn format_hex(hex: String) -> String {
+    if hex.len() < 8 {
+        return format!("0x{}", hex);
+    }
+
+    let first_part = hex.get(..4).unwrap();
+    let second_part = hex.get((hex.len() - 4)..).unwrap();
+
+    format!("0x{}...{}", first_part, second_part)
 }
 
 #[cfg(test)]

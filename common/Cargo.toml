@@ -30,7 +30,6 @@ alloy-primitives = { workspace = true, features = ["serde", "rlp"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
-tracing = { workspace = true }
 rocksdb = { workspace = true, features = [
     "multi-threaded-cf",
 ], optional = true }
@@ -39,6 +38,11 @@ k256 = { workspace = true }
 directories = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
+rayon = { workspace = true }
+base64 = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "time"] }
+time = { workspace = true, features = ["macros"] }
 
 [dev-dependencies]
 rand = "0.8.5"

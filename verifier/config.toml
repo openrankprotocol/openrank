@@ -21,3 +21,6 @@ directory = "./local-storage"
 
 [p2p]
 listen_on = ["/ip4/0.0.0.0/udp/11001/quic-v1", "/ip4/0.0.0.0/tcp/11001"]
+
+[rpc]
+address = "0.0.0.0:60002"

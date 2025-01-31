@@ -1,10 +1,13 @@
-use crate::tx::{consts, trust::OwnedNamespace, Address};
+use crate::{
+    format_hex,
+    tx::{consts, trust::OwnedNamespace, Address},
+};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use getset::Getters;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt::Display,
+    fmt::{Display, Formatter, Result as FmtResult},
     hash::{DefaultHasher, Hasher},
 };
 
@@ -48,6 +51,12 @@ impl FromHex for DomainHash {
 impl From<[u8; 8]> for DomainHash {
     fn from(value: [u8; 8]) -> Self {
         Self(value)
+    }
+}
+
+impl Display for DomainHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", format_hex(self.to_hex()))
     }
 }
 
@@ -123,10 +132,6 @@ pub enum Topic {
     DomainScores(DomainHash),
     /// Topic for the domain verification.
     DomainVerification(DomainHash),
-    /// Topic for the proposed block.
-    ProposedBlock,
-    /// Topic for the finalised block.
-    FinalisedBlock,
 }
 
 impl From<Topic> for String {
@@ -153,15 +158,35 @@ impl From<Topic> for String {
             Topic::DomainVerification(domain_id) => {
                 format!("{}:{}", domain_id.to_hex(), consts::COMPUTE_VERIFICATION)
             },
-            Topic::ProposedBlock => consts::PROPOSED_BLOCK.to_string(),
-            Topic::FinalisedBlock => consts::FINALISED_BLOCK.to_string(),
         }
     }
 }
 
 impl Display for Topic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(String::from(self.clone()).as_str())
+        match self {
+            Topic::NamespaceTrustUpdate(namespace) => {
+                write!(f, "{}:{}", namespace, consts::TRUST_UPDATE)
+            },
+            Topic::NamespaceSeedUpdate(namespace) => {
+                write!(f, "{}:{}", namespace, consts::SEED_UPDATE)
+            },
+            Topic::DomainRequest(domain_id) => {
+                write!(f, "{}:{}", domain_id, consts::COMPUTE_REQUEST)
+            },
+            Topic::DomainAssignent(domain_id) => {
+                write!(f, "{}:{}", domain_id, consts::COMPUTE_ASSIGNMENT)
+            },
+            Topic::DomainCommitment(domain_id) => {
+                write!(f, "{}:{}", domain_id, consts::COMPUTE_COMMITMENT)
+            },
+            Topic::DomainScores(domain_id) => {
+                write!(f, "{}:{}", domain_id, consts::COMPUTE_SCORES)
+            },
+            Topic::DomainVerification(domain_id) => {
+                write!(f, "{}:{}", domain_id, consts::COMPUTE_VERIFICATION)
+            },
+        }
     }
 }
 

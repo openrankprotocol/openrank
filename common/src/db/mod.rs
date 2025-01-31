@@ -2,39 +2,31 @@ use getset::Getters;
 use rocksdb::{self, Direction, IteratorMode, Options, ReadOptions, DB};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{self, to_vec};
-use std::error::Error as StdError;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 
 mod items;
 
 pub use rocksdb::ErrorKind as RocksDBErrorKind;
 
-#[derive(Debug)]
+pub const CHECKPOINTS_CF: &str = "checkpoints";
+
+#[derive(thiserror::Error, Debug)]
 /// Errors that can arise while using database.
 pub enum Error {
     /// RocksDB failed.
+    #[error("DB Error: {0}")]
     RocksDB(rocksdb::Error),
     /// Error when decoding entries from RocksDB.
+    #[error("Serde Error: {0}")]
     Serde(serde_json::Error),
     /// Error when column family is not found.
+    #[error("CF Not Found")]
     CfNotFound,
     /// Error when entry is not found.
+    #[error("Entry not found")]
     NotFound,
+    /// Config parsing error.
+    #[error("Config Error: {0}")]
     Config(String),
-}
-
-impl StdError for Error {}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::RocksDB(e) => write!(f, "{}", e),
-            Self::Serde(e) => write!(f, "{}", e),
-            Self::CfNotFound => write!(f, "CfNotFound"),
-            Self::NotFound => write!(f, "NotFound"),
-            Self::Config(msg) => write!(f, "Config({:?})", msg),
-        }
-    }
 }
 
 pub trait DbItem {
@@ -72,7 +64,9 @@ pub struct Db {
 
 impl Db {
     /// Creates new database connection, given info of local file path and column families.
-    pub fn new(config: &Config, cfs: &[&str]) -> Result<Self, Error> {
+    pub fn new<I: IntoIterator<Item = N>, N: AsRef<str>>(
+        config: &Config, cfs: I,
+    ) -> Result<Self, Error> {
         let path = &config.directory;
         let mut opts = Options::default();
         opts.create_if_missing(true);
@@ -95,7 +89,9 @@ impl Db {
 
     /// Creates new secondary database connection, given info of primary and secondary file paths and column families.
     /// Secondary database is used for read-only queries, and should be explicitly refreshed.
-    pub fn new_secondary(config: &Config, cfs: &[&str]) -> Result<Self, Error> {
+    pub fn new_secondary<I: IntoIterator<Item = N>, N: AsRef<str>>(
+        config: &Config, cfs: I,
+    ) -> Result<Self, Error> {
         let primary_path = &config.directory;
         let secondary_path = config.get_secondary()?;
         let db = DB::open_cf_as_secondary(&Options::default(), primary_path, secondary_path, cfs)
@@ -108,11 +104,31 @@ impl Db {
         self.connection.try_catch_up_with_primary().map_err(Error::RocksDB)
     }
 
+    /// Puts checkpoint into database.
+    pub fn put_checkpoint<I: DbItem + Serialize>(&self, item: I) -> Result<(), Error> {
+        let cf = self.connection.cf_handle(CHECKPOINTS_CF).ok_or(Error::CfNotFound)?;
+        let key = I::get_cf();
+        let value = to_vec(&item).map_err(Error::Serde)?;
+        self.connection.put_cf(&cf, key, value).map_err(Error::RocksDB)
+    }
+
+    /// Gets checkpoint from database.
+    pub fn get_checkpoint<I: DbItem + DeserializeOwned>(&self) -> Result<I, Error> {
+        let cf = self.connection.cf_handle(CHECKPOINTS_CF).ok_or(Error::CfNotFound)?;
+        let item_res = self.connection.get_cf(&cf, I::get_cf()).map_err(Error::RocksDB)?;
+        let item = item_res.ok_or(Error::NotFound)?;
+        let value = serde_json::from_slice(&item).map_err(Error::Serde)?;
+        Ok(value)
+    }
+
     /// Puts value into database.
     pub fn put<I: DbItem + Serialize>(&self, item: I) -> Result<(), Error> {
         let cf = self.connection.cf_handle(I::get_cf().as_str()).ok_or(Error::CfNotFound)?;
         let key = item.get_full_key();
         let value = to_vec(&item).map_err(Error::Serde)?;
+        // Save the checkpoint
+        self.put_checkpoint(item)?;
+        // Save item to DB
         self.connection.put_cf(&cf, key, value).map_err(Error::RocksDB)
     }
 
@@ -169,7 +185,7 @@ impl Db {
 
 #[cfg(test)]
 mod test {
-    use crate::db::{Config, Db, DbItem};
+    use crate::db::{Config, Db, DbItem, CHECKPOINTS_CF};
     use crate::tx::{compute, consts, Body, Tx};
 
     fn config_for_dir(directory: &str) -> Config {
@@ -178,7 +194,11 @@ mod test {
 
     #[test]
     fn test_put_get() {
-        let db = Db::new(&config_for_dir("test-pg-storage"), &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(
+            &config_for_dir("test-pg-storage"),
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
+        )
+        .unwrap();
         let tx = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         db.put(tx.clone()).unwrap();
         let key = Tx::construct_full_key(consts::COMPUTE_REQUEST, tx.hash());
@@ -188,7 +208,11 @@ mod test {
 
     #[test]
     fn test_get_range_from_start() {
-        let db = Db::new(&config_for_dir("test-rfs-storage"), &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(
+            &config_for_dir("test-rfs-storage"),
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
+        )
+        .unwrap();
         let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
         let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
@@ -209,7 +233,11 @@ mod test {
 
     #[test]
     fn test_put_get_multi() {
-        let db = Db::new(&config_for_dir("test-pgm-storage"), &[&Tx::get_cf()]).unwrap();
+        let db = Db::new(
+            &config_for_dir("test-pgm-storage"),
+            [Tx::get_cf(), CHECKPOINTS_CF.to_string()],
+        )
+        .unwrap();
         let tx1 = Tx::default_with(Body::ComputeRequest(compute::Request::default()));
         let tx2 = Tx::default_with(Body::ComputeAssignment(compute::Assignment::default()));
         let tx3 = Tx::default_with(Body::ComputeVerification(compute::Verification::default()));
