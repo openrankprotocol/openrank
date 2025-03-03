@@ -7,6 +7,7 @@ use openrank_common::{
     merkle::hash_leaf,
     misc::{LocalTrustStateResponse, SeedTrustStateResponse},
     query::{GetSeedUpdateQuery, GetTrustUpdateQuery},
+    runners::compute_runner::{self, ComputeRunner},
     topics::Domain,
     tx::{
         self,
@@ -133,6 +134,8 @@ pub enum SdkError {
     ComputeJobInProgress,
     #[error("Signing key unavailable")]
     SigningKeyUnavailable,
+    #[error("ComputeRunner Error: {0}")]
+    ComputeRunnerError(compute_runner::Error),
 }
 
 pub struct OpenRankSDK {
@@ -226,6 +229,25 @@ impl OpenRankSDK {
 
         let compute_result = ComputeRequestResult::new(tx_hash, tx_event);
         Ok(compute_result)
+    }
+
+    pub async fn compute_local(
+        trust_entries: &[TrustEntry], seed_entries: &[ScoreEntry],
+    ) -> Result<Vec<ScoreEntry>, SdkError> {
+        let mock_domain = Domain::default();
+        let mut runner = ComputeRunner::new(&[mock_domain.clone()]);
+        runner
+            .update_trust(mock_domain.clone(), trust_entries.to_vec())
+            .map_err(SdkError::ComputeRunnerError)?;
+        runner
+            .update_seed(mock_domain.clone(), seed_entries.to_vec())
+            .map_err(SdkError::ComputeRunnerError)?;
+        runner.compute(mock_domain.clone()).map_err(SdkError::ComputeRunnerError)?;
+        let scores =
+            runner.get_compute_scores(mock_domain.clone()).map_err(SdkError::ComputeRunnerError)?;
+        let score_entries: Vec<ScoreEntry> =
+            scores.iter().map(|x| x.clone().inner()).flatten().collect();
+        Ok(score_entries)
     }
 
     /// 1. Creates a new `Client`, which can be used to call the Sequencer.
