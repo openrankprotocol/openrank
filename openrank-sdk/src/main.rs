@@ -31,6 +31,8 @@ enum Method {
     SeedUpdate { path: String, config_path: String, output_path: Option<String> },
     /// The method creates a ComputeRequest TX.
     ComputeRequest { path: String, output_path: Option<String> },
+    /// This method runs the EigenTrust compute locally
+    ComputeLocal { trust_path: String, seed_path: String, output_path: Option<String> },
     /// The method takes a ComputeRequest TX hash and returns the computed results.
     GetResults {
         request_id: String,
@@ -159,6 +161,26 @@ async fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 },
             }
+        },
+        Method::ComputeLocal { trust_path, seed_path, output_path } => {
+            match compute_local(&trust_path, &seed_path).await {
+                Ok(result) => {
+                    if let Some(output_path) = output_path {
+                        if let Err(e) = write_json_to_file(&output_path, result) {
+                            eprintln!("{}", e);
+                            return ExitCode::FAILURE;
+                        }
+                    } else {
+                        for res in &result {
+                            println!("{}: {}", res.id().clone(), *res.value());
+                        }
+                    }
+                },
+                Err(e) => {
+                    eprintln!("{}", e);
+                    return ExitCode::FAILURE;
+                },
+            };
         },
         Method::GetResults {
             request_id,
@@ -358,6 +380,36 @@ async fn main() -> ExitCode {
     }
 
     ExitCode::SUCCESS
+}
+
+async fn compute_local(trust_path: &str, seed_path: &str) -> Result<Vec<ScoreEntry>, SdkError> {
+    // Read CSV, to get a list of `TrustEntry`
+    let f = File::open(trust_path).map_err(SdkError::IoError)?;
+    let mut rdr = csv::Reader::from_reader(f);
+    let mut trust_entries = Vec::new();
+    for result in rdr.records() {
+        let record: StringRecord = result.map_err(SdkError::CsvError)?;
+        let (from, to, value): (String, String, f32) =
+            record.deserialize(None).map_err(SdkError::CsvError)?;
+        let trust_entry = TrustEntry::new(from, to, value);
+        trust_entries.push(trust_entry);
+    }
+
+    // Read CSV, to get a list of `ScoreEntry`
+    let f = File::open(seed_path).map_err(SdkError::IoError)?;
+    let mut rdr = csv::Reader::from_reader(f);
+    let mut seed_entries = Vec::new();
+    for result in rdr.records() {
+        let record: StringRecord = result.map_err(SdkError::CsvError)?;
+        let (i, value): (String, f32) = record.deserialize(None).map_err(SdkError::CsvError)?;
+        let score_entry = ScoreEntry::new(i, value);
+        seed_entries.push(score_entry);
+    }
+
+    // Create SDK & send trust updates
+    let results = OpenRankSDK::compute_local(&trust_entries, &seed_entries).await?;
+
+    Ok(results)
 }
 
 /// 1. Reads a CSV file and get a list of `TrustEntry`.

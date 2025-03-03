@@ -60,7 +60,7 @@ impl Display for DomainHash {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Getters)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, Getters)]
 #[getset(get = "pub")]
 /// Domain of the openrank network. Consists of a trust namespace and a seed namespace + algorithm id.
 pub struct Domain {
