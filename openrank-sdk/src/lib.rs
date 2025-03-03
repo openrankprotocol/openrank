@@ -246,7 +246,7 @@ impl OpenRankSDK {
         let scores =
             runner.get_compute_scores(mock_domain.clone()).map_err(SdkError::ComputeRunnerError)?;
         let score_entries: Vec<ScoreEntry> =
-            scores.iter().map(|x| x.clone().inner()).flatten().collect();
+            scores.iter().flat_map(|x| x.clone().inner()).collect();
         Ok(score_entries)
     }
 
